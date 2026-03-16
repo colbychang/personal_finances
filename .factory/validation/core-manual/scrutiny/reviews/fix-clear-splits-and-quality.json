@@ -1,0 +1,33 @@
+{
+  "featureId": "fix-clear-splits-and-quality",
+  "reviewedAt": "2026-03-16T22:35:00.000Z",
+  "commitId": "115af1f",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The fix correctly addresses the blocking Clear Splits bug by adding an early return for empty arrays before sum validation in the splits API route. The SplitEditor error handling was properly fixed to read and display API error responses. Toast notifications are cleanly implemented with React context and wired into the root layout. The budget query refactor correctly replaces fetch-all-then-filter-in-JS with Drizzle inArray() for SQL-level filtering. All three items from the feature description are fully implemented. One non-blocking gap: the 5 new tests exercise the DB query layer (createOrUpdateSplits) rather than the API route handler where the actual sum validation bug lived — the DB layer already handled empty arrays correctly. An API-level test (HTTP request to POST /api/transactions/[id]/splits with empty array) would directly verify the fix. However, interactive verification confirmed the end-to-end flow works, and all validators pass.",
+    "issues": [
+      {
+        "file": "src/__tests__/api/splits.test.ts",
+        "line": 134,
+        "severity": "non_blocking",
+        "description": "Test 'empty array should bypass sum validation' tests createOrUpdateSplits (DB layer) which already handled empty arrays correctly. The actual bug was in the API route handler's sum validation. This test does not exercise the fixed code path. An HTTP-level test against the POST /api/transactions/[id]/splits endpoint with { splits: [] } would properly verify the fix."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "AGENTS.md now documents 'Use Drizzle inArray() over fetch-all-then-filter-in-JS' as an architectural pattern, which was added as part of this fix. This is good — the convention was discovered during the original review and is now codified.",
+      "evidence": "AGENTS.md 'Architectural Patterns' section includes the inArray() convention. The budgets.ts refactor follows it."
+    },
+    {
+      "area": "conventions",
+      "observation": "The project uses Toast for user-facing error feedback (replacing console.error), but AGENTS.md's error handling convention only mentions 'error boundaries in React (show user-friendly messages)'. The Toast pattern could be documented as the standard approach for API mutation errors.",
+      "evidence": "AccountsClient.tsx and TransactionsClient.tsx both use showToast() from useToast() for failed API calls. AGENTS.md says 'Error handling: Try/catch in API routes, error boundaries in React' but doesn't mention toast notifications."
+    }
+  ],
+  "addressesFailureFrom": ".factory/validation/core-manual/scrutiny/reviews/transaction-crud.json",
+  "summary": "PASS. The fix correctly addresses the blocking Clear Splits bug: empty splits arrays now early-return with 201 before reaching sum validation (route.ts lines 65-69). SplitEditor properly reads and displays API errors on clear failure. Toast notifications replace console.error in AccountsClient and TransactionsClient. Budget query refactored to use inArray() for SQL-level filtering. 5 new tests added (DB-layer, not API-layer — non-blocking gap). All validators pass (143 tests, 0 type errors, 0 lint errors). Interactive verification confirmed clear splits works end-to-end."
+}

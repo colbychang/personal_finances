@@ -1,93 +1,33 @@
 {
   "milestone": "core-manual",
-  "round": 1,
-  "status": "fail",
+  "round": 2,
+  "status": "pass",
   "validatorsRun": {
     "test": { "passed": true, "command": "npx vitest run", "exitCode": 0 },
     "typecheck": { "passed": true, "command": "npx tsc --noEmit", "exitCode": 0 },
     "lint": { "passed": true, "command": "npx eslint .", "exitCode": 0 }
   },
   "reviewsSummary": {
-    "total": 8,
-    "passed": 7,
-    "failed": 1,
-    "failedFeatures": ["transaction-crud"]
+    "total": 1,
+    "passed": 1,
+    "failed": 0,
+    "failedFeatures": []
   },
-  "blockingIssues": [
-    {
-      "featureId": "transaction-crud",
-      "severity": "blocking",
-      "description": "Clear Splits is broken. When SplitEditor.handleClearSplits() sends POST with { splits: [] }, the API route at src/app/api/transactions/[id]/splits/route.ts reaches the sum validation where splitSum (0) !== transactionAmountAbs (non-zero), returning a 400 error. The database layer createOrUpdateSplits handles empty arrays correctly, but the API route blocks the request before reaching it. Fix: add an early return before sum validation when splitsCents.length === 0 that calls createOrUpdateSplits(db, txnId, []) and returns 201. Also fix handleClearSplits in SplitEditor.tsx to read and display error responses from the API."
-    }
-  ],
+  "blockingIssues": [],
   "appliedUpdates": [],
   "suggestedGuidanceUpdates": [
     {
       "target": "AGENTS.md",
-      "suggestion": "Add convention: API routes that accept money values in dollars must convert to cents at the API boundary using Math.round(amount * 100). Query functions always work with cents. Document that the 'multiply by 100 on write' convention means at the API route handler level, not the DB query level.",
-      "evidence": "Features accounts-management, transaction-crud, and budget-management all implement dollar-to-cent conversion in their API route handlers. The AGENTS.md says 'Multiply by 100 on write, divide by 100 on read' but doesn't specify where the conversion boundary is.",
-      "isSystemic": true
-    },
-    {
-      "target": "AGENTS.md",
-      "suggestion": "Add convention: Categories are referenced by name (string) throughout the schema, NOT by foreign key ID. transactions.category, budgets.category, and transactionSplits.category are all text fields. 'Uncategorized' and 'Income' exist as implicit string values but are not stored in the categories table.",
-      "evidence": "Features category-management and transaction-crud both use category names as strings. The schema has no FK from transactions/budgets to categories. Two reviewers flagged this as undocumented.",
-      "isSystemic": true
-    },
-    {
-      "target": "AGENTS.md",
-      "suggestion": "Add convention: Foreign keys use ON DELETE NO ACTION (default). Application code must handle cascading deletes explicitly (e.g., delete transactions before deleting an account). This is a deliberate defensive choice.",
-      "evidence": "Feature database-schema-and-seed establishes all FKs with NO ACTION. Feature accounts-management implements explicit cascade deletion in app code. Undocumented convention noticed by 2 reviewers.",
-      "isSystemic": true
-    },
-    {
-      "target": "AGENTS.md",
-      "suggestion": "Add testing guidance: Tests should cover BOTH the database query layer AND the API route handlers. Query-layer-only tests miss API-level validation logic (input parsing, dollar-to-cent conversion, edge cases). The blocking clear-splits bug was missed because tests only covered the DB layer.",
-      "evidence": "Features accounts-management, category-management, transaction-list-and-filters, transaction-crud, and budget-management all have tests only at the query layer. The transaction-crud blocking bug (empty splits array rejected by API sum validation) would have been caught by an API route test. 5 out of 8 reviewers flagged missing API route tests.",
-      "isSystemic": true
-    },
-    {
-      "target": "AGENTS.md",
-      "suggestion": "Add convention: Use Drizzle's inArray() operator for filtering related rows by a set of IDs, rather than fetching all rows and filtering in JavaScript. The fetch-all-then-filter-in-JS pattern is a performance anti-pattern as data grows.",
-      "evidence": "Feature budget-management fetches ALL transactionSplits rows then filters in JS (src/db/queries/budgets.ts:142). Drizzle's inArray() from 'drizzle-orm' could filter at SQL level. Reviewer flagged this as a performance concern.",
+      "suggestion": "Add to error handling conventions: Use toast notifications (useToast/showToast) for user-facing feedback on failed API mutations, rather than console.error. Toast is now the established pattern for client-side error feedback in this project.",
+      "evidence": "Feature fix-clear-splits-and-quality replaced console.error calls with showToast() in AccountsClient.tsx and TransactionsClient.tsx. AGENTS.md currently says 'error boundaries in React (show user-friendly messages)' but doesn't mention the toast notification pattern that is now the standard approach for API mutation errors.",
       "isSystemic": false
-    },
-    {
-      "target": "skills",
-      "suggestion": "Update fullstack-worker skill TDD guidance to clarify: TDD (write failing tests first) is most applicable for logic-heavy features. For UI/layout features where primary verification is visual/browser-based, writing data-structure tests alongside implementation is acceptable. For features with API endpoints, require tests at both query AND route handler levels.",
-      "evidence": "Workers for app-shell-navigation, category-management, and transaction-crud all noted in skillFeedback that strict TDD doesn't fit well for visual features. The transaction-crud blocking bug was missed because only query-layer tests were written.",
-      "isSystemic": true
     }
   ],
   "rejectedObservations": [
     {
-      "observation": "Add db:seed command to services.yaml",
-      "reason": "The seed functionality is primarily for development setup and tests. Workers call seed functions directly via import. A CLI command is nice-to-have but not needed for mission workflow and adding it could encourage workers to seed the production database accidentally."
-    },
-    {
-      "observation": "Unique constraint pattern inconsistency (.unique() vs uniqueIndex())",
-      "reason": "Both produce identical SQL UNIQUE constraints. The inconsistency is cosmetic and doesn't affect functionality or maintainability. Not worth documenting as a convention."
-    },
-    {
-      "observation": "Active-state color convention (text-primary, bg-primary/10)",
-      "reason": "Already implicitly established through the @theme block in globals.css. Documenting specific Tailwind class combinations for UI states would be overly prescriptive."
-    },
-    {
-      "observation": "SSR + client-refetch pattern for list pages",
-      "reason": "Already documented in architecture.md under 'Data Flow' section: 'Server Components call Drizzle query functions directly' and 'Client Components call API routes via fetch'. The pattern is a natural consequence of these documented patterns."
-    },
-    {
-      "observation": "DB typing pattern (type DB = ReturnType<typeof drizzle>)",
-      "reason": "Already implicitly established in architecture.md which documents the query function pattern. The typing detail is an implementation choice that doesn't need separate documentation."
-    },
-    {
-      "observation": "agent-browser selector patterns for modals",
-      "reason": "This is agent-browser-specific tooling guidance, not a codebase convention. Best handled in skill documentation or mission-specific notes."
-    },
-    {
-      "observation": "Lint command change from 'npx next lint' to 'npx eslint .'",
-      "reason": "Already reflected in services.yaml and package.json. The correct command is documented in the operational source of truth. Skill files may reference outdated commands but that's a skill maintenance issue, not a shared state gap."
+      "observation": "AGENTS.md now documents inArray() convention which was added as part of this fix",
+      "reason": "Already applied in prior round's suggested updates. The convention is now codified in AGENTS.md. No further action needed."
     }
   ],
-  "previousRound": null
+  "previousRound": ".factory/validation/core-manual/scrutiny/synthesis-round1.json"
 }
