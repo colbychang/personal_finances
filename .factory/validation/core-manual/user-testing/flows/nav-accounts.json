@@ -1,0 +1,205 @@
+{
+  "groupId": "nav-accounts",
+  "testedAt": "2026-03-16T12:00:00Z",
+  "isolation": {
+    "appUrl": "http://localhost:3000",
+    "session": "b0c6e1ccde87__nav",
+    "auth": "none",
+    "testDataPrefix": "TEST-NAV: ",
+    "viewport": {
+      "desktop": "1280x800",
+      "mobile": "375x667"
+    }
+  },
+  "toolsUsed": ["agent-browser"],
+  "assertions": [
+    {
+      "id": "VAL-NAV-001",
+      "title": "Mobile bottom tab navigation",
+      "status": "pass",
+      "steps": [
+        { "action": "Set viewport to 375x667 (mobile)", "expected": "Mobile viewport active", "observed": "Mobile viewport active" },
+        { "action": "Navigate to http://localhost:3000", "expected": "Bottom tab bar visible with Dashboard, Transactions, Budgets, Accounts, More", "observed": "Bottom tab bar visible at bottom with all 5 tabs: Dashboard, Transactions, Budgets, Accounts, More. Dashboard is highlighted blue as active tab." },
+        { "action": "Tap Transactions tab", "expected": "Navigate to /transactions", "observed": "Navigated to /transactions" },
+        { "action": "Tap Budgets tab", "expected": "Navigate to /budgets", "observed": "Navigated to /budgets" },
+        { "action": "Tap Accounts tab", "expected": "Navigate to /accounts", "observed": "Navigated to /accounts" },
+        { "action": "Tap More button", "expected": "Popup menu with Net Worth, Settings, Import", "observed": "Popup menu appeared with Net Worth, Settings, Import links" },
+        { "action": "Tap Net Worth in More menu", "expected": "Navigate to /net-worth", "observed": "Navigated to /net-worth" }
+      ],
+      "evidence": {
+        "screenshots": ["core-manual/nav-accounts/VAL-NAV-001-mobile-nav.png", "core-manual/nav-accounts/VAL-NAV-001-mobile-more-menu.png"],
+        "consoleErrors": "none",
+        "network": "All navigations completed without errors"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-NAV-002",
+      "title": "Desktop sidebar navigation",
+      "status": "pass",
+      "steps": [
+        { "action": "Set viewport to 1280x800 (desktop)", "expected": "Desktop viewport active", "observed": "Desktop viewport active" },
+        { "action": "Navigate to http://localhost:3000", "expected": "Sidebar visible with all navigation links", "observed": "Sidebar visible with Dashboard, Transactions, Budgets, Accounts, Net Worth, Settings, Import links" },
+        { "action": "Click Transactions link", "expected": "Navigate to /transactions, Transactions highlighted", "observed": "Navigated to /transactions" },
+        { "action": "Click Budgets link", "expected": "Navigate to /budgets", "observed": "Navigated to /budgets" },
+        { "action": "Click Accounts link", "expected": "Navigate to /accounts", "observed": "Navigated to /accounts" },
+        { "action": "Click Net Worth link", "expected": "Navigate to /net-worth", "observed": "Navigated to /net-worth" },
+        { "action": "Click Settings link", "expected": "Navigate to /settings", "observed": "Navigated to /settings" },
+        { "action": "Click Import link", "expected": "Navigate to /import", "observed": "Navigated to /import" }
+      ],
+      "evidence": {
+        "screenshots": ["core-manual/nav-accounts/VAL-NAV-002-desktop-sidebar.png"],
+        "consoleErrors": "none",
+        "network": "All navigations completed without errors"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-NAV-003",
+      "title": "Responsive layout transition",
+      "status": "pass",
+      "steps": [
+        { "action": "Set viewport to 1280x800 (desktop)", "expected": "Sidebar navigation visible, no bottom tabs", "observed": "Sidebar navigation visible on left side, no bottom tab bar" },
+        { "action": "Take desktop-width screenshot", "expected": "Desktop layout with sidebar", "observed": "Desktop layout captured with sidebar navigation" },
+        { "action": "Resize viewport to 375x667 (mobile)", "expected": "Sidebar hidden, bottom tab bar visible, no layout breakage", "observed": "Sidebar hidden, bottom tab bar visible at bottom, content properly displayed without overflow" },
+        { "action": "Take mobile-width screenshot", "expected": "Mobile layout with bottom tabs", "observed": "Mobile layout captured with bottom tab navigation bar showing Dashboard, Transactions, Budgets, Accounts, More" }
+      ],
+      "evidence": {
+        "screenshots": ["core-manual/nav-accounts/VAL-NAV-003-desktop-width.png", "core-manual/nav-accounts/VAL-NAV-003-mobile-width.png"],
+        "consoleErrors": "none",
+        "network": "N/A"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-NAV-004",
+      "title": "Direct URL routing",
+      "status": "pass",
+      "steps": [
+        { "action": "Navigate directly to /accounts", "expected": "Accounts page loads correctly", "observed": "Accounts page loaded with all accounts listed" },
+        { "action": "Navigate directly to /transactions", "expected": "Transactions page loads correctly", "observed": "Transactions page loaded with transaction list" },
+        { "action": "Navigate directly to /budgets", "expected": "Budgets page loads correctly", "observed": "Budgets page loaded with March 2026 budget data" },
+        { "action": "Navigate directly to /net-worth", "expected": "Net Worth page loads correctly", "observed": "Net Worth page loaded" },
+        { "action": "Navigate directly to /settings", "expected": "Settings page loads correctly", "observed": "Settings page loaded with Add Category button" },
+        { "action": "Navigate directly to /import", "expected": "Import page loads correctly", "observed": "Import page loaded" }
+      ],
+      "evidence": {
+        "screenshots": ["core-manual/nav-accounts/VAL-NAV-004-accounts.png", "core-manual/nav-accounts/VAL-NAV-004-transactions.png", "core-manual/nav-accounts/VAL-NAV-004-budgets.png", "core-manual/nav-accounts/VAL-NAV-004-net-worth.png", "core-manual/nav-accounts/VAL-NAV-004-settings.png", "core-manual/nav-accounts/VAL-NAV-004-import.png"],
+        "consoleErrors": "none",
+        "network": "All pages returned 200"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-ACCT-001",
+      "title": "View all accounts",
+      "status": "pass",
+      "steps": [
+        { "action": "Navigate to /accounts", "expected": "All 4 seed accounts displayed", "observed": "All 4 accounts displayed: Alliant Primary Checking ($8,125.43, Alliant Credit Union, Checking), Alliant Savings ($25,000.00, Alliant Credit Union, Savings), Capital One Quicksilver ($2,500.34, Capital One, Credit Card), Wealthfront Investment ($156,789.00, Wealthfront, Investment)" },
+        { "action": "Verify account details shown", "expected": "Name, institution, type, and balance for each", "observed": "Each account shows name (heading), type badge (colored label), institution (with icon), and formatted balance" }
+      ],
+      "evidence": {
+        "screenshots": ["core-manual/nav-accounts/VAL-ACCT-001-all-accounts.png"],
+        "consoleErrors": "none",
+        "network": "N/A"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-ACCT-002",
+      "title": "Add new account manually",
+      "status": "pass",
+      "steps": [
+        { "action": "Click 'Add Account' button", "expected": "Add Account form modal opens", "observed": "Add Account modal opened with fields: Account Name, Institution, Account Type (dropdown), Balance" },
+        { "action": "Fill in name: 'TEST-NAV: Test Checking', institution: 'Test Bank', type: Checking, balance: 1500.50", "expected": "Fields populated", "observed": "All fields populated correctly" },
+        { "action": "Click 'Add Account' submit", "expected": "Account created and appears in list", "observed": "Account 'TEST-NAV: Test Checking' appeared in Checking & Savings section with $1,500.50 balance. Subtotal updated from $33,125.43 to $34,625.93" }
+      ],
+      "evidence": {
+        "screenshots": ["core-manual/nav-accounts/VAL-ACCT-002-add-form.png", "core-manual/nav-accounts/VAL-ACCT-002-list-after-add.png"],
+        "consoleErrors": "none",
+        "network": "POST /api/accounts -> success"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-ACCT-003",
+      "title": "Edit existing account",
+      "status": "pass",
+      "steps": [
+        { "action": "Click Edit button on 'TEST-NAV: Test Checking'", "expected": "Edit form opens with existing data", "observed": "Edit Account modal opened with pre-populated fields: name='TEST-NAV: Test Checking', institution='Test Bank', type=Checking, balance=1500.50" },
+        { "action": "Change name to 'TEST-NAV: Updated Checking' and balance to 2000.75", "expected": "Fields updated", "observed": "Fields updated correctly" },
+        { "action": "Click 'Save Changes'", "expected": "Updated details reflected in list", "observed": "Account name changed to 'TEST-NAV: Updated Checking', balance changed to $2,000.75, subtotal updated to $35,126.18" }
+      ],
+      "evidence": {
+        "screenshots": ["core-manual/nav-accounts/VAL-ACCT-003-edit-form.png", "core-manual/nav-accounts/VAL-ACCT-003-list-after-edit.png"],
+        "consoleErrors": "none",
+        "network": "PUT /api/accounts -> success"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-ACCT-004",
+      "title": "Account balance formatting",
+      "status": "pass",
+      "steps": [
+        { "action": "View accounts page", "expected": "Balances formatted as currency with commas and two decimal places", "observed": "Balances properly formatted: $8,125.43 (checking), $25,000.00 (savings), $2,500.34 (credit card), $156,789.00 (investment)" },
+        { "action": "Check credit card balance display", "expected": "Credit card balance shows as positive number (owed amount)", "observed": "Capital One Quicksilver shows $2,500.34 as a positive number, displayed under 'Credit Cards' section (treated as liability)" }
+      ],
+      "evidence": {
+        "screenshots": ["core-manual/nav-accounts/VAL-ACCT-001-all-accounts.png"],
+        "consoleErrors": "none",
+        "network": "N/A"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-ACCT-005",
+      "title": "Accounts grouped by type",
+      "status": "pass",
+      "steps": [
+        { "action": "View accounts page", "expected": "Accounts organized into sections: Checking & Savings, Credit Cards, Investments & Retirement", "observed": "Three sections visible: 'Checking & Savings' (with Alliant Primary Checking and Alliant Savings), 'Credit Cards' (with Capital One Quicksilver), 'Investments & Retirement' (with Wealthfront Investment)" },
+        { "action": "Check section headers and subtotals", "expected": "Each section has header and subtotal", "observed": "Each section has an icon+header and subtotal: Checking & Savings ($33,125.43), Credit Cards ($2,500.34), Investments & Retirement ($156,789.00)" }
+      ],
+      "evidence": {
+        "screenshots": ["core-manual/nav-accounts/VAL-ACCT-001-all-accounts.png"],
+        "consoleErrors": "none",
+        "network": "N/A"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-ACCT-006",
+      "title": "Delete account",
+      "status": "pass",
+      "steps": [
+        { "action": "Create test account 'TEST-NAV: Delete Me' (savings, $500)", "expected": "Account created", "observed": "Account created and visible in Checking & Savings section" },
+        { "action": "Click Delete button on 'TEST-NAV: Delete Me'", "expected": "Confirmation dialog shown with warning about transactions", "observed": "Confirmation dialog appeared: 'Are you sure you want to delete TEST-NAV: Delete Me? This will also permanently delete all transactions associated with this account. This action cannot be undone.' with Cancel and Delete buttons" },
+        { "action": "Click 'Delete' to confirm", "expected": "Account removed from list", "observed": "Account 'TEST-NAV: Delete Me' removed from the accounts list. Only 5 accounts remain (4 seed + 1 test editing account)" }
+      ],
+      "evidence": {
+        "screenshots": ["core-manual/nav-accounts/VAL-ACCT-006-confirm-dialog.png", "core-manual/nav-accounts/VAL-ACCT-006-list-after-delete.png"],
+        "consoleErrors": "none",
+        "network": "DELETE /api/accounts -> success"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-ACCT-007",
+      "title": "Account form validation",
+      "status": "pass",
+      "steps": [
+        { "action": "Open Add Account form and click submit with all fields empty (cleared balance)", "expected": "Inline validation errors for all required fields", "observed": "Validation errors shown: 'Name is required', 'Institution is required', 'Account type is required', 'Balance is required'" },
+        { "action": "Fill name, institution, type, but enter 'abc' in balance field", "expected": "Balance field rejects non-numeric input with error", "observed": "Validation error shown: 'Balance must be a valid number'. Form submission prevented." }
+      ],
+      "evidence": {
+        "screenshots": ["core-manual/nav-accounts/VAL-ACCT-007-validation-errors.png", "core-manual/nav-accounts/VAL-ACCT-007-nonnumeric-balance.png"],
+        "consoleErrors": "none",
+        "network": "No API calls made (form submission prevented)"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 11 assertions: 11 passed, 0 failed. All navigation (mobile bottom tabs, desktop sidebar, responsive transition, direct URL routing) and account management features (view, add, edit, delete, grouping, formatting, validation) work as specified. No console errors encountered. Test data was cleaned up after testing."
+}

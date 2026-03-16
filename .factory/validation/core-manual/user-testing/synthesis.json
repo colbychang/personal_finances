@@ -1,0 +1,29 @@
+{
+  "milestone": "core-manual",
+  "round": 1,
+  "status": "pass",
+  "assertionsSummary": {
+    "total": 39,
+    "passed": 39,
+    "failed": 0,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-NAV-001", "VAL-NAV-002", "VAL-NAV-003", "VAL-NAV-004",
+    "VAL-ACCT-001", "VAL-ACCT-002", "VAL-ACCT-003", "VAL-ACCT-004", "VAL-ACCT-005", "VAL-ACCT-006", "VAL-ACCT-007",
+    "VAL-TXN-001", "VAL-TXN-002", "VAL-TXN-003", "VAL-TXN-004", "VAL-TXN-005", "VAL-TXN-006", "VAL-TXN-007", "VAL-TXN-008", "VAL-TXN-009", "VAL-TXN-010", "VAL-TXN-011", "VAL-TXN-012", "VAL-TXN-013",
+    "VAL-CAT-001", "VAL-CAT-002", "VAL-CAT-003",
+    "VAL-BUD-001", "VAL-BUD-002", "VAL-BUD-003", "VAL-BUD-004", "VAL-BUD-005", "VAL-BUD-006", "VAL-BUD-007",
+    "VAL-CROSS-001", "VAL-CROSS-003", "VAL-CROSS-005", "VAL-CROSS-006", "VAL-CROSS-007", "VAL-CROSS-009"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [
+    {
+      "target": "user-testing.md",
+      "description": "Added Flow Validator Guidance: Browser section with app URL, seed data details, isolation rules, and browser session conventions",
+      "source": "setup"
+    }
+  ],
+  "previousRound": null
+}

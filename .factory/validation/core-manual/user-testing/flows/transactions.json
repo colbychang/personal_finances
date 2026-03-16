@@ -1,0 +1,232 @@
+{
+  "groupId": "transactions",
+  "testedAt": "2026-03-16T12:00:00.000Z",
+  "isolation": {
+    "appUrl": "http://localhost:3000",
+    "authentication": "none",
+    "browserSession": "b0c6e1ccde87__txn",
+    "viewport": "1280x800",
+    "testDataPrefix": "TEST-TXN: ",
+    "seedData": "4 accounts, ~12+ transactions for March 2026"
+  },
+  "toolsUsed": ["agent-browser"],
+  "assertions": [
+    {
+      "id": "VAL-TXN-001",
+      "title": "View transaction list",
+      "status": "pass",
+      "steps": [
+        { "action": "Navigate to /transactions", "expected": "Transaction list displayed", "observed": "Transaction list displayed with all seed transactions" },
+        { "action": "Verify columns", "expected": "Date, name/merchant, amount, category badge, account name visible", "observed": "All columns present: date, name, formatted currency amount, colored category badge, account name" },
+        { "action": "Verify sort order", "expected": "Newest first", "observed": "Transactions sorted newest first (Mar 16 at top, Mar 1 at bottom)" }
+      ],
+      "evidence": {
+        "screenshots": ["core-manual/transactions/VAL-TXN-001-transaction-list.png"],
+        "consoleErrors": "none",
+        "network": "GET /transactions -> 200"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-TXN-002",
+      "title": "Filter by date range",
+      "status": "pass",
+      "steps": [
+        { "action": "Set date range From=2026-03-10 To=2026-03-12", "expected": "Only transactions within range shown", "observed": "3 transactions shown within date range (H&M Clothing, Target, Auto Insurance)" },
+        { "action": "Verify active filter indication", "expected": "Visual indicator of active filter", "observed": "Clear button appears, count shows '3 transactions found'" }
+      ],
+      "evidence": {
+        "screenshots": ["core-manual/transactions/VAL-TXN-002-date-filter-applied.png"],
+        "consoleErrors": "none",
+        "network": "N/A (client-side filtering)"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-TXN-003",
+      "title": "Filter by category",
+      "status": "pass",
+      "steps": [
+        { "action": "Open category filter dropdown", "expected": "Category options shown", "observed": "All 11 predefined categories plus custom 'Pet Care' shown as buttons" },
+        { "action": "Select 'Groceries'", "expected": "Only Groceries transactions shown", "observed": "2 Groceries transactions shown (Trader Joe's, Whole Foods Market), filter shows '1 selected'" },
+        { "action": "Verify filter indicator", "expected": "Active filter visually indicated", "observed": "Button shows '1 selected' text, Clear button visible" }
+      ],
+      "evidence": {
+        "screenshots": ["core-manual/transactions/VAL-TXN-003-category-filter-applied.png"],
+        "consoleErrors": "none",
+        "network": "N/A (client-side filtering)"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-TXN-004",
+      "title": "Filter by account",
+      "status": "pass",
+      "steps": [
+        { "action": "Select 'Capital One Quicksilver' from account dropdown", "expected": "Only Capital One transactions shown", "observed": "6 transactions shown, all with 'Capital One Quicksilver' account" },
+        { "action": "Verify filter indicator", "expected": "Active filter visually indicated", "observed": "Clear button visible, count updated" }
+      ],
+      "evidence": {
+        "screenshots": ["core-manual/transactions/VAL-TXN-004-account-filter-applied.png"],
+        "consoleErrors": "none",
+        "network": "N/A (client-side filtering)"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-TXN-005",
+      "title": "Search transactions",
+      "status": "pass",
+      "steps": [
+        { "action": "Type 'olive' in search box", "expected": "Case-insensitive match", "observed": "1 result: 'Dinner at Olive Garden' shown" },
+        { "action": "Type 'zzzznonexistent' in search box", "expected": "No transactions found message", "observed": "'No transactions found' with message 'Try adjusting your filters or search' and 'Clear all filters' button" }
+      ],
+      "evidence": {
+        "screenshots": ["core-manual/transactions/VAL-TXN-005-search-results.png", "core-manual/transactions/VAL-TXN-005-no-results.png"],
+        "consoleErrors": "none",
+        "network": "N/A (client-side filtering)"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-TXN-006",
+      "title": "Add new transaction",
+      "status": "pass",
+      "steps": [
+        { "action": "Click 'Add Transaction' button", "expected": "Add form opens", "observed": "Modal form opened with Type toggle (Expense/Income), Date, Name, Amount, Account, Category, Notes, Mark as Transfer fields" },
+        { "action": "Fill form: Date=2026-03-14, Name='TEST-TXN: Coffee Shop Visit', Amount=25.50, Account=Alliant Primary Checking, Category=Eating Out", "expected": "Fields populated", "observed": "All fields populated correctly" },
+        { "action": "Click 'Add Transaction' submit", "expected": "Transaction appears in list at correct position", "observed": "Transaction added, appears at Mar 14 position (between Mar 15 and Mar 13 entries)" }
+      ],
+      "evidence": {
+        "screenshots": ["core-manual/transactions/VAL-TXN-006-add-form.png", "core-manual/transactions/VAL-TXN-006-list-after-add.png"],
+        "consoleErrors": "none",
+        "network": "POST /api/transactions -> 200"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-TXN-007",
+      "title": "Edit transaction",
+      "status": "pass",
+      "steps": [
+        { "action": "Search for 'TEST-TXN: Coffee' and click Edit button", "expected": "Edit form opens with pre-populated data", "observed": "Edit form opened with all fields pre-populated (name, date, amount, account, category)" },
+        { "action": "Change name to 'TEST-TXN: Edited Coffee Visit' and amount to 35.00", "expected": "Fields updated", "observed": "Fields updated successfully" },
+        { "action": "Click 'Save Changes'", "expected": "Changes reflected in list", "observed": "Transaction name updated to 'TEST-TXN: Edited Coffee Visit', amount to -$35.00" }
+      ],
+      "evidence": {
+        "screenshots": ["core-manual/transactions/VAL-TXN-007-edit-form.png", "core-manual/transactions/VAL-TXN-007-list-after-edit-verified.png"],
+        "consoleErrors": "none",
+        "network": "PUT /api/transactions -> 200"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-TXN-008",
+      "title": "Delete transaction",
+      "status": "pass",
+      "steps": [
+        { "action": "Create new test transaction 'TEST-TXN: Delete Me' ($10.00)", "expected": "Transaction created", "observed": "Transaction created successfully" },
+        { "action": "Search for 'TEST-TXN: Delete' and click Delete button", "expected": "Confirmation dialog shown", "observed": "Dialog shown: 'Are you sure you want to delete TEST-TXN: Delete Me? This will also remove any associated splits. This action cannot be undone.' with Cancel and Delete buttons" },
+        { "action": "Click 'Delete' button", "expected": "Transaction removed from list", "observed": "Transaction removed, search shows 0 results" }
+      ],
+      "evidence": {
+        "screenshots": ["core-manual/transactions/VAL-TXN-008-confirm-dialog.png", "core-manual/transactions/VAL-TXN-008-list-after-delete.png"],
+        "consoleErrors": "none",
+        "network": "DELETE /api/transactions -> 200"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-TXN-009",
+      "title": "Category assignment",
+      "status": "pass",
+      "steps": [
+        { "action": "Open 'Add Transaction' form and click category dropdown", "expected": "All 11 predefined categories plus custom categories shown", "observed": "12 categories displayed: Rent/Home, Groceries, Eating Out, Bars/Clubs/Going Out, Other Fun Activities, Clothing, Insurance, Subscriptions, Home Goods, Vacations, Large Purchases (11 predefined) + Pet Care (custom)" },
+        { "action": "Select a category", "expected": "Category saved with transaction", "observed": "Category selection works, saved correctly with transaction (verified through add/edit flows)" }
+      ],
+      "evidence": {
+        "screenshots": ["core-manual/transactions/VAL-TXN-009-category-dropdown-open.png"],
+        "consoleErrors": "none",
+        "network": "N/A"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-TXN-010",
+      "title": "Split transaction across categories",
+      "status": "pass",
+      "steps": [
+        { "action": "Create $100 transaction 'TEST-TXN: Split Test Purchase' and click Split button", "expected": "Split UI opens", "observed": "Split modal opens with transaction name, total amount, two split rows (category + amount), Add Split button, validation display" },
+        { "action": "Set Split 1: Groceries $80, Split 2: Home Goods $20", "expected": "Total matches, save enabled", "observed": "Split total: $100.00 with green '✓ Matches' indicator, Save Splits button enabled" },
+        { "action": "Change Split 2 to $30 (mismatch)", "expected": "Validation error shown", "observed": "Split total: $110.00 with red 'Over by $10.00' warning" },
+        { "action": "Fix back to $20 and save", "expected": "Splits saved successfully", "observed": "Splits saved, dialog closed" }
+      ],
+      "evidence": {
+        "screenshots": ["core-manual/transactions/VAL-TXN-010-split-ui.png", "core-manual/transactions/VAL-TXN-010-split-filled.png", "core-manual/transactions/VAL-TXN-010-validation-error-on-mismatch.png"],
+        "consoleErrors": "none",
+        "network": "POST /api/transactions/splits -> 200"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-TXN-011",
+      "title": "Mark transaction as transfer",
+      "status": "pass",
+      "steps": [
+        { "action": "Edit 'TEST-TXN: Edited Coffee Visit' and toggle 'Mark as Transfer' switch ON", "expected": "Transfer toggle activates", "observed": "Toggle turned blue/ON, helper text says 'Transfers are excluded from spending & budgets'" },
+        { "action": "Save and check list", "expected": "Transaction visually distinguished as transfer", "observed": "Transaction shows 'Transfer' badge next to name, amount displayed without minus sign (neutral display vs red for expenses)" }
+      ],
+      "evidence": {
+        "screenshots": ["core-manual/transactions/VAL-TXN-011-transfer-toggle.png", "core-manual/transactions/VAL-TXN-011-transfer-in-list.png"],
+        "consoleErrors": "none",
+        "network": "PUT /api/transactions -> 200"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-TXN-012",
+      "title": "Amount display for income vs expense",
+      "status": "pass",
+      "steps": [
+        { "action": "View transaction list with mixed income and expense", "expected": "Expenses in red/minus, income in green/plus", "observed": "Expenses show in red text with minus sign (e.g., -$100.00, -$25.50). Income shows in green text with plus sign (e.g., +$5,000.00 with 'Income' badge). Transfers show in neutral/gray without sign prefix." },
+        { "action": "Verify form type toggle", "expected": "Clear expense/income selection", "observed": "Form has prominent Expense/Income toggle buttons at top, Expense highlighted in red, Income in white" }
+      ],
+      "evidence": {
+        "screenshots": ["core-manual/transactions/VAL-TXN-012-income-vs-expense.png", "core-manual/transactions/VAL-TXN-006-add-form.png"],
+        "consoleErrors": "none",
+        "network": "N/A"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-TXN-013",
+      "title": "Transaction form validation",
+      "status": "pass",
+      "steps": [
+        { "action": "Open 'Add Transaction' form, clear date, leave all fields empty, click submit", "expected": "Inline validation errors for required fields", "observed": "Inline red error messages shown: 'Date is required', 'Name is required', 'Amount is required', 'Account is required'. Fields highlighted with red borders. Form not submitted." }
+      ],
+      "evidence": {
+        "screenshots": ["core-manual/transactions/VAL-TXN-013-validation-errors.png"],
+        "consoleErrors": "none",
+        "network": "N/A (form prevented submission)"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "Transaction row action buttons (Split, Edit, Delete) sometimes not captured by `snapshot -i` when the transaction list extends beyond viewport. Had to use search filter or `find role button` to locate and click them.",
+      "resolved": true,
+      "resolution": "Used search filter to narrow list, then used `find role button click --name` to interact with buttons not captured by snapshot -i",
+      "affectedAssertions": ["VAL-TXN-007", "VAL-TXN-008", "VAL-TXN-010"]
+    },
+    {
+      "description": "Other test groups (TEST-BUD, TEST-NAV) had created test transactions that appear in the list alongside seed data. This didn't block testing but added visual noise.",
+      "resolved": true,
+      "resolution": "Used search filter to isolate test transactions when needed",
+      "affectedAssertions": ["VAL-TXN-001"]
+    }
+  ],
+  "blockers": [],
+  "summary": "Tested 13 assertions: all 13 passed. Transaction CRUD (add, edit, delete), filtering (date range, category, account, search), split transactions with validation, transfer marking, income vs expense display, and form validation all work correctly with no console errors."
+}
