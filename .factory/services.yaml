@@ -3,7 +3,7 @@ commands:
   dev: npx next dev -p 3000
   build: npx next build
   typecheck: npx tsc --noEmit
-  lint: npx next lint
+  lint: npx eslint .
   test: npx vitest run
   db:generate: npx drizzle-kit generate
   db:migrate: npx drizzle-kit migrate
