@@ -1,0 +1,9 @@
+node_modules/
+.next/
+.env.local
+.env*.local
+finance.db
+finance.db-shm
+finance.db-wal
+tsconfig.tsbuildinfo
+*.tsbuildinfo

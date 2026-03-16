@@ -1,0 +1,17 @@
+commands:
+  install: npm install
+  dev: npx next dev -p 3000
+  build: npx next build
+  typecheck: npx tsc --noEmit
+  lint: npx next lint
+  test: npx vitest run
+  db:generate: npx drizzle-kit generate
+  db:migrate: npx drizzle-kit migrate
+
+services:
+  web:
+    start: npx next dev -p 3000
+    stop: lsof -ti :3000 | xargs kill -9 2>/dev/null || true
+    healthcheck: curl -sf http://localhost:3000
+    port: 3000
+    depends_on: []
