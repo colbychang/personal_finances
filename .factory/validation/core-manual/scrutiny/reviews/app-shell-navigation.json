@@ -1,0 +1,56 @@
+{
+  "featureId": "app-shell-navigation",
+  "reviewedAt": "2026-03-16T21:30:00.000Z",
+  "commitId": "901e300",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Solid implementation that covers all requirements. ESLint config correctly rewritten from FlatCompat to native flat config, resolving the circular JSON error. Responsive app shell with desktop sidebar (>768px via md: breakpoint) and mobile bottom tab bar (<768px) with More menu popup. All 7 placeholder pages created/updated with consistent layout. Navigation uses Next.js Link components with active state highlighting via pathname matching. Touch targets at 56px exceed the 44px minimum. Good accessibility with aria-current, aria-expanded, aria-haspopup, and semantic nav/ul/li elements. Click-outside dismiss on More menu works correctly. Tests cover data structure completeness and consistency. The services.yaml lint command was correctly updated to match the new ESLint invocation.",
+    "issues": [
+      {
+        "file": "src/components/navigation/BottomTabBar.tsx",
+        "line": null,
+        "severity": "non_blocking",
+        "description": "More menu popup doesn't close on Escape key press. Only click-outside is handled. Minor keyboard accessibility gap — users navigating with keyboard cannot dismiss the popup with Escape."
+      },
+      {
+        "file": "src/components/navigation/BottomTabBar.tsx",
+        "line": null,
+        "severity": "non_blocking",
+        "description": "More menu popup has no focus management. When opened, focus doesn't move into the popup and isn't trapped. For full keyboard/screen-reader accessibility, focus should move to the first menu item on open and return to the More button on close."
+      },
+      {
+        "file": "eslint.config.mjs",
+        "line": null,
+        "severity": "non_blocking",
+        "description": "The old ESLint config had a custom @typescript-eslint/no-unused-vars rule allowing underscore-prefixed params (argsIgnorePattern: '^_', varsIgnorePattern: '^_'). This was dropped in the rewrite. If the codebase uses underscore-prefixed unused params elsewhere, this could cause lint warnings in the future. Currently no impact since eslint passes clean."
+      },
+      {
+        "file": "next-env.d.ts",
+        "line": 3,
+        "severity": "non_blocking",
+        "description": "Auto-generated file changed from '.next/types/routes.d.ts' to '.next/dev/types/routes.d.ts'. This is likely an auto-update from Next.js dev server and is fine, but should not be manually edited."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "Worker changed the lint command from 'npx next lint' to 'npx eslint .' because 'next lint' was reportedly removed/broken in Next.js 16. This is documented in the handoff and services.yaml was updated, but this change isn't recorded in AGENTS.md or any library doc. Future workers may try to use 'npx next lint' from the skill file which still references it in verificationSteps.",
+      "evidence": "SKILL.md step 5 says 'npx next lint — no lint errors' but the actual command is now 'npx eslint .' per package.json and services.yaml"
+    },
+    {
+      "area": "skills",
+      "observation": "The fullstack-worker skill mandates strict TDD (write failing tests first, then implement). The worker acknowledged this doesn't fit well for navigation/layout features where primary verification is visual/browser-based. The data-structure tests were written alongside implementation. skillFeedback.followedProcedure is true but suggestedChanges notes TDD is less applicable for visual features.",
+      "evidence": "handoff.skillFeedback.suggestedChanges: 'The TDD approach (write failing tests first) is less applicable for navigation/layout features where the key tests are visual/browser-based rather than unit tests.'"
+    },
+    {
+      "area": "conventions",
+      "observation": "The navigation components use 'text-primary' and 'bg-primary/10' Tailwind classes extensively for active states. The primary color is defined in globals.css @theme as --color-primary: #3b82f6. This active-state color pattern (blue highlight with 10% opacity background) is now a de facto convention but isn't documented anywhere for consistency across future features.",
+      "evidence": "Sidebar.tsx:37, BottomTabBar.tsx:68 — both use 'text-primary' for active state and 'bg-primary/10' for active background"
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Feature passes review. Implementation fully covers all requirements: ESLint config fixed, responsive app shell with desktop sidebar and mobile bottom tab bar, all 7 placeholder pages created, active state highlighting, smooth responsive transition, proper use of Next.js Link components. Code quality is high with good accessibility attributes, proper TypeScript typing, clean separation of concerns (nav-links data, Sidebar/BottomTabBar components, AppShell wrapper). 11 unit tests verify navigation link configuration completeness. Two non-blocking accessibility gaps noted (Escape key and focus management on More menu popup) and one non-blocking ESLint config observation (dropped unused-vars customization). Services.yaml correctly updated."
+}

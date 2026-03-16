@@ -1,0 +1,57 @@
+{
+  "featureId": "category-management",
+  "reviewedAt": "2026-03-16T22:10:00.000Z",
+  "commitId": "f1d24b5b1fcda5be6696eb0724521e125df81d21",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Solid implementation covering all feature requirements. GET/POST /api/categories routes, category query functions with sorting and defaults, Settings page UI with predefined and custom category display, and a reusable CategorySelect dropdown component. Tests are thorough at the query layer (13 tests). Code follows project conventions (Server Components by default, 'use client' only where needed, Tailwind styling, mobile-first responsive, 44px touch targets, proper error handling). Minor non-blocking issues identified around error resilience and missing API route-level tests.",
+    "issues": [
+      {
+        "file": "src/components/categories/CategorySelect.tsx",
+        "line": 55,
+        "severity": "non_blocking",
+        "description": "CategorySelect silently swallows fetch errors — if the API call fails, the dropdown renders empty with no error indication to the user. Should display an error state or retry option."
+      },
+      {
+        "file": "src/app/api/categories/route.ts",
+        "line": 33,
+        "severity": "non_blocking",
+        "description": "No max-length validation on category name. A user could submit an extremely long name that may break UI layouts. Consider adding a reasonable character limit (e.g., 50-100 chars)."
+      },
+      {
+        "file": "src/db/queries/categories.ts",
+        "line": 91,
+        "severity": "non_blocking",
+        "description": "Case-sensitive duplicate check: getCategoryByName uses exact match, so 'groceries' would not match 'Groceries'. A user could create a custom category with a name that differs only in case from a predefined one. Consider using case-insensitive comparison (LOWER/COLLATE NOCASE) for the duplicate check."
+      },
+      {
+        "file": "src/__tests__/api/categories.test.ts",
+        "line": 1,
+        "severity": "non_blocking",
+        "description": "Tests only cover the Drizzle query layer (db/queries/categories.ts), not the API route handlers. The POST route has input validation logic (empty name, type check, whitespace trimming, duplicate detection) that is only verified via manual curl/agent-browser, not automated tests. Adding route-level tests would improve confidence."
+      },
+      {
+        "file": "src/components/categories/CategorySelect.tsx",
+        "line": 48,
+        "severity": "non_blocking",
+        "description": "Each CategorySelect instance makes a separate fetch to /api/categories on mount. If multiple CategorySelect components are rendered on the same page (e.g., transaction form + filter bar), this results in redundant API calls. Consider lifting the fetch or using a shared cache (SWR/React Query or a simple context)."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "AGENTS.md lists 'Uncategorized' and 'Income' as implicit categories alongside the 11 predefined spending categories, but these are not stored in the categories table. Transactions and budgets reference categories by name string (text field, not a foreign key). The CategorySelect dropdown will not show 'Uncategorized' or 'Income'. This design decision — that some categories exist only as string values in transaction/budget records, not in the categories table — is not documented and could confuse future workers building transaction forms or budget features.",
+      "evidence": "AGENTS.md says: 'Plus an \"Uncategorized\" default and \"Income\" for non-expense transactions.' But src/db/seed.ts only seeds 11 categories. Schema shows transactions.category and budgets.category are text() fields with no foreign key to categories table. Seed data in seed.ts uses 'Income' as a category string for the paycheck transaction."
+    },
+    {
+      "area": "conventions",
+      "observation": "Categories are referenced by name (string) throughout the app rather than by ID. This is a deliberate architectural pattern (transactions.category, budgets.category, transactionSplits.category are all text fields) but is not documented in architecture.md or AGENTS.md. Future workers should know to use category names, not IDs, when storing category references.",
+      "evidence": "src/db/schema.ts shows transactions.category as text(), budgets.category as text(), transactionSplits.category as text(). CategorySelect.tsx passes cat.name as the value. No foreign keys to categories table."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "The category-management feature passes review. All 6 expectedBehaviors are met: 11 predefined categories display with colors and icons, custom category creation works with duplicate rejection, predefined categories are non-deletable (no delete endpoint), and a reusable CategorySelect component is available. Implementation follows project conventions (TDD, Server/Client component split, Tailwind mobile-first, touch targets, error handling). 13 tests pass covering query-layer CRUD operations. Non-blocking issues include: no API route-level automated tests, silent failure in CategorySelect on fetch error, no name length limit, case-sensitive duplicate check, and redundant fetches from multiple CategorySelect instances. Two shared state observations noted regarding undocumented category reference patterns."
+}

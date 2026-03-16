@@ -1,0 +1,56 @@
+{
+  "featureId": "transaction-crud",
+  "reviewedAt": "2026-03-16T22:15:00.000Z",
+  "commitId": "1953cca3e94d448a0d402dbcfa4e963fc42c0360",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The transaction CRUD implementation is comprehensive: API routes for create/read/update/delete with proper validation, a well-structured TransactionForm with expense/income toggle, DeleteTransactionDialog with confirmation, SplitEditor with real-time sum validation, and TransactionsClient wiring everything together. Code quality is good with proper accessibility, 44px touch targets, mobile-first design, and correct money-as-cents convention. However, there is one blocking bug: the 'Clear Splits' feature is broken because the splits API route's sum validation rejects empty arrays (sum 0 ≠ transaction amount), making the Clear Splits button silently fail.",
+    "issues": [
+      {
+        "file": "src/app/api/transactions/[id]/splits/route.ts",
+        "line": 90,
+        "severity": "blocking",
+        "description": "Clear splits is broken. When SplitEditor.handleClearSplits() sends POST with { splits: [] }, the API route reaches the sum validation at line 90 where splitSum (0) !== transactionAmountAbs (non-zero), returning a 400 error. The database layer createOrUpdateSplits handles empty arrays correctly, but the API route blocks the request before it gets there. The fix is to add an early return before sum validation: if (splitsCents.length === 0) { createOrUpdateSplits(db, txnId, []); return NextResponse.json({ splits: [] }, { status: 201 }); }"
+      },
+      {
+        "file": "src/components/transactions/SplitEditor.tsx",
+        "line": 128,
+        "severity": "non_blocking",
+        "description": "handleClearSplits does not read or display the error from non-ok API responses. When the API returns a 400 (due to the blocking bug above), res.ok is false so onSaved() is not called, but the error message from the response body is never shown to the user. The function should read the response body and call setError() on non-ok responses, similar to how handleSave does it."
+      },
+      {
+        "file": "src/app/api/transactions/route.ts",
+        "line": 101,
+        "severity": "non_blocking",
+        "description": "POST /api/transactions does not verify that accountId references an existing account before inserting. If an invalid accountId is provided, the SQLite FK constraint will throw an error caught by the generic try/catch, returning the unhelpful 'Failed to create transaction' message instead of a clear 'Account not found' error. Consider validating accountId existence before insert."
+      },
+      {
+        "file": "src/__tests__/api/transaction-crud.test.ts",
+        "line": 1,
+        "severity": "non_blocking",
+        "description": "All 19 tests only cover the database query layer directly, not the API routes. API-specific logic like dollar-to-cents conversion, date format validation, splits sum validation, and the empty-splits edge case have no test coverage. The blocking clear-splits bug would have been caught by an API-level test for clearing splits."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The feature description says 'POST /api/transactions/[id]/splits creates/updates splits' but doesn't mention that clearing splits (empty array) should also be supported via the same endpoint. The SplitEditor UI has a 'Clear Splits' button that sends an empty array, but the API route doesn't handle this case. The expected behaviors should clarify whether clear-splits is a required flow.",
+      "evidence": "src/app/api/transactions/[id]/splits/route.ts:90 — sum validation blocks empty arrays. SplitEditor.tsx:119 — handleClearSplits sends { splits: [] }."
+    },
+    {
+      "area": "skills",
+      "observation": "The SKILL.md mandates TDD (write failing tests first), but the worker only tested database query functions directly, not API routes. This means the API validation layer (dollar-to-cents conversion, date validation, splits sum validation, edge cases like empty splits) has zero test coverage. The skill could explicitly require tests at both the query layer AND the API route layer for features that include API endpoints.",
+      "evidence": "src/__tests__/api/transaction-crud.test.ts tests createTransaction, updateTransaction, etc. directly — no HTTP request/response testing. The splits sum validation bug in the API route was not caught because createOrUpdateSplits handles empty arrays correctly at the DB level."
+    },
+    {
+      "area": "skills",
+      "observation": "Worker's skillFeedback.suggestedChanges notes that agent-browser had ambiguity with 'Add Transaction' text matching multiple elements in modals. The skill could document a pattern for using specific CSS selectors (button[type=submit] in dialog) when testing forms inside modals.",
+      "evidence": "Handoff skillFeedback.suggestedChanges: 'The form submit button has an ambiguity issue with agent-browser when multiple elements share the same text Add Transaction.'"
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Transaction CRUD implementation is well-structured and covers most requirements: full CRUD API routes, TransactionForm with expense/income toggle and validation, DeleteTransactionDialog, SplitEditor with real-time sum validation, and TransactionsClient integration. Code follows project conventions (cents storage, ISO dates, mobile-first, accessibility, touch targets). However, there is a blocking bug: the 'Clear Splits' button sends an empty splits array to the API, which fails sum validation (0 ≠ transaction amount) and silently does nothing. Tests only cover the DB query layer and miss this API-level bug. Two non-blocking issues: handleClearSplits doesn't show API error messages, and accountId existence is not validated before insert."
+}

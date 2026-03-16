@@ -1,0 +1,40 @@
+{
+  "featureId": "accounts-management",
+  "reviewedAt": "2026-03-16T21:30:00.000Z",
+  "commitId": "26aed40fdb5f936fdc83a4ffb95246ef420bb1bb",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Solid implementation of accounts management with complete CRUD, proper separation of Server/Client Components, comprehensive query functions, and thorough test coverage. All feature requirements are met: grouped sections with subtotals, type badges, formatted currency, add/edit modals with validation, delete confirmation dialog, and empty state. Money handling follows the cents convention (INTEGER in DB, divide by 100 for display). Code quality is clean with consistent patterns. A few minor non-blocking issues noted below.",
+    "issues": [
+      {
+        "file": "src/app/(pages)/accounts/AccountsClient.tsx",
+        "line": 440,
+        "severity": "non_blocking",
+        "description": "API error handling in handleAdd, handleEdit, and handleDelete only logs errors to console (console.error) but does not display any user-facing error message. If a mutation fails (e.g., network error or server 500), the user sees no feedback — the modal simply stays open (add/edit) or nothing happens (delete). Consider adding a toast/error banner for failed operations."
+      },
+      {
+        "file": "src/db/queries/accounts.ts",
+        "line": 135,
+        "severity": "non_blocking",
+        "description": "updateAccount updates balanceCurrent but not balanceAvailable. The createAccount function sets balanceAvailable equal to the initial balance for asset accounts. After an update, balanceAvailable becomes stale. This inconsistency is minor since the UI only displays balanceCurrent, but could cause confusion if balanceAvailable is used by future features (e.g., net worth calculations)."
+      },
+      {
+        "file": "src/__tests__/api/accounts.test.ts",
+        "line": 1,
+        "severity": "non_blocking",
+        "description": "Tests cover database query functions thoroughly (19 tests), but there are no tests for the API route handlers themselves (request validation, HTTP status codes, dollar-to-cent conversion in POST/PUT routes). The API routes contain validation logic and dollar-to-cent conversion that is untested at the unit level. Interactive browser checks cover this end-to-end, but unit tests for the routes would increase confidence in edge cases."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "AGENTS.md says 'Form validation: Client-side for instant feedback, server-side for security.' The API routes implement server-side validation, and the client has client-side validation, so both are present. However, there's no documented convention for how API routes should handle dollar-to-cent conversion vs. receiving cents directly. This feature's API routes accept dollars and convert to cents (Math.round(balance * 100)), which is sensible but not documented anywhere. Future workers implementing similar endpoints might be inconsistent.",
+      "evidence": "src/app/api/accounts/route.ts:75 — 'const balanceCents = Math.round(balance * 100)' and src/app/api/accounts/[id]/route.ts:96 — 'updates.balance = Math.round(balance * 100)'. The AGENTS.md money convention says 'Multiply by 100 on write, divide by 100 on read' but doesn't clarify whether 'write' means at the API boundary or the DB query layer."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "PASS. The accounts-management feature is well-implemented with complete CRUD functionality, proper Server/Client Component architecture, comprehensive test coverage (19 tests), and thorough interactive verification. All expected behaviors are met: grouped sections, subtotals, type badges, currency formatting, add/edit forms with validation, delete confirmation, and empty state. Three non-blocking issues noted: (1) no user-facing error feedback on failed mutations, (2) balanceAvailable not updated on account edit, (3) API route handlers lack dedicated unit tests. One shared-state observation about undocumented dollar-to-cent conversion convention at the API boundary."
+}

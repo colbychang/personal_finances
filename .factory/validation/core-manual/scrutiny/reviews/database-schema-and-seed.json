@@ -1,0 +1,56 @@
+{
+  "featureId": "database-schema-and-seed",
+  "reviewedAt": "2026-03-16T21:15:00.000Z",
+  "commitId": "a38af02",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Solid implementation of all 11 database tables with correct Drizzle ORM schema definitions, proper foreign keys, unique constraints, INTEGER cents for money, WAL mode, and foreign key enforcement. Seed script correctly populates 11 predefined categories (idempotently) and sample data covering all 4 account types. Tests are comprehensive (18 tests) covering table creation, type verification, all FK and unique constraints, boolean/date storage, and seed data correctness including idempotency. Migration SQL is clean and matches the schema. Minor non-blocking issues noted below.",
+    "issues": [
+      {
+        "file": "src/db/seed.ts",
+        "line": 243,
+        "severity": "non_blocking",
+        "description": "The seedAll function's JSDoc says 'For use with `npx tsx src/db/seed.ts`' but the file has no top-level execution code — running it directly does nothing. There's also no `db:seed` script in package.json or services.yaml. The seed functions are only usable via import. This is misleading documentation but functionally the seed works correctly when imported in tests or other scripts."
+      },
+      {
+        "file": "src/db/schema.ts",
+        "line": 30,
+        "severity": "non_blocking",
+        "description": "accounts.externalRef uses uniqueIndex() in the table's third argument, while other unique columns (snapshots.month, categories.name, merchantRules.merchantKey, accountLinks.externalKey) use .unique() directly on the column definition. This inconsistency is cosmetic — both approaches produce the same SQL UNIQUE INDEX — but mixed patterns could confuse future contributors."
+      },
+      {
+        "file": "src/db/schema.ts",
+        "line": 17,
+        "severity": "non_blocking",
+        "description": "All foreign key references use default ON DELETE NO ACTION / ON UPDATE NO ACTION. Deleting an institution will fail if it has accounts, deleting an account will fail if it has transactions/snapshots/links, etc. This is a valid defensive choice but downstream features handling record deletion will need explicit cascade logic in application code. Worth documenting."
+      },
+      {
+        "file": "src/db/seed.ts",
+        "line": 183,
+        "severity": "non_blocking",
+        "description": "The seed paycheck transaction uses category 'Income' which is not one of the 11 predefined categories in the categories table. AGENTS.md mentions 'Income' as a non-expense category alongside 'Uncategorized'. Since transactions.category is a plain text column (no FK to categories), this works but represents a semantic inconsistency — the category value doesn't correspond to any row in the categories table."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "services",
+      "observation": "There is no db:seed command in services.yaml or package.json scripts. The seed.ts file exports functions but has no CLI entry point. Future workers needing to seed the database would need to write their own runner script or import and call seedAll manually. A db:seed command would be useful.",
+      "evidence": "src/db/seed.ts exports seedAll() with JSDoc saying 'For use with npx tsx src/db/seed.ts' but no auto-execution block. package.json has no seed script. services.yaml has db:generate and db:migrate but no db:seed."
+    },
+    {
+      "area": "conventions",
+      "observation": "The schema uses two different patterns for unique constraints: .unique() on column definition (snapshots.month, categories.name, etc.) and uniqueIndex() in the table's third argument (accounts.externalRef). Both produce the same SQL but the inconsistency isn't documented in AGENTS.md or architecture.md.",
+      "evidence": "src/db/schema.ts:30 uses uniqueIndex('accounts_external_ref_unique').on(table.externalRef) while src/db/schema.ts:66 uses text().notNull().unique() on snapshots.month"
+    },
+    {
+      "area": "conventions",
+      "observation": "Foreign key cascade behavior (ON DELETE NO ACTION) is not documented in AGENTS.md or architecture.md. Future features implementing delete operations will need to handle cascading manually in application code. This should be a documented convention.",
+      "evidence": "drizzle/0000_ordinary_human_torch.sql shows all FKs with 'ON UPDATE no action ON DELETE no action'. Architecture.md mentions FKs but not cascade policy."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Feature passes review. All 11 tables correctly defined with proper types, constraints, and foreign keys. WAL mode and FK enforcement configured in db connection. Seed script provides idempotent category seeding and comprehensive sample data. 18 well-structured tests validate the full schema. Non-blocking issues: seed script not directly runnable from CLI despite comment claiming so, minor unique constraint pattern inconsistency, and undocumented cascade behavior on foreign keys."
+}

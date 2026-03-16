@@ -1,0 +1,51 @@
+{
+  "featureId": "transaction-list-and-filters",
+  "reviewedAt": "2026-03-16T22:10:00.000Z",
+  "commitId": "aa72dd2e004999d3afbd6d780d649c56dffb6c5c",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Solid implementation covering all feature requirements. GET /api/transactions with full filtering (dateFrom, dateTo, category multi-select, accountId, search) and pagination. Query layer uses Drizzle ORM with proper parameterized queries, innerJoin for account names, and deterministic sort (postedAt DESC, id DESC). Client component uses server-side initial data with client-side re-fetching, debounced search (300ms), responsive layout with mobile filter drawer and desktop inline filter bar. 22 comprehensive tests cover all filter types, combinations, pagination edge cases, and helper functions. All expected behaviors verified in agent-browser at both desktop and mobile widths.",
+    "issues": [
+      {
+        "file": "src/app/(pages)/transactions/TransactionsClient.tsx",
+        "line": 143,
+        "severity": "non_blocking",
+        "description": "Mobile filter drawer directly mutates filter state (setDateFrom, setDateTo, etc.) which triggers the useEffect on line 143 immediately, causing API fetches before the user presses 'Apply Filters'. The Apply button then triggers another redundant fetch. Intent was likely to batch mobile filter changes, but state changes propagate to the shared useEffect. Functionally correct but causes extra API calls on mobile."
+      },
+      {
+        "file": "src/app/(pages)/transactions/TransactionsClient.tsx",
+        "line": 125,
+        "severity": "non_blocking",
+        "description": "fetchTransactions silently swallows non-OK HTTP responses (only processes res.ok, no else branch for errors). On 400/500 responses, the user sees no feedback. The catch block logs to console but shows no user-facing error message. Acceptable for this feature scope but could confuse users if the API returns validation errors."
+      },
+      {
+        "file": "src/app/(pages)/transactions/TransactionsClient.tsx",
+        "line": 160,
+        "severity": "non_blocking",
+        "description": "clearFilters() uses setTimeout(() => fetchTransactions(...), 0) as a workaround for React's batched state updates. This works but is fragile and non-idiomatic. A useEffect or useCallback pattern would be more robust."
+      },
+      {
+        "file": "src/db/queries/transactions.ts",
+        "line": 138,
+        "severity": "non_blocking",
+        "description": "Search uses LIKE with %search% pattern but does not escape SQL LIKE wildcards (% and _) in the user's search input. A search for literal '%' or '_' characters would produce unexpected results. Very minor edge case since Drizzle parameterizes the query (no SQL injection risk)."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The pattern of passing server-side initial data to client components via props (SSR + client re-fetch on filter changes) is used here but not documented in AGENTS.md or architecture.md. The page.tsx fetches initialData server-side and passes it to TransactionsClient which re-fetches via /api/transactions on filter changes. This is a reusable pattern for any list page with filtering.",
+      "evidence": "src/app/(pages)/transactions/page.tsx:9 fetches getTransactions(db) and passes to TransactionsClient as initialData prop; TransactionsClient.tsx:120 re-fetches via fetch('/api/transactions?...')"
+    },
+    {
+      "area": "conventions",
+      "observation": "The query layer uses 'type DB = ReturnType<typeof drizzle>' for typing the database parameter, enabling dependency injection for testing (pass in-memory DB in tests, real DB in production). This pattern is established but not documented in architecture.md.",
+      "evidence": "src/db/queries/transactions.ts:5 — type DB = ReturnType<typeof drizzle>; all query functions accept database: DB as first argument"
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "PASS. The transaction list and filters feature is well-implemented with comprehensive test coverage (22 tests), proper server/client separation, responsive design with mobile filter drawer, and all required filtering (date range, category multi-select, account, search) and pagination working correctly. No blocking issues found. Minor non-blocking issues include: mobile filter drawer triggering immediate fetches before Apply is pressed, silent error swallowing in fetch, setTimeout workaround in clearFilters, and unescaped LIKE wildcards in search. All feature requirements and expected behaviors are fully met as verified by agent-browser at both desktop and mobile widths."
+}
