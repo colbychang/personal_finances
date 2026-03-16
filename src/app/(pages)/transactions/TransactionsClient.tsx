@@ -10,10 +10,20 @@ import {
   ArrowLeftRight,
   Calendar,
   Receipt,
+  Plus,
+  Pencil,
+  Trash2,
+  Scissors,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { CategorySelect } from "@/components/categories/CategorySelect";
+import {
+  TransactionForm,
+  DeleteTransactionDialog,
+  SplitEditor,
+} from "@/components/transactions";
+import type { TransactionFormData } from "@/components/transactions";
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
@@ -81,6 +91,13 @@ export function TransactionsClient({
 
   // Mobile filter drawer
   const [isFilterOpen, setIsFilterOpen] = useState(false);
+
+  // CRUD state
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+  const [deletingTransaction, setDeletingTransaction] = useState<Transaction | null>(null);
+  const [splittingTransaction, setSplittingTransaction] = useState<Transaction | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Debounce timer for search
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -183,10 +200,127 @@ export function TransactionsClient({
     return found?.color ?? "#94a3b8";
   }
 
+  // ─── CRUD Handlers ─────────────────────────────────────────────
+
+  async function handleAddTransaction(formData: TransactionFormData) {
+    setIsSubmitting(true);
+    try {
+      const res = await fetch("/api/transactions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          date: formData.date,
+          name: formData.name,
+          amount: parseFloat(formData.amount),
+          accountId: parseInt(formData.accountId, 10),
+          category: formData.category || undefined,
+          notes: formData.notes || undefined,
+          isTransfer: formData.isTransfer,
+          type: formData.type,
+        }),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json();
+        console.error("Failed to create transaction:", errData);
+        return;
+      }
+
+      setShowAddForm(false);
+      await fetchTransactions({ pageOverride: page });
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function handleEditTransaction(formData: TransactionFormData) {
+    if (!editingTransaction) return;
+    setIsSubmitting(true);
+    try {
+      const res = await fetch(`/api/transactions/${editingTransaction.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          date: formData.date,
+          name: formData.name,
+          amount: parseFloat(formData.amount),
+          accountId: parseInt(formData.accountId, 10),
+          category: formData.category || null,
+          notes: formData.notes || null,
+          isTransfer: formData.isTransfer,
+          type: formData.type,
+        }),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json();
+        console.error("Failed to update transaction:", errData);
+        return;
+      }
+
+      setEditingTransaction(null);
+      await fetchTransactions({ pageOverride: page });
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function handleDeleteTransaction() {
+    if (!deletingTransaction) return;
+    setIsSubmitting(true);
+    try {
+      const res = await fetch(`/api/transactions/${deletingTransaction.id}`, {
+        method: "DELETE",
+      });
+
+      if (!res.ok) {
+        console.error("Failed to delete transaction");
+        return;
+      }
+
+      setDeletingTransaction(null);
+      await fetchTransactions({ pageOverride: page });
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  function handleSplitSaved() {
+    setSplittingTransaction(null);
+    fetchTransactions({ pageOverride: page });
+  }
+
+  // ─── Get form initial data from a transaction ─────────────────
+
+  function getEditFormData(txn: Transaction): TransactionFormData {
+    const isIncome = txn.amount < 0;
+    const absAmount = Math.abs(txn.amount) / 100;
+    return {
+      date: txn.postedAt,
+      name: txn.name,
+      amount: absAmount.toFixed(2),
+      type: isIncome ? "income" : "expense",
+      accountId: String(txn.accountId),
+      category: txn.category ?? "",
+      notes: txn.notes ?? "",
+      isTransfer: txn.isTransfer,
+    };
+  }
+
+  const todayStr = new Date().toISOString().split("T")[0];
+
   return (
     <div>
-      {/* ─── Search + Filter Toggle ───────────────────────────────── */}
+      {/* ─── Add Transaction Button + Search + Filter ──────────── */}
       <div className="flex items-center gap-2 mb-4">
+        <button
+          onClick={() => setShowAddForm(true)}
+          className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary text-white rounded-[var(--radius-button)] font-medium hover:bg-primary-dark transition-colors min-h-[44px] flex-shrink-0"
+        >
+          <Plus className="h-4 w-4" />
+          <span className="hidden sm:inline">Add Transaction</span>
+        </button>
+
         {/* Search Input */}
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-neutral-400" />
@@ -458,13 +592,21 @@ export function TransactionsClient({
               ? "Try adjusting your filters or search to find what you're looking for."
               : "Add your first transaction to start tracking your spending."}
           </p>
-          {hasActiveFilters && (
+          {hasActiveFilters ? (
             <button
               onClick={clearFilters}
               className="mt-4 inline-flex items-center gap-2 px-4 py-2.5 text-sm text-primary hover:text-primary-dark font-medium"
             >
               <X className="h-4 w-4" />
               Clear all filters
+            </button>
+          ) : (
+            <button
+              onClick={() => setShowAddForm(true)}
+              className="mt-4 inline-flex items-center gap-2 px-4 py-2.5 bg-primary text-white rounded-[var(--radius-button)] font-medium hover:bg-primary-dark transition-colors min-h-[44px]"
+            >
+              <Plus className="h-4 w-4" />
+              Add Your First Transaction
             </button>
           )}
         </div>
@@ -478,6 +620,9 @@ export function TransactionsClient({
               key={txn.id}
               transaction={txn}
               categoryColor={getCategoryColor(txn.category)}
+              onEdit={() => setEditingTransaction(txn)}
+              onDelete={() => setDeletingTransaction(txn)}
+              onSplit={() => setSplittingTransaction(txn)}
             />
           ))}
         </div>
@@ -509,6 +654,60 @@ export function TransactionsClient({
           </button>
         </div>
       )}
+
+      {/* ─── Add Transaction Modal ──────────────────────────────── */}
+      {showAddForm && (
+        <TransactionForm
+          mode="add"
+          initialData={{
+            date: todayStr,
+            name: "",
+            amount: "",
+            type: "expense",
+            accountId: "",
+            category: "",
+            notes: "",
+            isTransfer: false,
+          }}
+          accounts={accounts}
+          onSubmit={handleAddTransaction}
+          onCancel={() => setShowAddForm(false)}
+          isSubmitting={isSubmitting}
+        />
+      )}
+
+      {/* ─── Edit Transaction Modal ─────────────────────────────── */}
+      {editingTransaction && (
+        <TransactionForm
+          mode="edit"
+          initialData={getEditFormData(editingTransaction)}
+          accounts={accounts}
+          onSubmit={handleEditTransaction}
+          onCancel={() => setEditingTransaction(null)}
+          isSubmitting={isSubmitting}
+        />
+      )}
+
+      {/* ─── Delete Confirmation ────────────────────────────────── */}
+      {deletingTransaction && (
+        <DeleteTransactionDialog
+          transactionName={deletingTransaction.name}
+          onConfirm={handleDeleteTransaction}
+          onCancel={() => setDeletingTransaction(null)}
+          isDeleting={isSubmitting}
+        />
+      )}
+
+      {/* ─── Split Editor ───────────────────────────────────────── */}
+      {splittingTransaction && (
+        <SplitEditor
+          transactionId={splittingTransaction.id}
+          transactionAmount={Math.abs(splittingTransaction.amount)}
+          transactionName={splittingTransaction.name}
+          onClose={() => setSplittingTransaction(null)}
+          onSaved={handleSplitSaved}
+        />
+      )}
     </div>
   );
 }
@@ -518,9 +717,15 @@ export function TransactionsClient({
 function TransactionCard({
   transaction,
   categoryColor,
+  onEdit,
+  onDelete,
+  onSplit,
 }: {
   transaction: Transaction;
   categoryColor: string;
+  onEdit: () => void;
+  onDelete: () => void;
+  onSplit: () => void;
 }) {
   const isIncome = transaction.amount < 0;
   const isTransfer = transaction.isTransfer;
@@ -552,29 +757,59 @@ function TransactionCard({
           </div>
         </div>
 
-        {/* Right: Amount + Category */}
-        <div className="flex flex-col items-end gap-1 flex-shrink-0">
-          <span
-            className={cn(
-              "text-sm font-semibold currency whitespace-nowrap",
-              isTransfer
-                ? "text-neutral-500"
-                : isIncome
-                  ? "text-income"
-                  : "text-expense"
-            )}
-          >
-            {isTransfer ? "" : isIncome ? "+" : "-"}
-            {formatCurrency(displayAmount)}
-          </span>
-          {transaction.category && (
+        {/* Right: Amount + Category + Actions */}
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <div className="flex flex-col items-end gap-1">
             <span
-              className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium text-white whitespace-nowrap"
-              style={{ backgroundColor: categoryColor }}
+              className={cn(
+                "text-sm font-semibold currency whitespace-nowrap",
+                isTransfer
+                  ? "text-neutral-500"
+                  : isIncome
+                    ? "text-income"
+                    : "text-expense"
+              )}
             >
-              {transaction.category}
+              {isTransfer ? "" : isIncome ? "+" : "-"}
+              {formatCurrency(displayAmount)}
             </span>
-          )}
+            {transaction.category && (
+              <span
+                className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium text-white whitespace-nowrap"
+                style={{ backgroundColor: categoryColor }}
+              >
+                {transaction.category}
+              </span>
+            )}
+          </div>
+
+          {/* Action buttons */}
+          <div className="flex items-center gap-0.5 ml-1">
+            <button
+              onClick={onSplit}
+              className="p-2 rounded-[var(--radius-button)] text-neutral-400 hover:text-primary hover:bg-primary/5 transition-colors"
+              aria-label={`Split ${transaction.name}`}
+              title="Split transaction"
+            >
+              <Scissors className="h-3.5 w-3.5" />
+            </button>
+            <button
+              onClick={onEdit}
+              className="p-2 rounded-[var(--radius-button)] text-neutral-400 hover:text-primary hover:bg-neutral-100 transition-colors"
+              aria-label={`Edit ${transaction.name}`}
+              title="Edit transaction"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </button>
+            <button
+              onClick={onDelete}
+              className="p-2 rounded-[var(--radius-button)] text-neutral-400 hover:text-expense hover:bg-red-50 transition-colors"
+              aria-label={`Delete ${transaction.name}`}
+              title="Delete transaction"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
         </div>
       </div>
     </div>

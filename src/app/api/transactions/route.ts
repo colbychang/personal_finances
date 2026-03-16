@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db/index";
-import { getTransactions } from "@/db/queries/transactions";
+import { getTransactions, createTransaction } from "@/db/queries/transactions";
 
 /**
  * GET /api/transactions — returns paginated, filtered transactions.
@@ -79,6 +79,78 @@ export async function GET(request: NextRequest) {
     console.error("GET /api/transactions error:", error);
     return NextResponse.json(
       { error: "Failed to fetch transactions" },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * POST /api/transactions — create a new transaction
+ * Body: { date, name, amount, accountId, category?, notes?, isTransfer?, type }
+ * amount is in dollars (converted to cents). type is "expense" or "income".
+ */
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { date, name, amount, accountId, category, notes, isTransfer, type } = body;
+
+    // Validation
+    const errors: Record<string, string> = {};
+
+    // Date validation
+    const isoDateRegex = /^\d{4}-\d{2}-\d{2}$/;
+    if (!date || typeof date !== "string" || !isoDateRegex.test(date)) {
+      errors.date = "Date is required and must be in YYYY-MM-DD format";
+    } else {
+      // Validate it's a real date
+      const parsed = new Date(date + "T00:00:00");
+      if (isNaN(parsed.getTime())) {
+        errors.date = "Invalid date";
+      }
+    }
+
+    // Name validation
+    if (!name || typeof name !== "string" || name.trim() === "") {
+      errors.name = "Name is required";
+    }
+
+    // Amount validation
+    if (amount === undefined || amount === null || amount === "") {
+      errors.amount = "Amount is required";
+    } else if (typeof amount !== "number" || isNaN(amount)) {
+      errors.amount = "Amount must be a valid number";
+    } else if (amount <= 0) {
+      errors.amount = "Amount must be greater than zero";
+    }
+
+    // Account validation
+    if (!accountId || typeof accountId !== "number") {
+      errors.accountId = "Account is required";
+    }
+
+    if (Object.keys(errors).length > 0) {
+      return NextResponse.json({ errors }, { status: 400 });
+    }
+
+    // Convert dollars to cents, apply sign based on type
+    const amountCents = Math.round(amount * 100);
+    const signedAmount = type === "income" ? -amountCents : amountCents;
+
+    const transaction = createTransaction(db, {
+      accountId,
+      postedAt: date,
+      name: name.trim(),
+      amount: signedAmount,
+      category: category || undefined,
+      notes: notes?.trim() || undefined,
+      isTransfer: isTransfer ?? false,
+    });
+
+    return NextResponse.json({ transaction }, { status: 201 });
+  } catch (error) {
+    console.error("POST /api/transactions error:", error);
+    return NextResponse.json(
+      { error: "Failed to create transaction" },
       { status: 500 }
     );
   }
