@@ -1,7 +1,9 @@
-/**
- * Migration runner.
- * Will be implemented in the database-schema-and-seed feature.
- */
+import { migrate } from "drizzle-orm/better-sqlite3/migrator";
+import { db } from "./index";
 
-// Placeholder
-export {};
+/**
+ * Run all pending Drizzle migrations.
+ */
+export function runMigrations(): void {
+  migrate(db, { migrationsFolder: "./drizzle" });
+}

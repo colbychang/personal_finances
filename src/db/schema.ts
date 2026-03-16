@@ -1,7 +1,142 @@
-/**
- * Drizzle ORM schema definitions.
- * Will be implemented in the database-schema-and-seed feature.
- */
+import { sqliteTable, text, integer, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { sql } from "drizzle-orm";
 
-// Placeholder — schema tables will be defined here
-export {};
+// ─── Institutions ──────────────────────────────────────────────────────
+export const institutions = sqliteTable("institutions", {
+  id: integer().primaryKey({ autoIncrement: true }),
+  name: text().notNull(),
+  provider: text().notNull(), // "plaid" | "csv" | "manual"
+  status: text().notNull().default("active"), // "active" | "inactive" | "error"
+  plaidInstitutionId: text("plaid_institution_id"),
+  lastSyncAt: text("last_sync_at"),
+});
+
+// ─── Accounts ──────────────────────────────────────────────────────────
+export const accounts = sqliteTable("accounts", {
+  id: integer().primaryKey({ autoIncrement: true }),
+  institutionId: integer("institution_id")
+    .notNull()
+    .references(() => institutions.id),
+  externalRef: text("external_ref"),
+  name: text().notNull(),
+  mask: text(),
+  type: text().notNull(), // "checking" | "savings" | "credit" | "investment" | "retirement"
+  subtype: text(),
+  balanceCurrent: integer("balance_current").notNull().default(0), // cents
+  balanceAvailable: integer("balance_available"), // cents
+  isAsset: integer("is_asset", { mode: "boolean" }).notNull().default(true),
+  currency: text().notNull().default("USD"),
+  source: text().notNull().default("manual"), // "manual" | "plaid" | "csv"
+}, (table) => [
+  uniqueIndex("accounts_external_ref_unique").on(table.externalRef),
+]);
+
+// ─── Transactions ──────────────────────────────────────────────────────
+export const transactions = sqliteTable("transactions", {
+  id: integer().primaryKey({ autoIncrement: true }),
+  accountId: integer("account_id")
+    .notNull()
+    .references(() => accounts.id),
+  externalId: text("external_id"),
+  postedAt: text("posted_at").notNull(), // YYYY-MM-DD
+  name: text().notNull(),
+  merchant: text(),
+  amount: integer().notNull(), // cents (positive = expense, negative = income)
+  category: text(),
+  pending: integer({ mode: "boolean" }).notNull().default(false),
+  notes: text(),
+  categoryOverride: text("category_override"),
+  isTransfer: integer("is_transfer", { mode: "boolean" }).notNull().default(false),
+  reviewState: text("review_state").notNull().default("none"), // "none" | "reviewed" | "flagged"
+});
+
+// ─── Budgets ───────────────────────────────────────────────────────────
+export const budgets = sqliteTable("budgets", {
+  id: integer().primaryKey({ autoIncrement: true }),
+  month: text().notNull(), // YYYY-MM
+  category: text().notNull(),
+  amount: integer().notNull(), // cents
+}, (table) => [
+  uniqueIndex("budgets_month_category_unique").on(table.month, table.category),
+]);
+
+// ─── Snapshots ─────────────────────────────────────────────────────────
+export const snapshots = sqliteTable("snapshots", {
+  id: integer().primaryKey({ autoIncrement: true }),
+  month: text().notNull().unique(), // YYYY-MM
+  assets: integer().notNull(), // cents
+  liabilities: integer().notNull(), // cents
+  netWorth: integer("net_worth").notNull(), // cents
+});
+
+// ─── Connections ───────────────────────────────────────────────────────
+export const connections = sqliteTable("connections", {
+  id: integer().primaryKey({ autoIncrement: true }),
+  institutionName: text("institution_name").notNull(),
+  provider: text().notNull(), // "plaid" | "csv"
+  accessToken: text("access_token"),
+  itemId: text("item_id"),
+  createdAt: text("created_at").notNull().default(sql`(CURRENT_TIMESTAMP)`),
+  transactionsCursor: text("transactions_cursor"),
+  isEncrypted: integer("is_encrypted", { mode: "boolean" }).notNull().default(false),
+  lastSyncAt: text("last_sync_at"),
+  lastSyncStatus: text("last_sync_status"),
+  lastSyncError: text("last_sync_error"),
+});
+
+// ─── Merchant Rules ────────────────────────────────────────────────────
+export const merchantRules = sqliteTable("merchant_rules", {
+  id: integer().primaryKey({ autoIncrement: true }),
+  merchantKey: text("merchant_key").notNull().unique(),
+  label: text().notNull(),
+  category: text().notNull(),
+  isTransfer: integer("is_transfer", { mode: "boolean" }).notNull().default(false),
+  updatedAt: text("updated_at").notNull().default(sql`(CURRENT_TIMESTAMP)`),
+});
+
+// ─── Account Snapshots ─────────────────────────────────────────────────
+export const accountSnapshots = sqliteTable("account_snapshots", {
+  id: integer().primaryKey({ autoIncrement: true }),
+  accountId: integer("account_id")
+    .notNull()
+    .references(() => accounts.id),
+  day: text().notNull(), // YYYY-MM-DD
+  capturedAt: text("captured_at").notNull().default(sql`(CURRENT_TIMESTAMP)`),
+  balanceCurrent: integer("balance_current").notNull(), // cents
+  isAsset: integer("is_asset", { mode: "boolean" }).notNull().default(true),
+}, (table) => [
+  uniqueIndex("account_snapshots_account_day_unique").on(table.accountId, table.day),
+]);
+
+// ─── Account Links ─────────────────────────────────────────────────────
+export const accountLinks = sqliteTable("account_links", {
+  id: integer().primaryKey({ autoIncrement: true }),
+  provider: text().notNull(), // "plaid" | "csv"
+  externalKey: text("external_key").notNull().unique(),
+  accountId: integer("account_id")
+    .notNull()
+    .references(() => accounts.id),
+  institutionName: text("institution_name").notNull(),
+  displayName: text("display_name").notNull(),
+  updatedAt: text("updated_at").notNull().default(sql`(CURRENT_TIMESTAMP)`),
+});
+
+// ─── Transaction Splits ────────────────────────────────────────────────
+export const transactionSplits = sqliteTable("transaction_splits", {
+  id: integer().primaryKey({ autoIncrement: true }),
+  transactionId: integer("transaction_id")
+    .notNull()
+    .references(() => transactions.id),
+  category: text().notNull(),
+  amount: integer().notNull(), // cents
+});
+
+// ─── Categories ────────────────────────────────────────────────────────
+export const categories = sqliteTable("categories", {
+  id: integer().primaryKey({ autoIncrement: true }),
+  name: text().notNull().unique(),
+  color: text(),
+  icon: text(),
+  isPredefined: integer("is_predefined", { mode: "boolean" }).notNull().default(false),
+  sortOrder: integer("sort_order").notNull().default(0),
+});
