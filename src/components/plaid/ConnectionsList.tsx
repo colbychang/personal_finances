@@ -10,6 +10,7 @@ import {
   CreditCard,
   Wallet,
   TrendingUp,
+  RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/Toast";
@@ -58,7 +59,13 @@ export function ConnectionsList() {
   const [connections, setConnections] = useState<Connection[]>([]);
   const [loading, setLoading] = useState(true);
   const [disconnecting, setDisconnecting] = useState<number | null>(null);
-  const [confirmDisconnect, setConfirmDisconnect] = useState<number | null>(null);
+  const [confirmDisconnect, setConfirmDisconnect] = useState<number | null>(
+    null
+  );
+  const [syncing, setSyncing] = useState<number | null>(null);
+  const [syncResult, setSyncResult] = useState<Record<number, SyncResultInfo>>(
+    {}
+  );
   const { showToast } = useToast();
 
   const fetchConnections = useCallback(async () => {
@@ -108,6 +115,65 @@ export function ConnectionsList() {
     }
   };
 
+  const handleSync = async (connectionId: number) => {
+    setSyncing(connectionId);
+    // Clear any previous result for this connection
+    setSyncResult((prev) => {
+      const next = { ...prev };
+      delete next[connectionId];
+      return next;
+    });
+
+    try {
+      const response = await fetch("/api/plaid/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ connectionId }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        const errorMsg = data.error || "Failed to sync transactions";
+        setSyncResult((prev) => ({
+          ...prev,
+          [connectionId]: { status: "error", message: errorMsg },
+        }));
+        showToast(errorMsg, "error");
+        // Refresh connections to show updated error status
+        await fetchConnections();
+        return;
+      }
+
+      const totalChanges = data.added + data.modified + data.removed;
+      const message =
+        totalChanges === 0
+          ? "Already up to date — no new transactions."
+          : `Synced: ${data.added} added, ${data.modified} updated, ${data.removed} removed.`;
+
+      setSyncResult((prev) => ({
+        ...prev,
+        [connectionId]: { status: "success", message },
+      }));
+      showToast(message, "success");
+      // Refresh connections to show updated sync timestamp and balances
+      await fetchConnections();
+    } catch (error) {
+      console.error("Error syncing:", error);
+      const errorMsg =
+        error instanceof Error
+          ? error.message
+          : "Failed to sync transactions";
+      setSyncResult((prev) => ({
+        ...prev,
+        [connectionId]: { status: "error", message: errorMsg },
+      }));
+      showToast(errorMsg, "error");
+    } finally {
+      setSyncing(null);
+    }
+  };
+
   const handleLinkSuccess = () => {
     fetchConnections();
   };
@@ -149,114 +215,165 @@ export function ConnectionsList() {
         </div>
       ) : (
         <div className="space-y-4">
-          {connections.map((conn) => (
-            <div
-              key={conn.id}
-              className="bg-white rounded-xl border border-neutral-200 overflow-hidden"
-            >
-              {/* Connection Header */}
-              <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-100">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-primary/10">
-                    <Landmark className="h-5 w-5 text-primary" />
-                  </div>
-                  <div>
-                    <h3 className="font-semibold text-neutral-900">
-                      {conn.institutionName}
-                    </h3>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      <ConnectionStatus
-                        lastSyncAt={conn.lastSyncAt}
-                        lastSyncStatus={conn.lastSyncStatus}
-                        lastSyncError={conn.lastSyncError}
-                        createdAt={conn.createdAt}
-                      />
+          {connections.map((conn) => {
+            const isSyncing = syncing === conn.id;
+            const result = syncResult[conn.id];
+
+            return (
+              <div
+                key={conn.id}
+                className="bg-white rounded-xl border border-neutral-200 overflow-hidden"
+              >
+                {/* Connection Header */}
+                <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-100">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-primary/10">
+                      <Landmark className="h-5 w-5 text-primary" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-neutral-900">
+                        {conn.institutionName}
+                      </h3>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <ConnectionStatus
+                          lastSyncAt={conn.lastSyncAt}
+                          lastSyncStatus={conn.lastSyncStatus}
+                          lastSyncError={conn.lastSyncError}
+                          createdAt={conn.createdAt}
+                          isSyncing={isSyncing}
+                        />
+                      </div>
                     </div>
                   </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  {confirmDisconnect === conn.id ? (
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-neutral-500">
-                        Are you sure?
-                      </span>
-                      <button
-                        onClick={() => handleDisconnect(conn.id)}
-                        disabled={disconnecting === conn.id}
-                        className="px-3 py-1.5 text-xs font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors disabled:opacity-50 min-h-[36px]"
-                      >
-                        {disconnecting === conn.id ? (
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                        ) : (
-                          "Yes, Disconnect"
-                        )}
-                      </button>
-                      <button
-                        onClick={() => setConfirmDisconnect(null)}
-                        className="px-3 py-1.5 text-xs font-medium text-neutral-600 bg-neutral-100 hover:bg-neutral-200 rounded-lg transition-colors min-h-[36px]"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  ) : (
+                  <div className="flex items-center gap-2">
+                    {/* Sync Button */}
                     <button
-                      onClick={() => setConfirmDisconnect(conn.id)}
-                      disabled={disconnecting === conn.id}
+                      onClick={() => handleSync(conn.id)}
+                      disabled={isSyncing || disconnecting === conn.id}
                       className={cn(
                         "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors",
-                        "text-red-600 hover:bg-red-50",
+                        "text-primary hover:bg-primary/10",
                         "disabled:opacity-50 disabled:cursor-not-allowed",
                         "min-h-[36px] min-w-[36px]"
                       )}
                     >
-                      <Unplug className="h-3.5 w-3.5" />
-                      Disconnect
+                      <RefreshCw
+                        className={cn(
+                          "h-3.5 w-3.5",
+                          isSyncing && "animate-spin"
+                        )}
+                      />
+                      {isSyncing ? "Syncing..." : "Sync"}
                     </button>
-                  )}
-                </div>
-              </div>
 
-              {/* Accounts List */}
-              {conn.accounts.length > 0 ? (
-                <div className="divide-y divide-neutral-50">
-                  {conn.accounts.map((account) => {
-                    const Icon = getAccountIcon(account.type);
-                    return (
-                      <div
-                        key={account.id}
-                        className="flex items-center justify-between px-4 py-2.5"
-                      >
-                        <div className="flex items-center gap-3">
-                          <Icon className="h-4 w-4 text-neutral-400" />
-                          <div>
-                            <span className="text-sm font-medium text-neutral-800">
-                              {account.name}
-                            </span>
-                            {account.mask && (
-                              <span className="ml-2 text-xs text-neutral-400">
-                                ••••{account.mask}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        <span className="text-sm font-medium text-neutral-700">
-                          {formatCurrency(account.balanceCurrent)}
+                    {/* Disconnect */}
+                    {confirmDisconnect === conn.id ? (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-neutral-500">
+                          Are you sure?
                         </span>
+                        <button
+                          onClick={() => handleDisconnect(conn.id)}
+                          disabled={disconnecting === conn.id}
+                          className="px-3 py-1.5 text-xs font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors disabled:opacity-50 min-h-[36px]"
+                        >
+                          {disconnecting === conn.id ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            "Yes, Disconnect"
+                          )}
+                        </button>
+                        <button
+                          onClick={() => setConfirmDisconnect(null)}
+                          className="px-3 py-1.5 text-xs font-medium text-neutral-600 bg-neutral-100 hover:bg-neutral-200 rounded-lg transition-colors min-h-[36px]"
+                        >
+                          Cancel
+                        </button>
                       </div>
-                    );
-                  })}
+                    ) : (
+                      <button
+                        onClick={() => setConfirmDisconnect(conn.id)}
+                        disabled={disconnecting === conn.id || isSyncing}
+                        className={cn(
+                          "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors",
+                          "text-red-600 hover:bg-red-50",
+                          "disabled:opacity-50 disabled:cursor-not-allowed",
+                          "min-h-[36px] min-w-[36px]"
+                        )}
+                      >
+                        <Unplug className="h-3.5 w-3.5" />
+                        Disconnect
+                      </button>
+                    )}
+                  </div>
                 </div>
-              ) : (
-                <div className="px-4 py-3 text-sm text-neutral-500">
-                  No accounts linked yet.
-                </div>
-              )}
-            </div>
-          ))}
+
+                {/* Sync Result Banner */}
+                {result && (
+                  <div
+                    className={cn(
+                      "px-4 py-2 text-xs flex items-center gap-2",
+                      result.status === "success"
+                        ? "bg-green-50 text-green-700"
+                        : "bg-red-50 text-red-700"
+                    )}
+                  >
+                    {result.status === "success" ? (
+                      <CheckCircle className="h-3.5 w-3.5 shrink-0" />
+                    ) : (
+                      <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                    )}
+                    <span>{result.message}</span>
+                  </div>
+                )}
+
+                {/* Accounts List */}
+                {conn.accounts.length > 0 ? (
+                  <div className="divide-y divide-neutral-50">
+                    {conn.accounts.map((account) => {
+                      const Icon = getAccountIcon(account.type);
+                      return (
+                        <div
+                          key={account.id}
+                          className="flex items-center justify-between px-4 py-2.5"
+                        >
+                          <div className="flex items-center gap-3">
+                            <Icon className="h-4 w-4 text-neutral-400" />
+                            <div>
+                              <span className="text-sm font-medium text-neutral-800">
+                                {account.name}
+                              </span>
+                              {account.mask && (
+                                <span className="ml-2 text-xs text-neutral-400">
+                                  ••••{account.mask}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <span className="text-sm font-medium text-neutral-700">
+                            {formatCurrency(account.balanceCurrent)}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="px-4 py-3 text-sm text-neutral-500">
+                    No accounts linked yet.
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
   );
+}
+
+interface SyncResultInfo {
+  status: "success" | "error";
+  message: string;
 }
 
 function ConnectionStatus({
@@ -264,17 +381,28 @@ function ConnectionStatus({
   lastSyncStatus,
   lastSyncError,
   createdAt,
+  isSyncing,
 }: {
   lastSyncAt: string | null;
   lastSyncStatus: string | null;
   lastSyncError: string | null;
   createdAt: string;
+  isSyncing: boolean;
 }) {
-  if (lastSyncError) {
+  if (isSyncing) {
+    return (
+      <div className="flex items-center gap-1 text-xs text-primary">
+        <Loader2 className="h-3 w-3 animate-spin" />
+        <span>Syncing transactions...</span>
+      </div>
+    );
+  }
+
+  if (lastSyncError && lastSyncStatus === "error") {
     return (
       <div className="flex items-center gap-1 text-xs text-amber-600">
         <AlertTriangle className="h-3 w-3" />
-        <span>Sync error</span>
+        <span title={lastSyncError}>Sync error</span>
       </div>
     );
   }
@@ -288,6 +416,8 @@ function ConnectionStatus({
           {new Date(lastSyncAt).toLocaleDateString("en-US", {
             month: "short",
             day: "numeric",
+            hour: "numeric",
+            minute: "2-digit",
           })}
         </span>
       </div>

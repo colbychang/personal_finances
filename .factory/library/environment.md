@@ -15,6 +15,7 @@ Environment variables, external dependencies, and setup notes.
 | `PLAID_SECRET` | Plaid API secret key | `/api/plaid/*` routes |
 | `PLAID_ENV` | Plaid environment (`sandbox` / `development` / `production`) | Plaid client init |
 | `OPENAI_API_KEY` | OpenAI API key for GPT-4o-mini | `/api/categorize` route |
+| `PLAID_TOKEN_ENCRYPTION_KEY` | AES-256 key for encrypting Plaid access tokens at rest | `src/lib/encryption.ts` |
 
 All stored in `.env.local` (gitignored). Access via `process.env.VARIABLE_NAME` in server-side code only.
 
