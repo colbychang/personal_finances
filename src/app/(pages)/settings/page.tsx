@@ -1,7 +1,8 @@
-import { Settings, Tag } from "lucide-react";
+import { Settings, Tag, Landmark } from "lucide-react";
 import { db } from "@/db/index";
 import { getAllCategories } from "@/db/queries/categories";
 import { CategoriesManager } from "@/components/categories/CategoriesManager";
+import { ConnectionsList } from "@/components/plaid/ConnectionsList";
 
 export default function SettingsPage() {
   const categories = getAllCategories(db);
@@ -12,6 +13,17 @@ export default function SettingsPage() {
         <Settings className="h-7 w-7 text-primary" />
         <h1 className="text-2xl font-bold text-neutral-900">Settings</h1>
       </div>
+
+      {/* Bank Connections Section */}
+      <section className="mb-10">
+        <div className="flex items-center gap-2 mb-4">
+          <Landmark className="h-5 w-5 text-primary" />
+          <h2 className="text-lg font-semibold text-neutral-900">
+            Bank Connections
+          </h2>
+        </div>
+        <ConnectionsList />
+      </section>
 
       {/* Categories Section */}
       <section className="mb-10">
@@ -24,16 +36,6 @@ export default function SettingsPage() {
           Predefined categories cannot be deleted.
         </p>
         <CategoriesManager initialCategories={categories} />
-      </section>
-
-      {/* Placeholder for future settings */}
-      <section className="mb-10">
-        <h2 className="text-lg font-semibold text-neutral-900 mb-2">
-          Bank Connections
-        </h2>
-        <p className="text-sm text-neutral-500">
-          Connect your bank accounts via Plaid. Coming soon.
-        </p>
       </section>
     </div>
   );
