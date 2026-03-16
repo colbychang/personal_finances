@@ -1,8 +1,9 @@
-import { Settings, Tag, Landmark } from "lucide-react";
+import { Settings, Tag, Landmark, BookOpen } from "lucide-react";
 import { db } from "@/db/index";
 import { getAllCategories } from "@/db/queries/categories";
 import { CategoriesManager } from "@/components/categories/CategoriesManager";
 import { ConnectionsList } from "@/components/plaid/ConnectionsList";
+import { MerchantRulesManager } from "@/components/merchant-rules/MerchantRulesManager";
 
 export default function SettingsPage() {
   const categories = getAllCategories(db);
@@ -23,6 +24,22 @@ export default function SettingsPage() {
           </h2>
         </div>
         <ConnectionsList />
+      </section>
+
+      {/* Merchant Rules Section */}
+      <section className="mb-10">
+        <div className="flex items-center gap-2 mb-4">
+          <BookOpen className="h-5 w-5 text-primary" />
+          <h2 className="text-lg font-semibold text-neutral-900">
+            Merchant Rules
+          </h2>
+        </div>
+        <p className="text-sm text-neutral-500 mb-4">
+          Merchant rules automatically categorize transactions from known
+          merchants. Rules are created when you manually change a
+          transaction&apos;s category.
+        </p>
+        <MerchantRulesManager />
       </section>
 
       {/* Categories Section */}

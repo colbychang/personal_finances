@@ -14,6 +14,9 @@ import {
   Pencil,
   Trash2,
   Scissors,
+  Sparkles,
+  Loader2,
+  RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatCurrency, formatDate } from "@/lib/format";
@@ -101,6 +104,13 @@ export function TransactionsClient({
   const [deletingTransaction, setDeletingTransaction] = useState<Transaction | null>(null);
   const [splittingTransaction, setSplittingTransaction] = useState<Transaction | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Categorization state
+  const [isCategorizing, setIsCategorizing] = useState(false);
+  const [categorizeResult, setCategorizeResult] = useState<{
+    message: string;
+    aiError?: string;
+  } | null>(null);
 
   // Debounce timer for search
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -310,11 +320,95 @@ export function TransactionsClient({
     };
   }
 
+  // ─── Categorize Handler ──────────────────────────────────────
+
+  async function handleCategorizeAll() {
+    setIsCategorizing(true);
+    setCategorizeResult(null);
+    try {
+      const res = await fetch("/api/categorize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ all: true }),
+      });
+
+      const result = await res.json();
+
+      if (!res.ok) {
+        showToast(result.error || "Failed to categorize transactions");
+        setCategorizeResult({
+          message: result.error || "Categorization failed",
+          aiError: result.error,
+        });
+        return;
+      }
+
+      if (result.aiError) {
+        showToast(result.message || "Some transactions could not be categorized");
+        setCategorizeResult({
+          message: result.message,
+          aiError: result.aiError,
+        });
+      } else if (result.total > 0) {
+        showToast(result.message, "success");
+        setCategorizeResult({ message: result.message });
+      } else {
+        showToast("No uncategorized transactions to process", "success");
+        setCategorizeResult({ message: "No uncategorized transactions to process" });
+      }
+
+      // Refresh the transaction list
+      await fetchTransactions({ pageOverride: page });
+    } catch (error) {
+      console.error("Categorization failed:", error);
+      showToast("Failed to categorize transactions. Please try again.");
+      setCategorizeResult({
+        message: "Failed to categorize. Please try again.",
+        aiError: "Network error",
+      });
+    } finally {
+      setIsCategorizing(false);
+    }
+  }
+
   const todayStr = new Date().toISOString().split("T")[0];
 
   return (
     <div>
-      {/* ─── Add Transaction Button + Search + Filter ──────────── */}
+      {/* ─── Categorize Result Banner ──────────────────────────── */}
+      {categorizeResult && (
+        <div
+          className={cn(
+            "mb-4 px-4 py-3 rounded-[var(--radius-card)] text-sm flex items-center justify-between gap-2",
+            categorizeResult.aiError
+              ? "bg-amber-50 border border-amber-200 text-amber-800"
+              : "bg-green-50 border border-green-200 text-green-800"
+          )}
+        >
+          <p>{categorizeResult.message}</p>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {categorizeResult.aiError && (
+              <button
+                onClick={handleCategorizeAll}
+                disabled={isCategorizing}
+                className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium bg-amber-100 hover:bg-amber-200 text-amber-800 rounded-[var(--radius-button)] transition-colors min-h-[32px]"
+              >
+                <RefreshCw className="h-3 w-3" />
+                Retry
+              </button>
+            )}
+            <button
+              onClick={() => setCategorizeResult(null)}
+              className="p-1 text-neutral-400 hover:text-neutral-600"
+              aria-label="Dismiss"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Add Transaction Button + Categorize + Search + Filter ──────────── */}
       <div className="flex items-center gap-2 mb-4">
         <button
           onClick={() => setShowAddForm(true)}
@@ -322,6 +416,23 @@ export function TransactionsClient({
         >
           <Plus className="h-4 w-4" />
           <span className="hidden sm:inline">Add Transaction</span>
+        </button>
+
+        {/* Categorize All Button */}
+        <button
+          onClick={handleCategorizeAll}
+          disabled={isCategorizing}
+          className="inline-flex items-center gap-2 px-4 py-2.5 bg-violet-600 text-white rounded-[var(--radius-button)] font-medium hover:bg-violet-700 transition-colors min-h-[44px] flex-shrink-0 disabled:opacity-50"
+          title="Auto-categorize uncategorized transactions"
+        >
+          {isCategorizing ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Sparkles className="h-4 w-4" />
+          )}
+          <span className="hidden sm:inline">
+            {isCategorizing ? "Categorizing..." : "Categorize"}
+          </span>
         </button>
 
         {/* Search Input */}

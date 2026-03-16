@@ -6,6 +6,10 @@ import {
   deleteTransaction,
   getTransactionSplits,
 } from "@/db/queries/transactions";
+import {
+  createOrUpdateMerchantRule,
+  normalizeMerchantKey,
+} from "@/db/queries/merchant-rules";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -102,10 +106,34 @@ export async function PUT(request: Request, context: RouteContext) {
       updates.amount = type === "income" ? -amountCents : amountCents;
     }
 
+    // Get the current transaction before updating (for merchant rule auto-creation)
+    const beforeUpdate = getTransactionById(db, txnId);
+    if (!beforeUpdate) {
+      return NextResponse.json({ error: "Transaction not found" }, { status: 404 });
+    }
+
     const updated = updateTransaction(db, txnId, updates);
 
     if (!updated) {
       return NextResponse.json({ error: "Transaction not found" }, { status: 404 });
+    }
+
+    // Auto-create/update merchant rule when category is manually changed
+    if (category !== undefined && category && category !== beforeUpdate.category) {
+      const merchantName = beforeUpdate.merchant || beforeUpdate.name;
+      if (merchantName) {
+        try {
+          const key = normalizeMerchantKey(merchantName);
+          createOrUpdateMerchantRule(db, {
+            merchantKey: key,
+            label: merchantName,
+            category: category,
+          });
+        } catch (ruleError) {
+          // Non-critical: log but don't fail the transaction update
+          console.error("Failed to create merchant rule:", ruleError);
+        }
+      }
     }
 
     return NextResponse.json({ transaction: updated });
