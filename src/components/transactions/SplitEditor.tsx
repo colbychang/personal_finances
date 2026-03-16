@@ -144,6 +144,7 @@ export function SplitEditor({
 
   async function handleClearSplits() {
     setIsSaving(true);
+    setError(null);
     try {
       const res = await fetch(`/api/transactions/${transactionId}/splits`, {
         method: "POST",
@@ -151,9 +152,13 @@ export function SplitEditor({
         body: JSON.stringify({ splits: [] }),
       });
 
-      if (res.ok) {
-        onSaved();
+      if (!res.ok) {
+        const data = await res.json();
+        setError(data.error || data.errors?.join(", ") || "Failed to clear splits");
+        return;
       }
+
+      onSaved();
     } catch {
       setError("Failed to clear splits");
     } finally {

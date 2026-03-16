@@ -62,6 +62,12 @@ export async function POST(request: Request, context: RouteContext) {
       );
     }
 
+    // Empty array means "clear all splits"
+    if (splits.length === 0) {
+      createOrUpdateSplits(db, txnId, []);
+      return NextResponse.json({ splits: [] }, { status: 201 });
+    }
+
     // Validate each split
     const errors: string[] = [];
     for (let i = 0; i < splits.length; i++) {

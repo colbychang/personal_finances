@@ -18,6 +18,7 @@ import {
 import { cn } from "@/lib/utils";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { CategorySelect } from "@/components/categories/CategorySelect";
+import { useToast } from "@/components/ui/Toast";
 import {
   TransactionForm,
   DeleteTransactionDialog,
@@ -77,6 +78,8 @@ export function TransactionsClient({
   accounts,
   categoryColors,
 }: TransactionsClientProps) {
+  const { showToast } = useToast();
+
   // Filter state
   const [search, setSearch] = useState("");
   const [dateFrom, setDateFrom] = useState("");
@@ -222,7 +225,7 @@ export function TransactionsClient({
 
       if (!res.ok) {
         const errData = await res.json();
-        console.error("Failed to create transaction:", errData);
+        showToast(errData.error || "Failed to create transaction");
         return;
       }
 
@@ -254,7 +257,7 @@ export function TransactionsClient({
 
       if (!res.ok) {
         const errData = await res.json();
-        console.error("Failed to update transaction:", errData);
+        showToast(errData.error || "Failed to update transaction");
         return;
       }
 
@@ -274,7 +277,7 @@ export function TransactionsClient({
       });
 
       if (!res.ok) {
-        console.error("Failed to delete transaction");
+        showToast("Failed to delete transaction");
         return;
       }
 

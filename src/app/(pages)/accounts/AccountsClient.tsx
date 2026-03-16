@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { formatCurrency } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { useToast } from "@/components/ui/Toast";
 import type { AccountSection, AccountWithInstitution } from "@/db/queries/accounts";
 
 // ─── Types ──────────────────────────────────────────────────────────────
@@ -457,6 +458,7 @@ interface AccountsClientProps {
 
 export function AccountsClient({ initialSections }: AccountsClientProps) {
   const router = useRouter();
+  const { showToast } = useToast();
   const [sections, setSections] = useState<AccountSection[]>(initialSections);
   const [showForm, setShowForm] = useState(false);
   const [editingAccount, setEditingAccount] =
@@ -495,7 +497,7 @@ export function AccountsClient({ initialSections }: AccountsClientProps) {
 
       if (!res.ok) {
         const errorData = await res.json();
-        console.error("Failed to create account:", errorData);
+        showToast(errorData.error || "Failed to create account");
         return;
       }
 
@@ -524,7 +526,7 @@ export function AccountsClient({ initialSections }: AccountsClientProps) {
 
       if (!res.ok) {
         const errorData = await res.json();
-        console.error("Failed to update account:", errorData);
+        showToast(errorData.error || "Failed to update account");
         return;
       }
 
@@ -544,7 +546,7 @@ export function AccountsClient({ initialSections }: AccountsClientProps) {
       });
 
       if (!res.ok) {
-        console.error("Failed to delete account");
+        showToast("Failed to delete account");
         return;
       }
 

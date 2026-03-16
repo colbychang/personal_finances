@@ -1,4 +1,4 @@
-import { eq, and, gte, lt } from "drizzle-orm";
+import { eq, and, gte, lt, inArray } from "drizzle-orm";
 import type { drizzle } from "drizzle-orm/better-sqlite3";
 import * as schema from "../schema";
 
@@ -141,19 +141,16 @@ function getSpendingByCategory(
     )
     .all();
 
-  // Get all splits for these transactions
+  // Get splits for these transactions using SQL-level filtering
   const txnIds = txns.map((t) => t.id);
   const splitsMap = new Map<number, Array<{ category: string; amount: number }>>();
 
   if (txnIds.length > 0) {
-    // Get all splits in one query
-    const allSplits = database
+    const relevantSplits = database
       .select()
       .from(schema.transactionSplits)
+      .where(inArray(schema.transactionSplits.transactionId, txnIds))
       .all();
-
-    // Filter to relevant transaction IDs
-    const relevantSplits = allSplits.filter((s) => txnIds.includes(s.transactionId));
 
     for (const split of relevantSplits) {
       if (!splitsMap.has(split.transactionId)) {
