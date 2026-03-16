@@ -1,0 +1,60 @@
+@import "tailwindcss";
+
+@theme {
+  /* Brand colors for finance app */
+  --color-primary: #3b82f6;
+  --color-primary-dark: #2563eb;
+  --color-primary-light: #93c5fd;
+
+  /* Semantic colors */
+  --color-income: #22c55e;
+  --color-expense: #ef4444;
+  --color-savings: #3b82f6;
+  --color-warning: #f59e0b;
+
+  /* Neutral palette */
+  --color-neutral-50: #f8fafc;
+  --color-neutral-100: #f1f5f9;
+  --color-neutral-200: #e2e8f0;
+  --color-neutral-300: #cbd5e1;
+  --color-neutral-400: #94a3b8;
+  --color-neutral-500: #64748b;
+  --color-neutral-600: #475569;
+  --color-neutral-700: #334155;
+  --color-neutral-800: #1e293b;
+  --color-neutral-900: #0f172a;
+
+  /* Category colors */
+  --color-cat-rent: #8b5cf6;
+  --color-cat-groceries: #22c55e;
+  --color-cat-eating-out: #f97316;
+  --color-cat-bars: #ec4899;
+  --color-cat-fun: #06b6d4;
+  --color-cat-clothing: #a855f7;
+  --color-cat-insurance: #64748b;
+  --color-cat-subscriptions: #6366f1;
+  --color-cat-home-goods: #14b8a6;
+  --color-cat-vacations: #f59e0b;
+  --color-cat-large: #ef4444;
+
+  /* Typography */
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  /* Spacing / sizing */
+  --radius-card: 0.75rem;
+  --radius-button: 0.5rem;
+}
+
+/* Custom utilities */
+@utility currency {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+/* Ensure buttons have pointer cursor (Tailwind v4 default is 'default') */
+@layer base {
+  button {
+    cursor: pointer;
+  }
+}

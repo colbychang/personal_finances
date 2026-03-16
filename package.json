@@ -1,0 +1,46 @@
+{
+  "name": "personal-finances",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 3000",
+    "build": "next build",
+    "start": "next start -p 3000",
+    "lint": "eslint . --ext .ts,.tsx",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.8.2",
+    "clsx": "^2.1.1",
+    "drizzle-orm": "^0.45.0",
+    "lucide-react": "^0.475.0",
+    "next": "^16.1.6",
+    "openai": "^4.86.0",
+    "plaid": "^41.4.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-plaid-link": "^4.1.0",
+    "recharts": "^2.15.0",
+    "tailwind-merge": "^3.0.2"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.0",
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.3.0",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.15.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "drizzle-kit": "^0.31.0",
+    "eslint": "^9.24.0",
+    "eslint-config-next": "^16.1.6",
+    "jsdom": "^26.0.0",
+    "tailwindcss": "^4.1.0",
+    "typescript": "^5.8.0",
+    "vitest": "^3.1.0"
+  }
+}
