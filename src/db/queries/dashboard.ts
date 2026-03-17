@@ -1,4 +1,4 @@
-import { eq, and, gte, lt, desc, inArray } from "drizzle-orm";
+import { eq, and, gte, lt, desc, asc, inArray } from "drizzle-orm";
 import type { drizzle } from "drizzle-orm/better-sqlite3";
 import * as schema from "../schema";
 
@@ -53,12 +53,18 @@ export interface MonthComparison {
   color: string | null;
 }
 
+export interface NetWorthHistoryPoint {
+  month: string;
+  netWorth: number; // cents
+}
+
 export interface DashboardData {
   totalSpending: number; // cents
   spendingByCategory: CategorySpending[];
   budgetStatus: BudgetStatusSummary;
   recentTransactions: RecentTransaction[];
   netWorth: NetWorthTrend;
+  netWorthHistory: NetWorthHistoryPoint[];
   monthComparison: MonthComparison[];
 }
 
@@ -305,12 +311,23 @@ export function getDashboardData(database: DB, month: string): DashboardData {
     })
     .sort((a, b) => b.currentMonth - a.currentMonth);
 
+  // ─── 6. Net Worth History (for sparkline) ─────────────────────────
+  const netWorthHistory: NetWorthHistoryPoint[] = database
+    .select({
+      month: schema.snapshots.month,
+      netWorth: schema.snapshots.netWorth,
+    })
+    .from(schema.snapshots)
+    .orderBy(asc(schema.snapshots.month))
+    .all();
+
   return {
     totalSpending,
     spendingByCategory,
     budgetStatus,
     recentTransactions,
     netWorth,
+    netWorthHistory,
     monthComparison,
   };
 }

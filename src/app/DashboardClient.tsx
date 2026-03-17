@@ -17,6 +17,11 @@ import {
 } from "lucide-react";
 import { formatCurrency, formatDate, formatMonth } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import {
+  AreaChart,
+  Area,
+  ResponsiveContainer,
+} from "recharts";
 import { SpendingPieChart } from "@/components/charts/SpendingPieChart";
 import type { DashboardData } from "@/db/queries/dashboard";
 
@@ -75,7 +80,7 @@ function SpendingSummary({
   const topCategories = spendingByCategory.slice(0, 5);
 
   return (
-    <div className="bg-white rounded-[var(--radius-card)] border border-neutral-200 p-4 md:p-5">
+    <div className="bg-white rounded-[var(--radius-card)] border border-neutral-200 p-4 md:p-5 min-h-[320px]">
       <div className="flex items-center gap-2 mb-3">
         <div className="w-8 h-8 rounded-full bg-expense/10 flex items-center justify-center">
           <DollarSign className="h-4 w-4 text-expense" />
@@ -134,7 +139,7 @@ function BudgetStatus({
 
   if (budgetStatus.total === 0) {
     return (
-      <div className="bg-white rounded-[var(--radius-card)] border border-neutral-200 p-4 md:p-5">
+      <div className="bg-white rounded-[var(--radius-card)] border border-neutral-200 p-4 md:p-5 min-h-[320px]">
         <div className="flex items-center gap-2 mb-3">
           <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
             <PiggyBank className="h-4 w-4 text-primary" />
@@ -161,7 +166,7 @@ function BudgetStatus({
   }
 
   return (
-    <div className="bg-white rounded-[var(--radius-card)] border border-neutral-200 p-4 md:p-5">
+    <div className="bg-white rounded-[var(--radius-card)] border border-neutral-200 p-4 md:p-5 min-h-[320px]">
       <div className="flex items-center gap-2 mb-3">
         <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
           <PiggyBank className="h-4 w-4 text-primary" />
@@ -343,8 +348,10 @@ function RecentTransactions({
 
 function NetWorthTrend({
   netWorth,
+  netWorthHistory,
 }: {
   netWorth: DashboardData["netWorth"];
+  netWorthHistory: DashboardData["netWorthHistory"];
 }) {
   const hasChange = netWorth.change !== null;
   const isPositiveChange = hasChange && netWorth.change! > 0;
@@ -352,7 +359,7 @@ function NetWorthTrend({
   const isNoChange = hasChange && netWorth.change === 0;
 
   return (
-    <div className="bg-white rounded-[var(--radius-card)] border border-neutral-200 p-4 md:p-5">
+    <div className="bg-white rounded-[var(--radius-card)] border border-neutral-200 p-4 md:p-5 min-h-[320px]">
       <div className="flex items-center gap-2 mb-3">
         <div className="w-8 h-8 rounded-full bg-savings/10 flex items-center justify-center">
           <TrendingUp className="h-4 w-4 text-savings" />
@@ -401,6 +408,31 @@ function NetWorthTrend({
         <p className="text-xs text-neutral-400 mt-1">
           No previous month snapshot for comparison.
         </p>
+      )}
+
+      {/* Net Worth Sparkline */}
+      {netWorthHistory.length >= 2 && (
+        <div className="mt-4 w-full h-[80px]">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={netWorthHistory} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
+              <defs>
+                <linearGradient id="nwGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#22c55e" stopOpacity={0.3} />
+                  <stop offset="100%" stopColor="#22c55e" stopOpacity={0.05} />
+                </linearGradient>
+              </defs>
+              <Area
+                type="monotone"
+                dataKey="netWorth"
+                stroke="#22c55e"
+                strokeWidth={2}
+                fill="url(#nwGradient)"
+                dot={false}
+                isAnimationActive={false}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
       )}
     </div>
   );
@@ -609,13 +641,13 @@ export function DashboardClient({
         isLoading={isLoading}
       />
 
-      {/* Row 1: Spending Summary + Net Worth + Budget Status */}
+      {/* Row 1: Net Worth + Spending Summary + Budget Status */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+        <NetWorthTrend netWorth={data.netWorth} netWorthHistory={data.netWorthHistory} />
         <SpendingSummary
           totalSpending={data.totalSpending}
           spendingByCategory={data.spendingByCategory}
         />
-        <NetWorthTrend netWorth={data.netWorth} />
         <BudgetStatus budgetStatus={data.budgetStatus} />
       </div>
 
