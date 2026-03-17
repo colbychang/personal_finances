@@ -37,6 +37,45 @@ export interface AccountBalanceHistoryRow {
   day: string;
 }
 
+export interface LiveNetWorth {
+  assets: number;
+  liabilities: number;
+  netWorth: number;
+}
+
+// ─── getLiveNetWorth ────────────────────────────────────────────────────
+
+/**
+ * Compute current net worth from live account balances.
+ * Returns total assets, total liabilities, and net worth (assets - liabilities).
+ */
+export function getLiveNetWorth(database: DB): LiveNetWorth {
+  const accounts = database
+    .select({
+      balanceCurrent: schema.accounts.balanceCurrent,
+      isAsset: schema.accounts.isAsset,
+    })
+    .from(schema.accounts)
+    .all();
+
+  let totalAssets = 0;
+  let totalLiabilities = 0;
+
+  for (const account of accounts) {
+    if (account.isAsset) {
+      totalAssets += account.balanceCurrent;
+    } else {
+      totalLiabilities += account.balanceCurrent;
+    }
+  }
+
+  return {
+    assets: totalAssets,
+    liabilities: totalLiabilities,
+    netWorth: totalAssets - totalLiabilities,
+  };
+}
+
 // ─── createSnapshot ─────────────────────────────────────────────────────
 
 /**

@@ -18,6 +18,7 @@ import {
 import { formatCurrency } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/Toast";
+import { PlaidLinkButton } from "@/components/plaid/PlaidLinkButton";
 import type { AccountSection, AccountWithInstitution } from "@/db/queries/accounts";
 
 // ─── Types ──────────────────────────────────────────────────────────────
@@ -559,9 +560,9 @@ export function AccountsClient({ initialSections }: AccountsClientProps) {
 
   return (
     <>
-      {/* Add Account Button (shown when accounts exist) */}
+      {/* Add Account + Connect Bank Buttons (shown when accounts exist) */}
       {hasAccounts && (
-        <div className="mb-6">
+        <div className="mb-6 flex items-center gap-3">
           <button
             onClick={() => setShowForm(true)}
             className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary text-white rounded-[var(--radius-button)] font-medium hover:bg-primary-dark transition-colors min-h-[44px]"
@@ -569,11 +570,19 @@ export function AccountsClient({ initialSections }: AccountsClientProps) {
             <Plus className="h-4 w-4" />
             Add Account
           </button>
+          <PlaidLinkButton onSuccess={refreshData} />
         </div>
       )}
 
       {/* Empty State */}
-      {!hasAccounts && <EmptyState onAdd={() => setShowForm(true)} />}
+      {!hasAccounts && (
+        <>
+          <EmptyState onAdd={() => setShowForm(true)} />
+          <div className="flex justify-center mt-4">
+            <PlaidLinkButton onSuccess={refreshData} />
+          </div>
+        </>
+      )}
 
       {/* Sections */}
       {sections.map((section) => (

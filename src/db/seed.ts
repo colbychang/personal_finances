@@ -1,6 +1,7 @@
-import { sql } from "drizzle-orm";
+import { sql, eq } from "drizzle-orm";
 import type { drizzle } from "drizzle-orm/better-sqlite3";
 import { PREDEFINED_CATEGORIES } from "@/lib/categories";
+import { createSnapshot } from "./queries/snapshots";
 import * as schema from "./schema";
 
 type DB = ReturnType<typeof drizzle>;
@@ -239,6 +240,60 @@ export function seedSampleData(db: DB): void {
   ];
 
   db.insert(schema.budgets).values(budgetData).run();
+
+  // ─── Snapshots ─────────────────────────────────────────────────────
+  // Create 6 months of historical snapshots with realistic balance progression.
+  // We temporarily set account balances to historical values, call createSnapshot(),
+  // then restore the current balances at the end.
+
+  // Current balances (final state)
+  const currentBalances = db.select().from(schema.accounts).all();
+
+  // Define historical balance multipliers relative to current balances.
+  // Simulates gradual growth over 6 months (oldest → newest).
+  const now = new Date();
+  const historicalMonths: { month: string; multipliers: Record<string, number> }[] = [];
+
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const m = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+
+    // Assets grow over time; liabilities shrink slightly
+    // i=5 is oldest (5 months ago), i=0 is current month
+    const assetFactor = 0.90 + (5 - i) * 0.02; // 0.90, 0.92, 0.94, 0.96, 0.98, 1.00
+    const liabilityFactor = 1.10 - (5 - i) * 0.02; // 1.10, 1.08, 1.06, 1.04, 1.02, 1.00
+
+    historicalMonths.push({
+      month: m,
+      multipliers: {
+        asset: assetFactor,
+        liability: liabilityFactor,
+      },
+    });
+  }
+
+  for (const hm of historicalMonths) {
+    // Set account balances to historical values
+    for (const acct of currentBalances) {
+      const factor = acct.isAsset ? hm.multipliers.asset : hm.multipliers.liability;
+      const historicalBalance = Math.round(acct.balanceCurrent * factor);
+      db.update(schema.accounts)
+        .set({ balanceCurrent: historicalBalance })
+        .where(eq(schema.accounts.id, acct.id))
+        .run();
+    }
+
+    // Create snapshot using the proper function
+    createSnapshot(db, hm.month);
+  }
+
+  // Restore current (final) account balances
+  for (const acct of currentBalances) {
+    db.update(schema.accounts)
+      .set({ balanceCurrent: acct.balanceCurrent })
+      .where(eq(schema.accounts.id, acct.id))
+      .run();
+  }
 }
 
 /**

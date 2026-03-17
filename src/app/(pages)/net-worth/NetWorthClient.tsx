@@ -13,7 +13,7 @@ import {
 import { formatCurrency, formatMonth } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/Toast";
-import type { SnapshotRow, AccountBalance, AccountBalanceHistoryRow } from "@/db/queries/snapshots";
+import type { SnapshotRow, AccountBalance, AccountBalanceHistoryRow, LiveNetWorth } from "@/db/queries/snapshots";
 import { NetWorthChart } from "./NetWorthChart";
 import { AccountHistoryTable } from "./AccountHistoryTable";
 
@@ -22,6 +22,7 @@ import { AccountHistoryTable } from "./AccountHistoryTable";
 interface NetWorthClientProps {
   initialSnapshots: SnapshotRow[];
   initialAccountHistory: AccountBalanceHistoryRow[];
+  liveNetWorth: LiveNetWorth;
 }
 
 // ─── Empty State ────────────────────────────────────────────────────────
@@ -54,7 +55,7 @@ function EmptyState({ onTakeSnapshot, isLoading }: { onTakeSnapshot: () => void;
 
 // ─── Summary Cards ──────────────────────────────────────────────────────
 
-function SummaryCards({ snapshot }: { snapshot: SnapshotRow }) {
+function SummaryCards({ liveNetWorth }: { liveNetWorth: LiveNetWorth }) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
       {/* Total Assets */}
@@ -66,7 +67,7 @@ function SummaryCards({ snapshot }: { snapshot: SnapshotRow }) {
           <span className="text-sm font-medium text-neutral-500">Total Assets</span>
         </div>
         <p className="text-xl font-bold currency text-neutral-900">
-          {formatCurrency(snapshot.assets)}
+          {formatCurrency(liveNetWorth.assets)}
         </p>
       </div>
 
@@ -79,7 +80,7 @@ function SummaryCards({ snapshot }: { snapshot: SnapshotRow }) {
           <span className="text-sm font-medium text-neutral-500">Total Liabilities</span>
         </div>
         <p className="text-xl font-bold currency text-neutral-900">
-          {formatCurrency(snapshot.liabilities)}
+          {formatCurrency(liveNetWorth.liabilities)}
         </p>
       </div>
 
@@ -93,9 +94,9 @@ function SummaryCards({ snapshot }: { snapshot: SnapshotRow }) {
         </div>
         <p className={cn(
           "text-xl font-bold currency",
-          snapshot.netWorth >= 0 ? "text-income" : "text-expense"
+          liveNetWorth.netWorth >= 0 ? "text-income" : "text-expense"
         )}>
-          {formatCurrency(snapshot.netWorth)}
+          {formatCurrency(liveNetWorth.netWorth)}
         </p>
       </div>
     </div>
@@ -243,6 +244,7 @@ function SnapshotDetail({
 export function NetWorthClient({
   initialSnapshots,
   initialAccountHistory,
+  liveNetWorth,
 }: NetWorthClientProps) {
   const { showToast } = useToast();
   const [snapshots, setSnapshots] = useState<SnapshotRow[]>(initialSnapshots);
@@ -341,8 +343,8 @@ export function NetWorthClient({
         </button>
       </div>
 
-      {/* Summary Cards (latest snapshot) */}
-      {latestSnapshot && <SummaryCards snapshot={latestSnapshot} />}
+      {/* Summary Cards (live account balances) */}
+      <SummaryCards liveNetWorth={liveNetWorth} />
 
       {/* Net Worth Over Time Chart */}
       <div className="bg-white rounded-[var(--radius-card)] border border-neutral-200 p-4 mb-8">

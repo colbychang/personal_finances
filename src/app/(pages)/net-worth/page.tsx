@@ -1,11 +1,12 @@
 import { TrendingUp } from "lucide-react";
 import { db } from "@/db/index";
-import { getAllSnapshots, getAccountBalanceHistory } from "@/db/queries/snapshots";
+import { getAllSnapshots, getAccountBalanceHistory, getLiveNetWorth } from "@/db/queries/snapshots";
 import { NetWorthClient } from "./NetWorthClient";
 
 export default function NetWorthPage() {
   const snapshots = getAllSnapshots(db);
   const accountHistory = getAccountBalanceHistory(db);
+  const liveNetWorth = getLiveNetWorth(db);
 
   return (
     <div className="p-4 md:p-8 max-w-4xl mx-auto">
@@ -16,6 +17,7 @@ export default function NetWorthPage() {
       <NetWorthClient
         initialSnapshots={snapshots}
         initialAccountHistory={accountHistory}
+        liveNetWorth={liveNetWorth}
       />
     </div>
   );

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import {
   ChevronLeft,
   ChevronRight,
@@ -10,6 +10,7 @@ import {
   Plus,
   Check,
   X,
+  Pencil,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatCurrency, formatMonth } from "@/lib/format";
@@ -80,6 +81,21 @@ export function BudgetsClient({
   const [editAmount, setEditAmount] = useState("");
   const [editError, setEditError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+
+  // Ref for click-away detection on inline edit
+  const editRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!editingCategory) return;
+    function handleClickAway(e: MouseEvent) {
+      if (editRef.current && !editRef.current.contains(e.target as Node)) {
+        setEditingCategory(null);
+        setEditError(null);
+      }
+    }
+    document.addEventListener("mousedown", handleClickAway);
+    return () => document.removeEventListener("mousedown", handleClickAway);
+  }, [editingCategory]);
 
   // Add new budget state
   const [showAddForm, setShowAddForm] = useState(false);
@@ -470,7 +486,10 @@ export function BudgetsClient({
                   </div>
 
                   {isEditing ? (
-                    <div className="flex items-center gap-2">
+                    <div
+                      className="flex items-center gap-2"
+                      ref={editRef}
+                    >
                       <div className="flex items-center">
                         <span className="text-sm text-neutral-400 mr-1">$</span>
                         <input
@@ -516,17 +535,23 @@ export function BudgetsClient({
                       </button>
                     </div>
                   ) : (
-                    <button
-                      onClick={() => {
-                        setEditingCategory(budget.category);
-                        setEditAmount((budget.budgeted / 100).toFixed(2));
-                        setEditError(null);
-                      }}
-                      className="text-sm text-neutral-500 hover:text-primary transition-colors currency min-h-[44px] min-w-[44px] flex items-center justify-center px-2"
-                      title="Click to edit"
-                    >
-                      {formatCurrency(budget.budgeted)}
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <span className="text-sm text-neutral-500 currency">
+                        {formatCurrency(budget.budgeted)}
+                      </span>
+                      <button
+                        onClick={() => {
+                          setEditingCategory(budget.category);
+                          setEditAmount((budget.budgeted / 100).toFixed(2));
+                          setEditError(null);
+                        }}
+                        className="p-2.5 text-neutral-400 hover:text-primary hover:bg-neutral-50 rounded transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
+                        aria-label={`Edit ${budget.category} budget`}
+                        title="Edit budget"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                   )}
                 </div>
 

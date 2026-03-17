@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
   Landmark,
   Unplug,
@@ -83,9 +83,9 @@ export function ConnectionsList() {
   }, [showToast]);
 
   // Fetch on mount
-  useState(() => {
+  useEffect(() => {
     fetchConnections();
-  });
+  }, [fetchConnections]);
 
   const handleDisconnect = async (connectionId: number) => {
     setDisconnecting(connectionId);

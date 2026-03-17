@@ -14,7 +14,7 @@ import {
   YAxis,
   CartesianGrid,
 } from "recharts";
-import { ArrowLeft, X } from "lucide-react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -215,105 +215,23 @@ function MonthlyTrendsChart({ data }: { data: MonthlyTrend[] }) {
   );
 }
 
-// ─── Category Drill-Down Panel ──────────────────────────────────────────
 
-function CategoryDrillDown({
-  category,
-  transactions,
-  isLoading,
-  onClose,
-}: {
-  category: string;
-  transactions: DrillDownTransaction[];
-  isLoading: boolean;
-  onClose: () => void;
-}) {
-  return (
-    <div className="bg-white rounded-[var(--radius-card)] border border-neutral-200 p-4 md:p-5">
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <button
-            onClick={onClose}
-            className="p-2 rounded-[var(--radius-button)] hover:bg-neutral-100 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
-            aria-label="Close drill-down"
-          >
-            <ArrowLeft className="h-5 w-5 text-neutral-600" />
-          </button>
-          <h3 className="text-lg font-semibold text-neutral-800">
-            {category} Transactions
-          </h3>
-        </div>
-        <button
-          onClick={onClose}
-          className="p-2 rounded-[var(--radius-button)] hover:bg-neutral-100 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
-          aria-label="Close"
-        >
-          <X className="h-5 w-5 text-neutral-600" />
-        </button>
-      </div>
 
-      {isLoading ? (
-        <div className="flex items-center justify-center py-8">
-          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" />
-          <span className="ml-2 text-sm text-neutral-500">Loading transactions...</span>
-        </div>
-      ) : transactions.length === 0 ? (
-        <p className="text-sm text-neutral-500 text-center py-8">
-          No transactions found for this category.
-        </p>
-      ) : (
-        <div className="space-y-0 divide-y divide-neutral-100">
-          {transactions.map((txn) => (
-            <div
-              key={txn.id}
-              className="flex items-center justify-between py-3"
-            >
-              <div className="flex-1 min-w-0 mr-3">
-                <p className="text-sm font-medium text-neutral-900 truncate">
-                  {txn.name}
-                </p>
-                <p className="text-xs text-neutral-500">
-                  {formatDate(txn.postedAt)} · {txn.accountName}
-                  {txn.splitAmount !== null && (
-                    <span className="ml-1 text-neutral-400">
-                      (split: {formatCurrency(txn.splitAmount)})
-                    </span>
-                  )}
-                </p>
-              </div>
-              <span className="text-sm font-medium currency text-expense flex-shrink-0">
-                {formatCurrency(txn.splitAmount ?? txn.amount)}
-              </span>
-            </div>
-          ))}
-          <div className="pt-3 flex justify-between items-center">
-            <span className="text-sm font-medium text-neutral-600">
-              Total ({transactions.length} transactions)
-            </span>
-            <span className="text-sm font-bold currency text-neutral-900">
-              {formatCurrency(
-                transactions.reduce(
-                  (sum, txn) => sum + (txn.splitAmount ?? txn.amount),
-                  0
-                )
-              )}
-            </span>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── Category List Table ────────────────────────────────────────────────
+// ─── Category List Table with Inline Drill-Down ────────────────────────
 
 function CategoryTable({
   data,
   totalSpending,
+  expandedCategory,
+  drillDownTransactions,
+  isDrillDownLoading,
   onCategoryClick,
 }: {
   data: CategorySpending[];
   totalSpending: number;
+  expandedCategory: string | null;
+  drillDownTransactions: DrillDownTransaction[];
+  isDrillDownLoading: boolean;
   onCategoryClick: (category: string) => void;
 }) {
   if (data.length === 0) return null;
@@ -326,29 +244,94 @@ function CategoryTable({
       <div className="space-y-0 divide-y divide-neutral-100">
         {data.map((cat, i) => {
           const percent = totalSpending > 0 ? (cat.amount / totalSpending) * 100 : 0;
+          const isExpanded = expandedCategory === cat.category;
           return (
-            <button
-              key={cat.category}
-              onClick={() => onCategoryClick(cat.category)}
-              className="flex items-center w-full py-3 text-left hover:bg-neutral-50 transition-colors -mx-2 px-2 rounded-lg min-h-[44px]"
-            >
-              <span
-                className="w-3 h-3 rounded-full flex-shrink-0 mr-3"
-                style={{
-                  backgroundColor:
-                    cat.color ?? DEFAULT_COLORS[i % DEFAULT_COLORS.length],
-                }}
-              />
-              <span className="flex-1 text-sm text-neutral-700 truncate mr-3">
-                {cat.category}
-              </span>
-              <span className="text-xs text-neutral-400 mr-3 flex-shrink-0">
-                {percent.toFixed(1)}%
-              </span>
-              <span className="text-sm font-medium currency text-neutral-900 flex-shrink-0">
-                {formatCurrency(cat.amount)}
-              </span>
-            </button>
+            <div key={cat.category}>
+              <button
+                onClick={() => onCategoryClick(cat.category)}
+                className="flex items-center w-full py-3 text-left hover:bg-neutral-50 transition-colors -mx-2 px-2 rounded-lg min-h-[44px]"
+                aria-expanded={isExpanded}
+              >
+                {isExpanded ? (
+                  <ChevronDown className="h-4 w-4 text-neutral-400 flex-shrink-0 mr-2" />
+                ) : (
+                  <ChevronRight className="h-4 w-4 text-neutral-400 flex-shrink-0 mr-2" />
+                )}
+                <span
+                  className="w-3 h-3 rounded-full flex-shrink-0 mr-3"
+                  style={{
+                    backgroundColor:
+                      cat.color ?? DEFAULT_COLORS[i % DEFAULT_COLORS.length],
+                  }}
+                />
+                <span className="flex-1 text-sm text-neutral-700 truncate mr-3">
+                  {cat.category}
+                </span>
+                <span className="text-xs text-neutral-400 mr-3 flex-shrink-0">
+                  {percent.toFixed(1)}%
+                </span>
+                <span className="text-sm font-medium currency text-neutral-900 flex-shrink-0">
+                  {formatCurrency(cat.amount)}
+                </span>
+              </button>
+
+              {/* Inline drill-down */}
+              {isExpanded && (
+                <div className="ml-8 mr-1 mb-3 mt-1 bg-neutral-50 rounded-lg border border-neutral-100 p-3">
+                  {isDrillDownLoading ? (
+                    <div className="flex items-center justify-center py-4">
+                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary" />
+                      <span className="ml-2 text-sm text-neutral-500">
+                        Loading transactions...
+                      </span>
+                    </div>
+                  ) : drillDownTransactions.length === 0 ? (
+                    <p className="text-sm text-neutral-500 text-center py-4">
+                      No transactions found for this category.
+                    </p>
+                  ) : (
+                    <div className="space-y-0 divide-y divide-neutral-200">
+                      {drillDownTransactions.map((txn) => (
+                        <div
+                          key={txn.id}
+                          className="flex items-center justify-between py-2.5"
+                        >
+                          <div className="flex-1 min-w-0 mr-3">
+                            <p className="text-sm font-medium text-neutral-800 truncate">
+                              {txn.name}
+                            </p>
+                            <p className="text-xs text-neutral-500">
+                              {formatDate(txn.postedAt)} · {txn.accountName}
+                              {txn.splitAmount !== null && (
+                                <span className="ml-1 text-neutral-400">
+                                  (split: {formatCurrency(txn.splitAmount)})
+                                </span>
+                              )}
+                            </p>
+                          </div>
+                          <span className="text-sm font-medium currency text-expense flex-shrink-0">
+                            {formatCurrency(txn.splitAmount ?? txn.amount)}
+                          </span>
+                        </div>
+                      ))}
+                      <div className="pt-2.5 flex justify-between items-center">
+                        <span className="text-xs font-medium text-neutral-500">
+                          Total ({drillDownTransactions.length} transactions)
+                        </span>
+                        <span className="text-sm font-semibold currency text-neutral-800">
+                          {formatCurrency(
+                            drillDownTransactions.reduce(
+                              (sum, txn) => sum + (txn.splitAmount ?? txn.amount),
+                              0
+                            )
+                          )}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           );
         })}
       </div>
@@ -396,7 +379,14 @@ export function AnalyticsClient({ initialData }: AnalyticsClientProps) {
 
   const handleCategoryClick = useCallback(
     async (category: string) => {
+      // Toggle: collapse if already expanded
+      if (drillDownCategory === category) {
+        setDrillDownCategory(null);
+        setDrillDownTransactions([]);
+        return;
+      }
       setDrillDownCategory(category);
+      setDrillDownTransactions([]);
       setIsDrillDownLoading(true);
       try {
         const res = await fetch(
@@ -412,13 +402,8 @@ export function AnalyticsClient({ initialData }: AnalyticsClientProps) {
         setIsDrillDownLoading(false);
       }
     },
-    [period]
+    [period, drillDownCategory]
   );
-
-  const handleCloseDrillDown = useCallback(() => {
-    setDrillDownCategory(null);
-    setDrillDownTransactions([]);
-  }, []);
 
   return (
     <div className={cn(isLoading && "opacity-60 pointer-events-none transition-opacity")}>
@@ -451,25 +436,13 @@ export function AnalyticsClient({ initialData }: AnalyticsClientProps) {
         </p>
       </div>
 
-      {/* Drill-Down Panel (shown when a category is selected) */}
-      {drillDownCategory && (
-        <div className="mb-4">
-          <CategoryDrillDown
-            category={drillDownCategory}
-            transactions={drillDownTransactions}
-            isLoading={isDrillDownLoading}
-            onClose={handleCloseDrillDown}
-          />
-        </div>
-      )}
-
       {/* Spending by Category - Pie/Donut Chart */}
       <div className="bg-white rounded-[var(--radius-card)] border border-neutral-200 p-4 md:p-5 mb-4">
         <h2 className="text-base font-semibold text-neutral-800 mb-3">
           Spending by Category
         </h2>
         <p className="text-xs text-neutral-400 mb-2">
-          Click a category segment to see its transactions
+          Click a segment to expand its transactions in the breakdown below
         </p>
         <SpendingDonutChart
           data={data.spendingByCategory}
@@ -482,6 +455,9 @@ export function AnalyticsClient({ initialData }: AnalyticsClientProps) {
         <CategoryTable
           data={data.spendingByCategory}
           totalSpending={data.totalSpending}
+          expandedCategory={drillDownCategory}
+          drillDownTransactions={drillDownTransactions}
+          isDrillDownLoading={isDrillDownLoading}
           onCategoryClick={handleCategoryClick}
         />
       </div>
