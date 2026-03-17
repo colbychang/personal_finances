@@ -1,0 +1,145 @@
+{
+  "milestone": "integrations",
+  "round": 1,
+  "status": "pass",
+  "validatorsRun": {
+    "test": { "passed": true, "command": "npx vitest run", "exitCode": 0, "detail": "18 test files, 222 tests passed" },
+    "typecheck": { "passed": true, "command": "npx tsc --noEmit", "exitCode": 0 },
+    "lint": { "passed": true, "command": "npx eslint .", "exitCode": 0, "detail": "0 errors, 1 warning (postcss.config.mjs import/no-anonymous-default-export)" }
+  },
+  "reviewsSummary": {
+    "total": 4,
+    "passed": 4,
+    "failed": 0,
+    "failedFeatures": []
+  },
+  "blockingIssues": [],
+  "nonBlockingIssues": [
+    {
+      "featureId": "plaid-link-and-connections",
+      "severity": "non_blocking",
+      "description": "useState used as side-effect runner instead of useEffect in ConnectionsList.tsx — unconventional pattern"
+    },
+    {
+      "featureId": "plaid-link-and-connections",
+      "severity": "non_blocking",
+      "description": "No transactional atomicity in exchange-token flow — partial connection possible if accountsGet fails after connection creation"
+    },
+    {
+      "featureId": "plaid-link-and-connections",
+      "severity": "non_blocking",
+      "description": "N+1 query pattern in getAllConnections — separate queries for each connection's account links"
+    },
+    {
+      "featureId": "plaid-link-and-connections",
+      "severity": "non_blocking",
+      "description": "institutionName used as join key for account_links instead of direct connectionId FK"
+    },
+    {
+      "featureId": "plaid-transaction-sync",
+      "severity": "non_blocking",
+      "description": "Missing API route handler tests — only query-layer tests exist for sync endpoint"
+    },
+    {
+      "featureId": "plaid-transaction-sync",
+      "severity": "non_blocking",
+      "description": "Non-null assertion on removed transaction_id (txn.transaction_id!) — defensive guard clause would be safer"
+    },
+    {
+      "featureId": "plaid-transaction-sync",
+      "severity": "non_blocking",
+      "description": "Redundant balance updates inside pagination loop — should update once after loop completes"
+    },
+    {
+      "featureId": "csv-import",
+      "severity": "non_blocking",
+      "description": "Duplicated CSV parser (parseSimpleRow in client vs parseCSVRow in lib/csv.ts) — bug fixes won't propagate"
+    },
+    {
+      "featureId": "csv-import",
+      "severity": "non_blocking",
+      "description": "Missing API route handler tests — only query-layer tests exist for import endpoints"
+    },
+    {
+      "featureId": "csv-import",
+      "severity": "non_blocking",
+      "description": "Import route doesn't validate accountId references an existing account before importing"
+    },
+    {
+      "featureId": "ai-auto-categorization",
+      "severity": "non_blocking",
+      "description": "Fuzzy substring matching for merchant rules could produce false positives with short keys"
+    },
+    {
+      "featureId": "ai-auto-categorization",
+      "severity": "non_blocking",
+      "description": "Already-categorized transactions silently dropped when passed via explicit IDs (not via all=true)"
+    },
+    {
+      "featureId": "ai-auto-categorization",
+      "severity": "non_blocking",
+      "description": "max_tokens: 2048 could truncate AI response for large transaction batches (100+)"
+    },
+    {
+      "featureId": "ai-auto-categorization",
+      "severity": "non_blocking",
+      "description": "Auto-create merchant rule test tests query function directly rather than through PUT /api/transactions/[id]"
+    }
+  ],
+  "appliedUpdates": [
+    {
+      "target": "library",
+      "description": "Updated architecture.md project structure to include new files from integrations milestone: sandbox-connect route, import routes, merchant-rules routes, sync.ts and imports.ts query files, categorize.ts/csv.ts/encryption.ts/openai.ts lib files",
+      "sourceFeature": "plaid-transaction-sync, csv-import, ai-auto-categorization, plaid-link-and-connections"
+    },
+    {
+      "target": "library",
+      "description": "Added 'Merchant Rule Matching' section to architecture.md documenting fuzzy substring matching behavior",
+      "sourceFeature": "ai-auto-categorization"
+    },
+    {
+      "target": "library",
+      "description": "Added 'OpenAI Integration Pattern' section to architecture.md documenting prompt structure, response parsing, error handling, and max_tokens considerations",
+      "sourceFeature": "ai-auto-categorization"
+    }
+  ],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "AGENTS.md",
+      "suggestion": "CRITICAL: Correct the Plaid amount sign guidance. Current text says 'CRITICAL - Amount signs are INVERTED: Positive = debit (money out), Negative = credit (money in). Flip signs when storing.' This is WRONG — the codebase convention (positive = expense, negative = income) already matches Plaid's convention (positive = debit, negative = credit). Remove the 'Flip signs when storing' instruction. Change to: 'Plaid positive = expense (money out), Plaid negative = income (money in). This matches our storage convention — store as-is, no sign flip needed.'",
+      "evidence": "src/db/schema.ts:44 comment: 'cents (positive = expense, negative = income)'. Plaid convention: positive = debit. plaid-transaction-sync worker correctly did NOT flip signs. Test at plaid-sync.test.ts:116 confirms $25.50 stored as +2550 cents.",
+      "isSystemic": true
+    },
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Clarify the .env.local boundary. Current text says 'Do NOT modify .env.local'. Workers implementing features that require new environment variables (e.g., PLAID_TOKEN_ENCRYPTION_KEY for token encryption) need to add them. Suggest: 'Do NOT modify existing values in .env.local. Workers may ADD new required environment variables with a note in discoveredIssues.'",
+      "evidence": "plaid-link-and-connections worker needed to add PLAID_TOKEN_ENCRYPTION_KEY for AES-256-GCM encryption. Worker reported this as a discovered issue since it technically violated the boundary.",
+      "isSystemic": false
+    },
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Reinforce the 'test both layers' convention with stronger language. Multiple features (plaid-transaction-sync, csv-import, ai-auto-categorization) only test the DB query layer but not the API route handlers, despite AGENTS.md explicitly requiring both. Consider: 'MANDATORY: Every feature with API endpoints MUST include tests for both the database query layer AND the API route handlers. Route-level tests catch validation logic, dollar-to-cent conversion, and error responses that query-layer tests miss. PRs missing route-level tests will be flagged in review.'",
+      "evidence": "3 out of 4 features in this milestone (plaid-transaction-sync, csv-import, ai-auto-categorization) lack API route handler tests despite AGENTS.md explicitly stating this requirement. This is a systemic pattern where workers test query functions but skip route handlers.",
+      "isSystemic": true
+    },
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Document preferred data-fetching-on-mount pattern. ConnectionsList.tsx uses useState(() => { fetch() }) while PlaidLinkButton.tsx uses useEffect(() => { fetch() }, []). Recommend standardizing on useEffect for data fetching on mount, as useState initializer is synchronous and not the idiomatic React pattern for side effects.",
+      "evidence": "ConnectionsList.tsx:86 vs PlaidLinkButton.tsx:48 use different patterns for the same purpose within the same milestone.",
+      "isSystemic": false
+    },
+    {
+      "target": "skills",
+      "suggestion": "Add agent-browser guidance for cross-origin iframe interaction. Plaid Link opens in a cross-origin iframe where coordinate-based clicking doesn't work. Workers testing Plaid flows should use the sandbox API endpoint for programmatic testing rather than attempting to interact with the Plaid Link iframe via agent-browser.",
+      "evidence": "plaid-transaction-sync worker's skill feedback suggests this based on experience testing Plaid sandbox flows.",
+      "isSystemic": false
+    }
+  ],
+  "rejectedObservations": [
+    {
+      "observation": "Feature description for plaid-transaction-sync says 'negate for storage' which contradicts actual correct behavior",
+      "reason": "duplicate — same issue as the AGENTS.md Plaid sign flip guidance already captured in suggestedGuidanceUpdates"
+    }
+  ],
+  "previousRound": null
+}

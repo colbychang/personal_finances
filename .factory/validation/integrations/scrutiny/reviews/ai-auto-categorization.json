@@ -1,0 +1,51 @@
+{
+  "featureId": "ai-auto-categorization",
+  "reviewedAt": "2026-03-17T00:15:00.000Z",
+  "commitId": "a771410",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Solid implementation covering all feature requirements: POST /api/categorize with merchant-rules-first then AI fallback, full CRUD for merchant rules (GET/POST/PUT/DELETE), auto-rule creation on manual category changes, MerchantRulesManager UI in settings, batch categorize button on transactions page, error handling with retry banner. 20 tests cover core logic including merchant rules CRUD, rule application, prompt building, and auto-rule creation. Code follows existing project patterns (Drizzle queries, Next.js route handlers, Toast notifications, CategorySelect component reuse). All validators passed (222 tests, 0 type errors, 0 lint errors). Interactive verification confirmed all key flows.",
+    "issues": [
+      {
+        "file": "src/lib/categorize.ts",
+        "line": 73,
+        "severity": "non_blocking",
+        "description": "Fuzzy substring matching in applyMerchantRules: `nameKey.includes(ruleKey)` means a short merchant rule key (e.g., 'at') would match any transaction name containing that substring (e.g., 'AT&T', 'BATH AND BODY', 'CATALYST'). This could produce false-positive rule matches. An exact-match-first or word-boundary approach would be safer, but in practice rules are created from actual merchant names which tend to be long enough to avoid collisions."
+      },
+      {
+        "file": "src/lib/categorize.ts",
+        "line": 63,
+        "severity": "non_blocking",
+        "description": "In applyMerchantRules, transactions that are already categorized are skipped without being added to either ruleApplied or remaining. This means if explicit transactionIds are passed (not all=true) and some are already categorized, they silently disappear from both result lists. The response counts may undercount. In practice the all=true path only fetches uncategorized transactions, mitigating this for the primary batch use case."
+      },
+      {
+        "file": "src/lib/openai.ts",
+        "line": 48,
+        "severity": "non_blocking",
+        "description": "max_tokens: 2048 for the AI response could be insufficient for large batches of transactions. If hundreds of transactions are sent, the JSON response may be truncated. No batching/chunking logic exists for large transaction sets. Low risk for typical personal finance volumes but could fail for bulk imports."
+      },
+      {
+        "file": "src/__tests__/api/categorize.test.ts",
+        "line": 220,
+        "severity": "non_blocking",
+        "description": "The auto-create merchant rule test manually calls createOrUpdateMerchantRule() to simulate the behavior, rather than testing through the PUT /api/transactions/[id] route handler which actually performs the auto-creation. AGENTS.md recommends testing both layers. An API-level integration test would provide stronger coverage of this flow."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The fuzzy substring matching pattern for merchant rules (nameKey.includes(ruleKey)) is a design decision that isn't documented anywhere. Future features touching merchant matching should be aware of this behavior to maintain consistency or decide to change it.",
+      "evidence": "src/lib/categorize.ts:73 — `if (nameKey.includes(ruleKey) || (merchantKey && merchantKey.includes(ruleKey)))` performs substring, not exact, matching"
+    },
+    {
+      "area": "conventions",
+      "observation": "The OpenAI prompt structure and response parsing pattern (JSON array with id+category, fallback regex extraction for markdown-wrapped responses) could be documented as a convention for any future AI integration features.",
+      "evidence": "src/lib/openai.ts:40-82 and src/lib/categorize.ts:117-143 define the prompt/response contract"
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Feature passes review. All 12 requirements from the feature description are implemented: categorize endpoint with merchant-rules-first/AI-fallback pipeline, full merchant rules CRUD with API routes, auto-rule creation on manual category changes, settings page management UI, batch categorize button with error handling and retry. Code quality is good — follows project conventions, proper error handling, comprehensive tests (20 new), and thorough interactive verification. Four non-blocking issues noted: fuzzy substring matching could produce false positives for short merchant keys, already-categorized transactions silently dropped when passed via explicit IDs, max_tokens limit could truncate large batches, and auto-rule creation test doesn't exercise the API layer."
+}

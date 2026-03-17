@@ -34,9 +34,16 @@ personal_finances/
 │   │       ├── plaid/
 │   │       │   ├── link-token/route.ts
 │   │       │   ├── exchange-token/route.ts
-│   │       │   └── sync/route.ts
+│   │       │   ├── sync/route.ts
+│   │       │   └── sandbox-connect/route.ts
+│   │       ├── import/
+│   │       │   ├── route.ts
+│   │       │   └── preview/route.ts
 │   │       ├── categorize/
 │   │       │   └── route.ts
+│   │       ├── merchant-rules/
+│   │       │   ├── route.ts
+│   │       │   └── [id]/route.ts
 │   │       └── snapshots/
 │   │           └── route.ts
 │   ├── components/                 # Shared React components
@@ -56,12 +63,17 @@ personal_finances/
 │   │       ├── categories.ts
 │   │       ├── connections.ts
 │   │       ├── merchant-rules.ts
+│   │       ├── sync.ts
+│   │       ├── imports.ts
 │   │       └── snapshots.ts
 │   ├── lib/                       # Utility functions
 │   │   ├── categories.ts          # Category definitions, colors, icons
+│   │   ├── categorize.ts          # Merchant rule matching + AI categorization pipeline
+│   │   ├── csv.ts                 # CSV parsing (handles quotes, multi-format dates, currency amounts)
+│   │   ├── encryption.ts          # AES-256-GCM encryption for Plaid access tokens
 │   │   ├── format.ts              # Currency formatting, date formatting
 │   │   ├── plaid.ts               # Plaid client initialization
-│   │   ├── openai.ts              # OpenAI client initialization
+│   │   ├── openai.ts              # OpenAI client + prompt building for categorization
 │   │   └── utils.ts               # General utilities (cn, etc.)
 │   └── __tests__/                 # Test files (mirrors src/ structure)
 │       ├── db/
@@ -120,6 +132,20 @@ personal_finances/
 - Lists: empty state component when no data, loading skeleton while fetching
 - Modals/drawers: use for forms on mobile (drawer from bottom), dialog on desktop
 - Consistent spacing: use Tailwind's spacing scale (p-4, gap-3, etc.)
+
+## Merchant Rule Matching
+- Merchant rules use **fuzzy substring matching**: `normalizedName.includes(ruleKey)` where both are lowercased and trimmed
+- This means short rule keys (e.g., "at") could match unintended merchants (e.g., "AT&T", "BATH AND BODY")
+- Rules are created from actual merchant names via manual category corrections, so keys tend to be specific enough in practice
+- Implementation: `src/lib/categorize.ts` — `applyMerchantRules()` function
+
+## OpenAI Integration Pattern
+- **Model**: gpt-4o-mini via OpenAI SDK (`src/lib/openai.ts`)
+- **Prompt structure**: System prompt defines role + category list; user prompt lists transactions as numbered items with name/merchant
+- **Response format**: JSON array of `{id, category}` objects; parser handles markdown-wrapped JSON (```json blocks)
+- **Error handling**: Catches API failures, returns error to caller; transactions remain uncategorized on failure
+- **Max tokens**: 2048 — may need chunking for very large batches (100+ transactions)
+- **Fallback**: Merchant rules are checked FIRST before calling AI; only unmatched transactions hit the API
 
 ## Charts
 - **Library**: Recharts
