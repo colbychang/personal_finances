@@ -20,6 +20,9 @@ import { cn } from "@/lib/utils";
 import {
   AreaChart,
   Area,
+  XAxis,
+  YAxis,
+  Tooltip,
   ResponsiveContainer,
 } from "recharts";
 import { SpendingPieChart } from "@/components/charts/SpendingPieChart";
@@ -80,7 +83,7 @@ function SpendingSummary({
   const topCategories = spendingByCategory.slice(0, 5);
 
   return (
-    <div className="bg-white rounded-[var(--radius-card)] border border-neutral-200 p-4 md:p-5 min-h-[320px]">
+    <div className="bg-white rounded-[var(--radius-card)] border border-neutral-200 p-4 md:p-5">
       <div className="flex items-center gap-2 mb-3">
         <div className="w-8 h-8 rounded-full bg-expense/10 flex items-center justify-center">
           <DollarSign className="h-4 w-4 text-expense" />
@@ -139,7 +142,7 @@ function BudgetStatus({
 
   if (budgetStatus.total === 0) {
     return (
-      <div className="bg-white rounded-[var(--radius-card)] border border-neutral-200 p-4 md:p-5 min-h-[320px]">
+      <div className="bg-white rounded-[var(--radius-card)] border border-neutral-200 p-4 md:p-5 flex flex-col">
         <div className="flex items-center gap-2 mb-3">
           <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
             <PiggyBank className="h-4 w-4 text-primary" />
@@ -166,7 +169,7 @@ function BudgetStatus({
   }
 
   return (
-    <div className="bg-white rounded-[var(--radius-card)] border border-neutral-200 p-4 md:p-5 min-h-[320px]">
+    <div className="bg-white rounded-[var(--radius-card)] border border-neutral-200 p-4 md:p-5 flex flex-col">
       <div className="flex items-center gap-2 mb-3">
         <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
           <PiggyBank className="h-4 w-4 text-primary" />
@@ -220,7 +223,7 @@ function BudgetStatus({
       </div>
 
       {/* Scrollable budget list */}
-      <div className="space-y-2 max-h-[340px] overflow-y-auto">
+      <div className="space-y-2 flex-1 overflow-y-auto">
         {filteredItems.length === 0 ? (
           <p className="text-sm text-neutral-400 text-center py-2">
             No budgets match this filter.
@@ -344,6 +347,30 @@ function RecentTransactions({
   );
 }
 
+// ─── Net Worth Sparkline Formatters ──────────────────────────────────────
+
+function formatCompactCurrency(cents: number): string {
+  const dollars = cents / 100;
+  const abs = Math.abs(dollars);
+  if (abs >= 1_000_000) return `$${(dollars / 1_000_000).toFixed(1)}M`;
+  if (abs >= 1_000) return `$${(dollars / 1_000).toFixed(0)}K`;
+  return `$${dollars.toFixed(0)}`;
+}
+
+function formatSparklineTooltip(cents: number): string {
+  const dollars = cents / 100;
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+  }).format(dollars);
+}
+
+function formatShortMonth(monthStr: string): string {
+  const [year, month] = monthStr.split("-");
+  const date = new Date(Number(year), Number(month) - 1, 1);
+  return new Intl.DateTimeFormat("en-US", { month: "short" }).format(date);
+}
+
 // ─── Net Worth Trend Widget ─────────────────────────────────────────────
 
 function NetWorthTrend({
@@ -354,12 +381,16 @@ function NetWorthTrend({
   netWorthHistory: DashboardData["netWorthHistory"];
 }) {
   const hasChange = netWorth.change !== null;
+  const chartData = netWorthHistory.map((pt) => ({
+    ...pt,
+    label: formatShortMonth(pt.month),
+  }));
   const isPositiveChange = hasChange && netWorth.change! > 0;
   const isNegativeChange = hasChange && netWorth.change! < 0;
   const isNoChange = hasChange && netWorth.change === 0;
 
   return (
-    <div className="bg-white rounded-[var(--radius-card)] border border-neutral-200 p-4 md:p-5 min-h-[320px]">
+    <div className="bg-white rounded-[var(--radius-card)] border border-neutral-200 p-4 md:p-5">
       <div className="flex items-center gap-2 mb-3">
         <div className="w-8 h-8 rounded-full bg-savings/10 flex items-center justify-center">
           <TrendingUp className="h-4 w-4 text-savings" />
@@ -412,15 +443,37 @@ function NetWorthTrend({
 
       {/* Net Worth Sparkline */}
       {netWorthHistory.length >= 2 && (
-        <div className="mt-4 w-full h-[80px]">
+        <div className="mt-4 w-full h-[130px]">
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={netWorthHistory} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
+            <AreaChart data={chartData} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
               <defs>
                 <linearGradient id="nwGradient" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="#22c55e" stopOpacity={0.3} />
                   <stop offset="100%" stopColor="#22c55e" stopOpacity={0.05} />
                 </linearGradient>
               </defs>
+              <XAxis
+                dataKey="label"
+                tick={{ fontSize: 11, fill: "#64748b" }}
+                tickLine={false}
+                axisLine={false}
+              />
+              <YAxis
+                tickFormatter={formatCompactCurrency}
+                tick={{ fontSize: 11, fill: "#64748b" }}
+                tickLine={false}
+                axisLine={false}
+                width={54}
+              />
+              <Tooltip
+                formatter={(value: number) => [formatSparklineTooltip(value), "Net Worth"]}
+                labelFormatter={(label: string) => label}
+                contentStyle={{
+                  borderRadius: "8px",
+                  border: "1px solid #e2e8f0",
+                  fontSize: "13px",
+                }}
+              />
               <Area
                 type="monotone"
                 dataKey="netWorth"
@@ -642,7 +695,7 @@ export function DashboardClient({
       />
 
       {/* Row 1: Net Worth + Spending Summary + Budget Status */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4 items-stretch">
         <NetWorthTrend netWorth={data.netWorth} netWorthHistory={data.netWorthHistory} />
         <SpendingSummary
           totalSpending={data.totalSpending}
