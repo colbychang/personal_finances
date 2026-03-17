@@ -1,16 +1,19 @@
 import { LayoutDashboard } from "lucide-react";
+import { db } from "@/db/index";
+import { getDashboardData } from "@/db/queries/dashboard";
+import { DashboardClient } from "./DashboardClient";
 
 export default function DashboardPage() {
+  const currentMonth = new Date().toISOString().slice(0, 7);
+  const data = getDashboardData(db, currentMonth);
+
   return (
-    <div className="p-6 md:p-8">
-      <div className="flex items-center gap-3 mb-4">
+    <div className="p-4 md:p-8 max-w-6xl mx-auto">
+      <div className="flex items-center gap-3 mb-6">
         <LayoutDashboard className="h-7 w-7 text-primary" />
         <h1 className="text-2xl font-bold text-neutral-900">Dashboard</h1>
       </div>
-      <p className="text-neutral-500">
-        Your financial overview — spending summary, budget status, recent
-        transactions, and net worth trend at a glance.
-      </p>
+      <DashboardClient initialData={data} initialMonth={currentMonth} />
     </div>
   );
 }
