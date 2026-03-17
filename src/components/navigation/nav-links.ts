@@ -4,6 +4,7 @@ import {
   PiggyBank,
   Landmark,
   TrendingUp,
+  BarChart3,
   Settings,
   Upload,
   MoreHorizontal,
@@ -22,6 +23,7 @@ export const sidebarLinks: NavLink[] = [
   { href: "/transactions", label: "Transactions", icon: ArrowLeftRight },
   { href: "/budgets", label: "Budgets", icon: PiggyBank },
   { href: "/accounts", label: "Accounts", icon: Landmark },
+  { href: "/analytics", label: "Analytics", icon: BarChart3 },
   { href: "/net-worth", label: "Net Worth", icon: TrendingUp },
   { href: "/settings", label: "Settings", icon: Settings },
   { href: "/import", label: "Import", icon: Upload },
@@ -37,6 +39,7 @@ export const mobileTabLinks: NavLink[] = [
 
 /** Links accessible through the More menu on mobile */
 export const moreMenuLinks: NavLink[] = [
+  { href: "/analytics", label: "Analytics", icon: BarChart3 },
   { href: "/net-worth", label: "Net Worth", icon: TrendingUp },
   { href: "/settings", label: "Settings", icon: Settings },
   { href: "/import", label: "Import", icon: Upload },

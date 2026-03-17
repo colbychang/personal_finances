@@ -14,6 +14,7 @@ describe("Navigation link configuration", () => {
       "Transactions",
       "Budgets",
       "Accounts",
+      "Analytics",
       "Net Worth",
       "Settings",
       "Import",
@@ -26,6 +27,7 @@ describe("Navigation link configuration", () => {
       "/transactions",
       "/budgets",
       "/accounts",
+      "/analytics",
       "/net-worth",
       "/settings",
       "/import",
@@ -57,14 +59,14 @@ describe("Navigation link configuration", () => {
     expect(hrefs).toEqual(["/", "/transactions", "/budgets", "/accounts"]);
   });
 
-  it("more menu has Net Worth, Settings, and Import links", () => {
+  it("more menu has Analytics, Net Worth, Settings, and Import links", () => {
     const labels = moreMenuLinks.map((l) => l.label);
-    expect(labels).toEqual(["Net Worth", "Settings", "Import"]);
+    expect(labels).toEqual(["Analytics", "Net Worth", "Settings", "Import"]);
   });
 
   it("more menu links have valid hrefs", () => {
     const hrefs = moreMenuLinks.map((l) => l.href);
-    expect(hrefs).toEqual(["/net-worth", "/settings", "/import"]);
+    expect(hrefs).toEqual(["/analytics", "/net-worth", "/settings", "/import"]);
   });
 
   it("more tab has label and icon", () => {
