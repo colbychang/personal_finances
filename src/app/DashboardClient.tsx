@@ -142,7 +142,7 @@ function BudgetStatus({
 
   if (budgetStatus.total === 0) {
     return (
-      <div className="bg-white rounded-[var(--radius-card)] border border-neutral-200 p-4 md:p-5 flex flex-col">
+      <div className="bg-white rounded-[var(--radius-card)] border border-neutral-200 p-4 md:p-5 flex flex-col h-full">
         <div className="flex items-center gap-2 mb-3">
           <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
             <PiggyBank className="h-4 w-4 text-primary" />
@@ -169,7 +169,7 @@ function BudgetStatus({
   }
 
   return (
-    <div className="bg-white rounded-[var(--radius-card)] border border-neutral-200 p-4 md:p-5 flex flex-col">
+    <div className="bg-white rounded-[var(--radius-card)] border border-neutral-200 p-4 md:p-5 flex flex-col h-full">
       <div className="flex items-center gap-2 mb-3">
         <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
           <PiggyBank className="h-4 w-4 text-primary" />
@@ -223,7 +223,7 @@ function BudgetStatus({
       </div>
 
       {/* Scrollable budget list */}
-      <div className="space-y-2 flex-1 overflow-y-auto">
+      <div className="space-y-2 flex-1 overflow-y-auto min-h-0">
         {filteredItems.length === 0 ? (
           <p className="text-sm text-neutral-400 text-center py-2">
             No budgets match this filter.
@@ -445,7 +445,7 @@ function NetWorthTrend({
       {netWorthHistory.length >= 2 && (
         <div className="mt-4 w-full h-[130px]">
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={chartData} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
+            <AreaChart data={chartData} margin={{ top: 4, right: 0, left: 4, bottom: 0 }}>
               <defs>
                 <linearGradient id="nwGradient" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="#22c55e" stopOpacity={0.3} />
@@ -459,6 +459,7 @@ function NetWorthTrend({
                 axisLine={false}
               />
               <YAxis
+                orientation="right"
                 tickFormatter={formatCompactCurrency}
                 tick={{ fontSize: 11, fill: "#64748b" }}
                 tickLine={false}
@@ -695,13 +696,21 @@ export function DashboardClient({
       />
 
       {/* Row 1: Net Worth + Spending Summary + Budget Status */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4 items-stretch">
-        <NetWorthTrend netWorth={data.netWorth} netWorthHistory={data.netWorthHistory} />
-        <SpendingSummary
-          totalSpending={data.totalSpending}
-          spendingByCategory={data.spendingByCategory}
-        />
-        <BudgetStatus budgetStatus={data.budgetStatus} />
+      {/* Budget Status uses absolute positioning so it does NOT influence row height —
+          only Net Worth and Monthly Spending determine the row height. */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+        <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
+          <NetWorthTrend netWorth={data.netWorth} netWorthHistory={data.netWorthHistory} />
+          <SpendingSummary
+            totalSpending={data.totalSpending}
+            spendingByCategory={data.spendingByCategory}
+          />
+        </div>
+        <div className="relative">
+          <div className="md:absolute md:inset-0">
+            <BudgetStatus budgetStatus={data.budgetStatus} />
+          </div>
+        </div>
       </div>
 
       {/* Row 2: Spending Pie Chart + Recent Transactions */}
