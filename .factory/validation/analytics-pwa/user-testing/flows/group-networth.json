@@ -1,0 +1,145 @@
+{
+  "groupId": "group-networth",
+  "testedAt": "2026-03-17T00:00:00.000Z",
+  "isolation": {
+    "appUrl": "http://localhost:3000",
+    "auth": "none (single-user app)",
+    "viewport": "1280px desktop",
+    "sessionId": "a08bb0519874__nw"
+  },
+  "toolsUsed": ["agent-browser"],
+  "assertions": [
+    {
+      "id": "VAL-NW-001",
+      "title": "Monthly balance snapshot",
+      "status": "pass",
+      "steps": [
+        { "action": "Navigate to /net-worth", "expected": "Net Worth page loads", "observed": "Net Worth page loaded successfully" },
+        { "action": "Check Snapshot History section", "expected": "Shows date, per-account balances, total assets, total liabilities, net worth", "observed": "Snapshot History shows March 2026 with Assets $189,914.43, Liabilities $2,500.34, Net Worth $187,414.09" },
+        { "action": "Check Per-Account Balance History", "expected": "Per-account balances displayed", "observed": "All 4 accounts shown: Alliant Primary Checking $8,125.43, Alliant Savings $25,000.00, Capital One Quicksilver $2,500.34, Wealthfront Investment $156,789.00" }
+      ],
+      "evidence": {
+        "screenshots": ["analytics-pwa/group-networth/VAL-NW-001-full-page.png", "analytics-pwa/group-networth/VAL-NW-001-initial-page.png", "analytics-pwa/group-networth/VAL-NW-001-scrolled-down.png"],
+        "consoleErrors": "none",
+        "network": "GET /net-worth -> 200"
+      },
+      "issues": "Empty state not testable as seed data already populates snapshots. Main functionality verified."
+    },
+    {
+      "id": "VAL-NW-002",
+      "title": "Net worth over time chart",
+      "status": "pass",
+      "steps": [
+        { "action": "View Net Worth Over Time chart on /net-worth", "expected": "Line chart with data points from monthly snapshots", "observed": "Chart titled 'Net Worth Over Time' displayed with data points for March 2026" },
+        { "action": "Check X-axis and Y-axis", "expected": "X-axis shows months, Y-axis shows dollar amounts", "observed": "X-axis shows 'March 2026', Y-axis shows $0 to $200k+ scale" },
+        { "action": "Check single data point handling", "expected": "Chart doesn't break with single data point", "observed": "Chart renders correctly with single March 2026 data point showing Assets (blue), Liabilities (red), and Net Worth" },
+        { "action": "Check legend", "expected": "Legend present", "observed": "Legend shows Assets, Liabilities, Net Worth with corresponding colors" }
+      ],
+      "evidence": {
+        "screenshots": ["analytics-pwa/group-networth/VAL-NW-001-full-page.png"],
+        "consoleErrors": "none",
+        "network": "N/A"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-NW-003",
+      "title": "Assets vs liabilities breakdown",
+      "status": "pass",
+      "steps": [
+        { "action": "Check summary figures on /net-worth", "expected": "Total assets, total liabilities, and net worth displayed", "observed": "Three summary cards: Total Assets $189,914.43, Total Liabilities $2,500.34, Net Worth $187,414.09" },
+        { "action": "Verify net worth = assets - liabilities", "expected": "$189,914.43 - $2,500.34 = $187,414.09", "observed": "$187,414.09 displayed correctly" }
+      ],
+      "evidence": {
+        "screenshots": ["analytics-pwa/group-networth/VAL-NW-001-initial-page.png"],
+        "consoleErrors": "none",
+        "network": "N/A"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-NW-004",
+      "title": "Manual snapshot trigger",
+      "status": "pass",
+      "steps": [
+        { "action": "Locate 'Take Snapshot' button", "expected": "Button visible on /net-worth", "observed": "Blue 'Take Snapshot' button displayed at top of page" },
+        { "action": "Click 'Take Snapshot' button", "expected": "New snapshot captured and appears in history", "observed": "Success toast 'Snapshot captured successfully!' displayed. Snapshot History shows March 2026 entry with current balances." }
+      ],
+      "evidence": {
+        "screenshots": ["analytics-pwa/group-networth/VAL-NW-004-after-snapshot.png"],
+        "consoleErrors": "none",
+        "network": "N/A"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-NW-005",
+      "title": "Per-account balance history",
+      "status": "pass",
+      "steps": [
+        { "action": "Check Per-Account Balance History section on /net-worth", "expected": "Individual account balances over time", "observed": "Section titled 'Per-Account Balance History' displays all 4 accounts with March 2026 balances" },
+        { "action": "Verify each account balance", "expected": "Correct balances for each account", "observed": "Alliant Primary Checking $8,125.43, Alliant Savings $25,000.00, Capital One Quicksilver $2,500.34, Wealthfront Investment $156,789.00" },
+        { "action": "Check color coding", "expected": "Asset and liability accounts visually distinguished", "observed": "Green dots for asset accounts (Checking, Savings, Investment), red dot for liability (Capital One Quicksilver CC)" }
+      ],
+      "evidence": {
+        "screenshots": ["analytics-pwa/group-networth/VAL-NW-001-scrolled-down.png"],
+        "consoleErrors": "none",
+        "network": "N/A"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-NW-006",
+      "title": "Net worth calculation correctness",
+      "status": "pass",
+      "steps": [
+        { "action": "Sum asset account balances", "expected": "$8,125.43 + $25,000.00 + $156,789.00 = $189,914.43", "observed": "Total Assets displayed as $189,914.43 — matches sum" },
+        { "action": "Sum liability balances", "expected": "$2,500.34", "observed": "Total Liabilities displayed as $2,500.34 — matches" },
+        { "action": "Verify net worth = assets - liabilities", "expected": "$189,914.43 - $2,500.34 = $187,414.09", "observed": "Net Worth displayed as $187,414.09 — correct" },
+        { "action": "Cross-reference with Accounts page", "expected": "Account balances match", "observed": "Accounts page shows identical balances: Checking $8,125.43, Savings $25,000.00, CC $2,500.34, Investment $156,789.00" }
+      ],
+      "evidence": {
+        "screenshots": ["analytics-pwa/group-networth/VAL-NW-001-full-page.png", "analytics-pwa/group-networth/VAL-CROSS-004-accounts-page.png"],
+        "consoleErrors": "none",
+        "network": "N/A"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CROSS-004",
+      "title": "Account balances consistent across views",
+      "status": "pass",
+      "steps": [
+        { "action": "Check Accounts page balances", "expected": "All account balances displayed", "observed": "Alliant Primary Checking $8,125.43, Alliant Savings $25,000.00, Capital One Quicksilver $2,500.34, Wealthfront Investment $156,789.00" },
+        { "action": "Check Dashboard net worth", "expected": "Net worth matches", "observed": "Dashboard shows Net Worth $187,414.09 — matches Net Worth page" },
+        { "action": "Check Net Worth page breakdown", "expected": "Total assets, liabilities, net worth match account sums", "observed": "Total Assets $189,914.43 (sum of checking+savings+investment), Total Liabilities $2,500.34 (credit card), Net Worth $187,414.09 — all consistent" }
+      ],
+      "evidence": {
+        "screenshots": ["analytics-pwa/group-networth/VAL-CROSS-004-accounts-page.png", "analytics-pwa/group-networth/VAL-CROSS-004-dashboard.png", "analytics-pwa/group-networth/VAL-NW-001-full-page.png"],
+        "consoleErrors": "none",
+        "network": "N/A"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CROSS-008",
+      "title": "Transfer exclusion end-to-end",
+      "status": "pass",
+      "steps": [
+        { "action": "Check Dashboard spending total", "expected": "Transfer excluded from Monthly Spending", "observed": "Monthly Spending $3,179.34 — the $1,000.00 'Transfer to Savings' is not included" },
+        { "action": "Check Budget calculations", "expected": "Transfer excluded from budget spent totals", "observed": "Budget page shows $3,179.34 spent — no transfer amount included in any category" },
+        { "action": "Check Spending Analytics charts", "expected": "Transfer excluded from analytics", "observed": "Analytics Total Spending $3,179.34, category breakdown sums to $3,179.34 with no transfer category" },
+        { "action": "Check Month-over-Month comparison", "expected": "Transfer excluded from comparison", "observed": "Month-over-Month table on dashboard shows categories totaling $3,179.34 for March 2026, no transfer entry" }
+      ],
+      "evidence": {
+        "screenshots": ["analytics-pwa/group-networth/VAL-CROSS-004-dashboard.png", "analytics-pwa/group-networth/VAL-CROSS-008-budget-page.png", "analytics-pwa/group-networth/VAL-CROSS-008-analytics-page.png"],
+        "consoleErrors": "none",
+        "network": "N/A"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 8 assertions: all 8 passed. Net Worth page displays correct snapshot data, chart, breakdown, manual trigger, per-account history, and calculation. Account balances are consistent across Accounts, Dashboard, and Net Worth views. Transfers are properly excluded from spending totals, budgets, analytics, and month-over-month comparisons."
+}

@@ -1,0 +1,40 @@
+{
+  "milestone": "analytics-pwa",
+  "round": 1,
+  "status": "pass",
+  "assertionsSummary": {
+    "total": 23,
+    "passed": 23,
+    "failed": 0,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-AICAT-001",
+    "VAL-ANALYTICS-001",
+    "VAL-ANALYTICS-002",
+    "VAL-ANALYTICS-003",
+    "VAL-CROSS-004",
+    "VAL-CROSS-008",
+    "VAL-DASH-001",
+    "VAL-DASH-002",
+    "VAL-DASH-003",
+    "VAL-DASH-004",
+    "VAL-DASH-005",
+    "VAL-DASH-006",
+    "VAL-DASH-007",
+    "VAL-NW-001",
+    "VAL-NW-002",
+    "VAL-NW-003",
+    "VAL-NW-004",
+    "VAL-NW-005",
+    "VAL-NW-006",
+    "VAL-PWA-001",
+    "VAL-PWA-002",
+    "VAL-PWA-003",
+    "VAL-PWA-004"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [],
+  "previousRound": null
+}

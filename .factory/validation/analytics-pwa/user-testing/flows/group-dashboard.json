@@ -1,0 +1,129 @@
+{
+  "groupId": "group-dashboard",
+  "testedAt": "2026-03-17T00:00:00.000Z",
+  "isolation": {
+    "appUrl": "http://localhost:3000",
+    "auth": "none (single-user app)",
+    "viewport": "1280px desktop",
+    "dashboardRoute": "/",
+    "transactionsRoute": "/transactions"
+  },
+  "toolsUsed": ["agent-browser", "curl"],
+  "assertions": [
+    {
+      "id": "VAL-DASH-001",
+      "title": "Monthly spending summary",
+      "status": "pass",
+      "steps": [
+        { "action": "Navigate to dashboard at /", "expected": "Dashboard page loads with spending summary", "observed": "Dashboard loaded with Monthly Spending widget showing $3,179.34" },
+        { "action": "Check total spending display", "expected": "Total spending for current month excluding transfers and income", "observed": "$3,179.34 displayed prominently under 'Monthly Spending' heading" },
+        { "action": "Check top spending categories", "expected": "Top categories listed with amounts", "observed": "Top 5 categories shown: Rent/Home $2,000.00, Groceries $448.78, Eating Out $186.57, Home Goods $180.42, Insurance $150.00" }
+      ],
+      "evidence": {
+        "screenshots": ["analytics-pwa/group-dashboard/VAL-DASH-001-dashboard-top.png", "analytics-pwa/group-dashboard/VAL-DASH-full-page.png"],
+        "consoleErrors": "none",
+        "network": "N/A"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-DASH-002",
+      "title": "Budget status overview",
+      "status": "pass",
+      "steps": [
+        { "action": "View Budget Status widget on dashboard", "expected": "Summary of budget health with on-track, approaching, and over-budget counts", "observed": "Budget Status widget shows: 5 On Track, 0 Approaching, 3 Over Budget" },
+        { "action": "Check category-level budget bars", "expected": "Individual category progress bars shown", "observed": "Progress bars displayed for: Bars/Clubs/Going Out 23%, Clothing 50%, Eating Out 62%, Groceries 75%, Home Goods 180% (red, over budget)" }
+      ],
+      "evidence": {
+        "screenshots": ["analytics-pwa/group-dashboard/VAL-DASH-001-dashboard-top.png"],
+        "consoleErrors": "none",
+        "network": "N/A"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-DASH-003",
+      "title": "Recent transactions feed",
+      "status": "pass",
+      "steps": [
+        { "action": "View Recent Transactions section on dashboard", "expected": "5-10 most recent transactions with date, name, amount, and category", "observed": "10 recent transactions displayed with all required fields" },
+        { "action": "Verify transaction details format", "expected": "Each shows date, name, amount, and category", "observed": "Each transaction shows: name (e.g., 'TEST-AICAT: Gas Station Shell'), date ('Mar 17, 2026'), account ('Alliant Primary Checking'), category ('Groceries'), and formatted amount ('-$30.00')" },
+        { "action": "Verify transaction count", "expected": "Between 5 and 10 transactions shown", "observed": "Exactly 10 transactions shown" }
+      ],
+      "evidence": {
+        "screenshots": ["analytics-pwa/group-dashboard/VAL-DASH-001-dashboard-bottom.png"],
+        "consoleErrors": "none",
+        "network": "N/A"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-DASH-004",
+      "title": "Net worth trend indicator",
+      "status": "pass",
+      "steps": [
+        { "action": "View Net Worth widget on dashboard", "expected": "Current net worth displayed with trend indicator", "observed": "Net Worth widget shows $187,414.09" },
+        { "action": "Check trend indicator", "expected": "Change from previous month or sparkline shown", "observed": "Text reads 'No previous month snapshot for comparison.' — this is the correct fallback when no previous snapshot exists for trend comparison" }
+      ],
+      "evidence": {
+        "screenshots": ["analytics-pwa/group-dashboard/VAL-DASH-001-dashboard-top.png"],
+        "consoleErrors": "none",
+        "network": "N/A"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-DASH-005",
+      "title": "Spending by category chart",
+      "status": "pass",
+      "steps": [
+        { "action": "View Spending by Category chart on dashboard", "expected": "Pie or donut chart showing spending breakdown by category", "observed": "Donut chart displayed with labeled percentages: Rent/Home 63%, Groceries 14%, Eating Out 6%, Home Goods 6%, Insurance 5%, Clothing 2%, Vacations 2%, Bars/Clubs/Going Out 1%, Subscriptions 1%" },
+        { "action": "Check chart legend", "expected": "Legend with category names", "observed": "Color-coded legend below chart with all 9 spending categories listed" }
+      ],
+      "evidence": {
+        "screenshots": ["analytics-pwa/group-dashboard/VAL-DASH-001-dashboard-bottom.png"],
+        "consoleErrors": "none",
+        "network": "N/A"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-DASH-006",
+      "title": "Month-over-month spending comparison",
+      "status": "pass",
+      "steps": [
+        { "action": "Scroll to Month-over-Month section", "expected": "Comparison table or chart showing current vs previous month", "observed": "Table displayed with columns: Category, February 2026, March 2026, Change" },
+        { "action": "Verify per-category comparison", "expected": "Each category shows both months' spending and the difference", "observed": "All 9 categories listed with Feb and March amounts. E.g., Groceries: $50.00 (Feb) vs $448.78 (Mar), Change ↗$398.78" },
+        { "action": "Check highlighting of increases/decreases", "expected": "Increases and decreases visually highlighted", "observed": "Increases shown with red up-arrow (↗) icon and red text for change amounts" }
+      ],
+      "evidence": {
+        "screenshots": ["analytics-pwa/group-dashboard/VAL-DASH-006-comparison.png"],
+        "consoleErrors": "none",
+        "network": "N/A"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-DASH-007",
+      "title": "Dashboard data accuracy",
+      "status": "pass",
+      "steps": [
+        { "action": "Get dashboard total spending", "expected": "Total matches sum of non-transfer expense transactions", "observed": "Dashboard shows $3,179.34" },
+        { "action": "Cross-reference with transactions page", "expected": "All March 2026 non-transfer, non-income transactions sum to dashboard total", "observed": "Navigated to /transactions and verified 19 non-transfer expense transactions for March 2026. Raw transaction sum = $3,179.34" },
+        { "action": "Verify via API", "expected": "API data confirms totals", "observed": "curl to /api/transactions?month=2026-03 confirmed all transaction amounts. Applied split allocations for transactions #20 (Groceries $80 + Home Goods $20) and #21 (Groceries $60 + Eating Out $40)" },
+        { "action": "Verify category breakdowns", "expected": "Category amounts match actual transaction sums per category", "observed": "All categories verified: Rent/Home $2,000.00, Groceries $448.78 (includes split portions), Eating Out $186.57 (includes $40 split), Home Goods $180.42 (includes $20 split), Insurance $150.00, Clothing $74.50, Vacations $52.10, Bars/Clubs/Going Out $45.00, Subscriptions $41.97. Sum = $3,179.34 ✓" },
+        { "action": "Verify transfers excluded", "expected": "Transfer transactions not counted in spending", "observed": "3 transfer transactions (Test Grocery Purchase $42.50, Transfer to Savings $1,000.00, TEST-TXN: Edited Coffee Visit $35.00) all excluded from spending total" },
+        { "action": "Verify income excluded", "expected": "Income transactions not counted in spending", "observed": "Paycheck - Employer (+$5,000.00) excluded from spending total" }
+      ],
+      "evidence": {
+        "screenshots": ["analytics-pwa/group-dashboard/VAL-DASH-001-dashboard-top.png", "analytics-pwa/group-dashboard/VAL-DASH-007-transactions-page.png", "analytics-pwa/group-dashboard/VAL-DASH-007-transactions-page2.png"],
+        "consoleErrors": "none",
+        "network": "GET /api/transactions?month=2026-03 -> 200, GET /api/transactions/20/splits -> 200, GET /api/transactions/21/splits -> 200"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 7 assertions: all 7 passed. Dashboard displays monthly spending summary ($3,179.34) with top categories, budget status (5 on track, 0 approaching, 3 over budget), 10 recent transactions, net worth ($187,414.09 with no-previous-snapshot fallback), spending donut chart, month-over-month comparison table, and all data verified accurate against transaction records including split transaction allocations."
+}

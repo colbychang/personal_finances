@@ -1,0 +1,156 @@
+{
+  "groupId": "group-analytics-pwa",
+  "testedAt": "2026-03-17T12:00:00.000Z",
+  "isolation": {
+    "appUrl": "http://localhost:3000",
+    "auth": "none (single-user app)",
+    "viewport": "1280px desktop (375px for PWA-004)",
+    "sessionId": "a08bb0519874__apwa"
+  },
+  "toolsUsed": ["agent-browser", "curl"],
+  "assertions": [
+    {
+      "id": "VAL-ANALYTICS-001",
+      "title": "Spending by category detail page",
+      "status": "pass",
+      "steps": [
+        { "action": "Navigate to /analytics via sidebar link", "expected": "Analytics page with pie/donut chart", "observed": "Spending Analytics page loads with pie chart showing spending by category" },
+        { "action": "Check time period selectors", "expected": "Selectable time periods (month, quarter, year)", "observed": "Four period buttons: This Month, Last 3 Months, Last 6 Months, Last 12 Months" },
+        { "action": "Check category breakdown", "expected": "Categories shown with amounts and percentages", "observed": "9 categories displayed: Rent/Home 62.9% $2,000.00, Groceries 14.1% $448.78, Eating Out 5.9%, etc." }
+      ],
+      "evidence": {
+        "screenshots": [
+          "analytics-pwa/group-analytics-pwa/VAL-ANALYTICS-001-analytics-page.png"
+        ],
+        "consoleErrors": "none",
+        "network": "GET /analytics -> 200"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-ANALYTICS-002",
+      "title": "Monthly spending trends",
+      "status": "pass",
+      "steps": [
+        { "action": "Scroll down on analytics page", "expected": "Bar chart showing monthly spending trends", "observed": "Monthly Spending Trends section with bar chart showing spending from Oct 25 to Mar 26" },
+        { "action": "Check chart data", "expected": "Bars for each month", "observed": "Bars visible for Jan 26, Feb 26, and Mar 26 with Mar 26 being the tallest (~$3,200)" }
+      ],
+      "evidence": {
+        "screenshots": [
+          "analytics-pwa/group-analytics-pwa/VAL-ANALYTICS-002-bar-chart.png"
+        ],
+        "consoleErrors": "none",
+        "network": "N/A (same page)"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-ANALYTICS-003",
+      "title": "Category drill-down",
+      "status": "pass",
+      "steps": [
+        { "action": "Click Groceries category button in analytics view", "expected": "Individual transactions for Groceries shown", "observed": "Groceries Transactions section appeared with 6 transactions listed" },
+        { "action": "Check transaction details", "expected": "Transaction names, dates, amounts shown", "observed": "Transactions shown: TEST-AICAT Gas Station Shell $30, TEST-BUD Costco $60, TEST-TXN Split $80, Trader Joe's $67.89, Whole Foods $125.47, Whole Foods $85.42. Total: $448.78" },
+        { "action": "Check close button", "expected": "Close drill-down button present", "observed": "Close drill-down button and X button both present" }
+      ],
+      "evidence": {
+        "screenshots": [
+          "analytics-pwa/group-analytics-pwa/VAL-ANALYTICS-003-drilldown-transactions.png"
+        ],
+        "consoleErrors": "none",
+        "network": "N/A"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-PWA-001",
+      "title": "Valid web app manifest",
+      "status": "pass",
+      "steps": [
+        { "action": "curl -sf http://localhost:3000/manifest.json", "expected": "Valid manifest with required fields", "observed": "Manifest returned with name='Personal Finance Tracker', short_name='Finances', display='standalone', theme_color='#3b82f6', background_color='#f8fafc'" },
+        { "action": "Check icons", "expected": "Multiple icon sizes", "observed": "Two icons: 192x192 and 512x512, both PNG, both accessible (HTTP 200)" },
+        { "action": "Verify icon URLs", "expected": "Icons return 200", "observed": "Both /icon-192x192.png and /icon-512x512.png return HTTP 200" }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "none",
+        "network": "GET /manifest.json -> 200, GET /icon-192x192.png -> 200, GET /icon-512x512.png -> 200"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-PWA-002",
+      "title": "PWA installability",
+      "status": "pass",
+      "steps": [
+        { "action": "Check manifest validity", "expected": "Valid manifest served", "observed": "Valid manifest with name, icons, display=standalone" },
+        { "action": "Check service worker registration", "expected": "Service worker registered at root", "observed": "Service worker registered with scope http://localhost:3000/, active=true" },
+        { "action": "Check serving protocol", "expected": "Served over localhost", "observed": "App served at http://localhost:3000" }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "none",
+        "network": "Service worker scope: http://localhost:3000/"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-PWA-003",
+      "title": "Offline cached data viewing",
+      "status": "pass",
+      "steps": [
+        { "action": "Load dashboard online", "expected": "Dashboard renders with data", "observed": "Dashboard loaded with spending, net worth, budget status, transactions" },
+        { "action": "Set browser to offline mode", "expected": "Offline indicator appears, cached pages still viewable", "observed": "Yellow banner appeared: 'You are offline. Previously loaded pages are still available.' Dashboard data still visible from cache." }
+      ],
+      "evidence": {
+        "screenshots": [
+          "analytics-pwa/group-analytics-pwa/VAL-PWA-003-offline-indicator.png",
+          "analytics-pwa/group-analytics-pwa/VAL-PWA-003-offline-transactions.png"
+        ],
+        "consoleErrors": "none",
+        "network": "N/A (offline)"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-PWA-004",
+      "title": "Touch-optimized interactions",
+      "status": "pass",
+      "steps": [
+        { "action": "Set viewport to 375x812 (mobile)", "expected": "Mobile layout renders", "observed": "Bottom tab bar with Dashboard, Transactions, Budgets, Accounts, More buttons" },
+        { "action": "Measure touch targets on dashboard", "expected": "All interactive elements >= 44x44px", "observed": "Bottom tabs: 75x56px, month nav buttons: 44x44px. All meet minimum." },
+        { "action": "Measure touch targets on transactions page", "expected": "All visible interactive elements >= 44x44px", "observed": "No elements failed the 44x44px check (empty array from JS measurement of all visible buttons, links, inputs)" }
+      ],
+      "evidence": {
+        "screenshots": [
+          "analytics-pwa/group-analytics-pwa/VAL-PWA-004-mobile-home.png",
+          "analytics-pwa/group-analytics-pwa/VAL-PWA-004-mobile-transactions.png"
+        ],
+        "consoleErrors": "none",
+        "network": "N/A"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-AICAT-001",
+      "title": "AI categorizes uncategorized transactions",
+      "status": "pass",
+      "steps": [
+        { "action": "Create uncategorized transaction 'TEST-APWA: Starbucks Coffee' ($5.50)", "expected": "Transaction created without category", "observed": "Transaction created successfully, no category badge shown" },
+        { "action": "Click Categorize button", "expected": "AI categorization runs and assigns category", "observed": "Toast message: 'Categorized 1 transactions (0 by rules, 1 by AI)'. Transaction 'TEST-APWA: Starbucks Coffee' now shows 'Eating Out' category badge." }
+      ],
+      "evidence": {
+        "screenshots": [
+          "analytics-pwa/group-analytics-pwa/VAL-AICAT-001-search-test.png",
+          "analytics-pwa/group-analytics-pwa/VAL-AICAT-001-after-categorize.png"
+        ],
+        "consoleErrors": "none",
+        "network": "POST /api/categorize -> 200 (inferred from success toast)"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 8 assertions: all 8 passed. Analytics page has working pie chart with time period selectors, bar chart for monthly trends, and category drill-down. PWA has valid manifest, active service worker, offline caching with indicator, and properly sized touch targets. AI auto-categorization successfully categorized an uncategorized Starbucks Coffee transaction as 'Eating Out'."
+}
