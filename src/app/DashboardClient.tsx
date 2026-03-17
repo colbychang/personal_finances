@@ -123,11 +123,15 @@ function SpendingSummary({
 
 // ─── Budget Status Widget ───────────────────────────────────────────────
 
+type BudgetFilterStatus = "on-track" | "approaching" | "over-budget" | null;
+
 function BudgetStatus({
   budgetStatus,
 }: {
   budgetStatus: DashboardData["budgetStatus"];
 }) {
+  const [filter, setFilter] = useState<BudgetFilterStatus>(null);
+
   if (budgetStatus.total === 0) {
     return (
       <div className="bg-white rounded-[var(--radius-card)] border border-neutral-200 p-4 md:p-5">
@@ -147,6 +151,15 @@ function BudgetStatus({
     );
   }
 
+  const filteredItems =
+    filter === null
+      ? budgetStatus.items
+      : budgetStatus.items.filter((item) => item.status === filter);
+
+  function toggleFilter(status: BudgetFilterStatus) {
+    setFilter((prev) => (prev === status ? null : status));
+  }
+
   return (
     <div className="bg-white rounded-[var(--radius-card)] border border-neutral-200 p-4 md:p-5">
       <div className="flex items-center gap-2 mb-3">
@@ -158,56 +171,93 @@ function BudgetStatus({
         </h2>
       </div>
 
-      {/* Summary counts */}
-      <div className="grid grid-cols-3 gap-3 mb-4">
-        <div className="text-center">
+      {/* Clickable status filter buttons */}
+      <div className="grid grid-cols-3 gap-2 mb-4">
+        <button
+          type="button"
+          onClick={() => toggleFilter("on-track")}
+          className={cn(
+            "text-center rounded-[var(--radius-button)] py-2 min-h-[44px] transition-colors cursor-pointer",
+            filter === "on-track"
+              ? "bg-income/10 ring-2 ring-income/40"
+              : "hover:bg-neutral-50"
+          )}
+        >
           <p className="text-xl font-bold text-income">{budgetStatus.onTrack}</p>
           <p className="text-xs text-neutral-500">On Track</p>
-        </div>
-        <div className="text-center">
+        </button>
+        <button
+          type="button"
+          onClick={() => toggleFilter("approaching")}
+          className={cn(
+            "text-center rounded-[var(--radius-button)] py-2 min-h-[44px] transition-colors cursor-pointer",
+            filter === "approaching"
+              ? "bg-warning/10 ring-2 ring-warning/40"
+              : "hover:bg-neutral-50"
+          )}
+        >
           <p className="text-xl font-bold text-warning">{budgetStatus.approaching}</p>
           <p className="text-xs text-neutral-500">Approaching</p>
-        </div>
-        <div className="text-center">
+        </button>
+        <button
+          type="button"
+          onClick={() => toggleFilter("over-budget")}
+          className={cn(
+            "text-center rounded-[var(--radius-button)] py-2 min-h-[44px] transition-colors cursor-pointer",
+            filter === "over-budget"
+              ? "bg-expense/10 ring-2 ring-expense/40"
+              : "hover:bg-neutral-50"
+          )}
+        >
           <p className="text-xl font-bold text-expense">{budgetStatus.overBudget}</p>
           <p className="text-xs text-neutral-500">Over Budget</p>
-        </div>
+        </button>
       </div>
 
-      {/* Mini progress indicators */}
-      <div className="space-y-2">
-        {budgetStatus.items.slice(0, 5).map((item) => (
-          <div key={item.category} className="space-y-1">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-neutral-700 truncate mr-2">{item.category}</span>
-              <span
-                className={cn(
-                  "font-medium flex-shrink-0",
-                  item.status === "over-budget"
-                    ? "text-expense"
-                    : item.status === "approaching"
-                      ? "text-warning"
-                      : "text-neutral-500"
-                )}
-              >
-                {item.percentage}%
-              </span>
+      {/* Scrollable budget list */}
+      <div className="space-y-2 max-h-[340px] overflow-y-auto">
+        {filteredItems.length === 0 ? (
+          <p className="text-sm text-neutral-400 text-center py-2">
+            No budgets match this filter.
+          </p>
+        ) : (
+          filteredItems.map((item) => (
+            <div key={item.category} className="space-y-1">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-neutral-700 truncate mr-2">{item.category}</span>
+                <span
+                  className={cn(
+                    "font-medium flex-shrink-0",
+                    item.status === "over-budget"
+                      ? "text-expense"
+                      : item.status === "approaching"
+                        ? "text-warning"
+                        : "text-neutral-500"
+                  )}
+                >
+                  {item.percentage}%
+                </span>
+              </div>
+              <div className="w-full h-1.5 bg-neutral-100 rounded-full overflow-hidden">
+                <div
+                  className={cn(
+                    "h-full rounded-full transition-all",
+                    item.status === "over-budget"
+                      ? "bg-expense"
+                      : item.status === "approaching"
+                        ? "bg-warning"
+                        : "bg-income"
+                  )}
+                  style={{ width: `${Math.min(item.percentage, 100)}%` }}
+                />
+              </div>
+              <div className="flex items-center justify-between text-xs text-neutral-400">
+                <span className="currency">{formatCurrency(item.spent)}</span>
+                <span className="currency">of {formatCurrency(item.budgeted)}</span>
+              </div>
             </div>
-            <div className="w-full h-1.5 bg-neutral-100 rounded-full overflow-hidden">
-              <div
-                className={cn(
-                  "h-full rounded-full transition-all",
-                  item.status === "over-budget"
-                    ? "bg-expense"
-                    : item.status === "approaching"
-                      ? "bg-warning"
-                      : "bg-income"
-                )}
-                style={{ width: `${Math.min(item.percentage, 100)}%` }}
-              />
-            </div>
-          </div>
-        ))}
+          ))
+        )}
       </div>
     </div>
   );
