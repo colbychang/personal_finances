@@ -113,14 +113,14 @@ function AccountCard({
         <div className="flex items-center gap-1">
           <button
             onClick={onEdit}
-            className="p-2 rounded-[var(--radius-button)] text-neutral-400 hover:text-primary hover:bg-neutral-100 transition-colors"
+            className="p-2.5 rounded-[var(--radius-button)] text-neutral-400 hover:text-primary hover:bg-neutral-100 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
             aria-label={`Edit ${account.name}`}
           >
             <Pencil className="h-4 w-4" />
           </button>
           <button
             onClick={onDelete}
-            className="p-2 rounded-[var(--radius-button)] text-neutral-400 hover:text-expense hover:bg-red-50 transition-colors"
+            className="p-2.5 rounded-[var(--radius-button)] text-neutral-400 hover:text-expense hover:bg-red-50 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
             aria-label={`Delete ${account.name}`}
           >
             <Trash2 className="h-4 w-4" />
@@ -228,7 +228,7 @@ function AccountForm({
           </h2>
           <button
             onClick={onCancel}
-            className="p-2 rounded-[var(--radius-button)] text-neutral-400 hover:text-neutral-600 hover:bg-neutral-100 transition-colors"
+            className="p-2.5 rounded-[var(--radius-button)] text-neutral-400 hover:text-neutral-600 hover:bg-neutral-100 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
             aria-label="Close"
           >
             <X className="h-5 w-5" />

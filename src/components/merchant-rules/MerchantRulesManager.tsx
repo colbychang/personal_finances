@@ -163,14 +163,14 @@ export function MerchantRulesManager() {
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setDeletingId(null)}
-                  className="px-3 py-1.5 text-sm text-neutral-600 hover:bg-neutral-100 rounded-[var(--radius-button)] transition-colors min-h-[36px]"
+                  className="px-3 py-2.5 text-sm text-neutral-600 hover:bg-neutral-100 rounded-[var(--radius-button)] transition-colors min-h-[44px]"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={() => deleteRule(rule.id)}
                   disabled={isSubmitting}
-                  className="px-3 py-1.5 text-sm text-white bg-red-600 hover:bg-red-700 rounded-[var(--radius-button)] transition-colors disabled:opacity-50 min-h-[36px]"
+                  className="px-3 py-2.5 text-sm text-white bg-red-600 hover:bg-red-700 rounded-[var(--radius-button)] transition-colors disabled:opacity-50 min-h-[44px]"
                 >
                   {isSubmitting ? "Deleting..." : "Delete"}
                 </button>
@@ -195,7 +195,7 @@ export function MerchantRulesManager() {
                 <button
                   onClick={() => saveEdit(rule.id)}
                   disabled={isSubmitting || !editCategory.trim()}
-                  className="p-2 rounded-[var(--radius-button)] text-green-600 hover:bg-green-50 transition-colors disabled:opacity-50"
+                  className="p-2.5 rounded-[var(--radius-button)] text-green-600 hover:bg-green-50 transition-colors disabled:opacity-50 min-h-[44px] min-w-[44px] flex items-center justify-center"
                   aria-label="Save changes"
                   title="Save"
                 >
@@ -203,7 +203,7 @@ export function MerchantRulesManager() {
                 </button>
                 <button
                   onClick={cancelEdit}
-                  className="p-2 rounded-[var(--radius-button)] text-neutral-400 hover:text-neutral-600 hover:bg-neutral-100 transition-colors"
+                  className="p-2.5 rounded-[var(--radius-button)] text-neutral-400 hover:text-neutral-600 hover:bg-neutral-100 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
                   aria-label="Cancel editing"
                   title="Cancel"
                 >
@@ -230,7 +230,7 @@ export function MerchantRulesManager() {
               <div className="flex items-center gap-0.5 flex-shrink-0">
                 <button
                   onClick={() => startEdit(rule)}
-                  className="p-2 rounded-[var(--radius-button)] text-neutral-400 hover:text-primary hover:bg-neutral-100 transition-colors"
+                  className="p-2.5 rounded-[var(--radius-button)] text-neutral-400 hover:text-primary hover:bg-neutral-100 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
                   aria-label={`Edit rule for ${rule.label}`}
                   title="Edit rule"
                 >
@@ -238,7 +238,7 @@ export function MerchantRulesManager() {
                 </button>
                 <button
                   onClick={() => setDeletingId(rule.id)}
-                  className="p-2 rounded-[var(--radius-button)] text-neutral-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                  className="p-2.5 rounded-[var(--radius-button)] text-neutral-400 hover:text-red-600 hover:bg-red-50 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
                   aria-label={`Delete rule for ${rule.label}`}
                   title="Delete rule"
                 >

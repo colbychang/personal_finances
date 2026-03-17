@@ -499,7 +499,7 @@ export function BudgetsClient({
                           handleSaveBudget(budget.category, editAmount)
                         }
                         disabled={isSaving}
-                        className="p-1.5 text-income hover:bg-green-50 rounded transition-colors"
+                        className="p-2.5 text-income hover:bg-green-50 rounded transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
                         aria-label="Save"
                       >
                         <Check className="h-4 w-4" />
@@ -509,7 +509,7 @@ export function BudgetsClient({
                           setEditingCategory(null);
                           setEditError(null);
                         }}
-                        className="p-1.5 text-neutral-400 hover:bg-neutral-50 rounded transition-colors"
+                        className="p-2.5 text-neutral-400 hover:bg-neutral-50 rounded transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
                         aria-label="Cancel"
                       >
                         <X className="h-4 w-4" />
@@ -522,7 +522,7 @@ export function BudgetsClient({
                         setEditAmount((budget.budgeted / 100).toFixed(2));
                         setEditError(null);
                       }}
-                      className="text-sm text-neutral-500 hover:text-primary transition-colors currency"
+                      className="text-sm text-neutral-500 hover:text-primary transition-colors currency min-h-[44px] min-w-[44px] flex items-center justify-center px-2"
                       title="Click to edit"
                     >
                       {formatCurrency(budget.budgeted)}

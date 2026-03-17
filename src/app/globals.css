@@ -73,4 +73,11 @@
   button {
     cursor: pointer;
   }
+
+  /* Ensure all interactive form elements meet minimum touch target size */
+  input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    min-height: 44px;
+  }
 }

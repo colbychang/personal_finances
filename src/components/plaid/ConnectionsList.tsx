@@ -254,7 +254,7 @@ export function ConnectionsList() {
                         "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors",
                         "text-primary hover:bg-primary/10",
                         "disabled:opacity-50 disabled:cursor-not-allowed",
-                        "min-h-[36px] min-w-[36px]"
+                        "min-h-[44px] min-w-[44px]"
                       )}
                     >
                       <RefreshCw
@@ -275,7 +275,7 @@ export function ConnectionsList() {
                         <button
                           onClick={() => handleDisconnect(conn.id)}
                           disabled={disconnecting === conn.id}
-                          className="px-3 py-1.5 text-xs font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors disabled:opacity-50 min-h-[36px]"
+                          className="px-3 py-2.5 text-xs font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors disabled:opacity-50 min-h-[44px]"
                         >
                           {disconnecting === conn.id ? (
                             <Loader2 className="h-3 w-3 animate-spin" />
@@ -285,7 +285,7 @@ export function ConnectionsList() {
                         </button>
                         <button
                           onClick={() => setConfirmDisconnect(null)}
-                          className="px-3 py-1.5 text-xs font-medium text-neutral-600 bg-neutral-100 hover:bg-neutral-200 rounded-lg transition-colors min-h-[36px]"
+                          className="px-3 py-2.5 text-xs font-medium text-neutral-600 bg-neutral-100 hover:bg-neutral-200 rounded-lg transition-colors min-h-[44px]"
                         >
                           Cancel
                         </button>
@@ -295,10 +295,10 @@ export function ConnectionsList() {
                         onClick={() => setConfirmDisconnect(conn.id)}
                         disabled={disconnecting === conn.id || isSyncing}
                         className={cn(
-                          "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors",
+                          "inline-flex items-center gap-1.5 px-3 py-2.5 rounded-lg text-xs font-medium transition-colors",
                           "text-red-600 hover:bg-red-50",
                           "disabled:opacity-50 disabled:cursor-not-allowed",
-                          "min-h-[36px] min-w-[36px]"
+                          "min-h-[44px] min-w-[44px]"
                         )}
                       >
                         <Unplug className="h-3.5 w-3.5" />

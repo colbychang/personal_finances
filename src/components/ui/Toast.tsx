@@ -91,10 +91,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               <span className="flex-1">{toast.message}</span>
               <button
                 onClick={() => dismiss(toast.id)}
-                className="p-1 rounded hover:bg-white/20 transition-colors flex-shrink-0"
+                className="p-2 rounded hover:bg-white/20 transition-colors flex-shrink-0 min-h-[44px] min-w-[44px] flex items-center justify-center"
                 aria-label="Dismiss"
               >
-                <X className="h-3.5 w-3.5" />
+                <X className="h-4 w-4" />
               </button>
             </div>
           ))}

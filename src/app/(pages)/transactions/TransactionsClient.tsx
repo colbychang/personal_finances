@@ -391,7 +391,7 @@ export function TransactionsClient({
               <button
                 onClick={handleCategorizeAll}
                 disabled={isCategorizing}
-                className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium bg-amber-100 hover:bg-amber-200 text-amber-800 rounded-[var(--radius-button)] transition-colors min-h-[32px]"
+                className="inline-flex items-center gap-1 px-3 py-2.5 text-xs font-medium bg-amber-100 hover:bg-amber-200 text-amber-800 rounded-[var(--radius-button)] transition-colors min-h-[44px]"
               >
                 <RefreshCw className="h-3 w-3" />
                 Retry
@@ -399,10 +399,10 @@ export function TransactionsClient({
             )}
             <button
               onClick={() => setCategorizeResult(null)}
-              className="p-1 text-neutral-400 hover:text-neutral-600"
+              className="p-2.5 text-neutral-400 hover:text-neutral-600 min-h-[44px] min-w-[44px] flex items-center justify-center"
               aria-label="Dismiss"
             >
-              <X className="h-3.5 w-3.5" />
+              <X className="h-4 w-4" />
             </button>
           </div>
         </div>
@@ -487,7 +487,7 @@ export function TransactionsClient({
             onChange={(e) =>
               applyFilter(() => setDateFrom(e.target.value))
             }
-            className="px-3 py-2 rounded-[var(--radius-button)] border border-neutral-300 text-sm min-h-[40px] focus:ring-primary"
+            className="px-3 py-2 rounded-[var(--radius-button)] border border-neutral-300 text-sm min-h-[44px] focus:ring-primary"
           />
         </div>
 
@@ -502,7 +502,7 @@ export function TransactionsClient({
             onChange={(e) =>
               applyFilter(() => setDateTo(e.target.value))
             }
-            className="px-3 py-2 rounded-[var(--radius-button)] border border-neutral-300 text-sm min-h-[40px] focus:ring-primary"
+            className="px-3 py-2 rounded-[var(--radius-button)] border border-neutral-300 text-sm min-h-[44px] focus:ring-primary"
           />
         </div>
 
@@ -533,7 +533,7 @@ export function TransactionsClient({
             onChange={(e) =>
               applyFilter(() => setSelectedAccountId(e.target.value))
             }
-            className="w-full px-3 py-2 rounded-[var(--radius-button)] border border-neutral-300 text-sm min-h-[40px] bg-white focus:ring-primary"
+            className="w-full px-3 py-2 rounded-[var(--radius-button)] border border-neutral-300 text-sm min-h-[44px] bg-white focus:ring-primary"
           >
             <option value="">All accounts</option>
             {accounts.map((acc) => (
@@ -548,7 +548,7 @@ export function TransactionsClient({
         {hasActiveFilters && (
           <button
             onClick={clearFilters}
-            className="flex items-center gap-1 px-3 py-2 text-sm text-neutral-500 hover:text-neutral-700 min-h-[40px]"
+            className="flex items-center gap-1 px-3 py-2.5 text-sm text-neutral-500 hover:text-neutral-700 min-h-[44px]"
           >
             <X className="h-3.5 w-3.5" />
             Clear
@@ -568,7 +568,7 @@ export function TransactionsClient({
               <h2 className="text-lg font-semibold text-neutral-900">Filters</h2>
               <button
                 onClick={() => setIsFilterOpen(false)}
-                className="p-2 rounded-[var(--radius-button)] text-neutral-400 hover:text-neutral-600 hover:bg-neutral-100 transition-colors"
+                className="p-2.5 rounded-[var(--radius-button)] text-neutral-400 hover:text-neutral-600 hover:bg-neutral-100 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
                 aria-label="Close filters"
               >
                 <X className="h-5 w-5" />
@@ -901,27 +901,27 @@ function TransactionCard({
           <div className="flex items-center gap-0.5 ml-1">
             <button
               onClick={onSplit}
-              className="p-2 rounded-[var(--radius-button)] text-neutral-400 hover:text-primary hover:bg-primary/5 transition-colors"
+              className="p-2.5 rounded-[var(--radius-button)] text-neutral-400 hover:text-primary hover:bg-primary/5 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
               aria-label={`Split ${transaction.name}`}
               title="Split transaction"
             >
-              <Scissors className="h-3.5 w-3.5" />
+              <Scissors className="h-4 w-4" />
             </button>
             <button
               onClick={onEdit}
-              className="p-2 rounded-[var(--radius-button)] text-neutral-400 hover:text-primary hover:bg-neutral-100 transition-colors"
+              className="p-2.5 rounded-[var(--radius-button)] text-neutral-400 hover:text-primary hover:bg-neutral-100 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
               aria-label={`Edit ${transaction.name}`}
               title="Edit transaction"
             >
-              <Pencil className="h-3.5 w-3.5" />
+              <Pencil className="h-4 w-4" />
             </button>
             <button
               onClick={onDelete}
-              className="p-2 rounded-[var(--radius-button)] text-neutral-400 hover:text-expense hover:bg-red-50 transition-colors"
+              className="p-2.5 rounded-[var(--radius-button)] text-neutral-400 hover:text-expense hover:bg-red-50 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
               aria-label={`Delete ${transaction.name}`}
               title="Delete transaction"
             >
-              <Trash2 className="h-3.5 w-3.5" />
+              <Trash2 className="h-4 w-4" />
             </button>
           </div>
         </div>
