@@ -1,0 +1,55 @@
+{
+  "group": "csv",
+  "assertions": {
+    "VAL-CSV-001": {
+      "status": "pass",
+      "evidence": [
+        "integrations/csv/VAL-CSV-001-upload-ui.png",
+        "integrations/csv/VAL-CSV-001-after-upload.png"
+      ],
+      "notes": "Import page has a file upload area with drag-and-drop zone and 'Choose CSV File' button. Selecting a CSV file (test-import.csv with 5 rows) uploads it and the content is parsed for preview showing filename, column count (4 columns), row count (5+ rows), and a preview table with Date, Description, Amount, Category columns. No console errors."
+    },
+    "VAL-CSV-002": {
+      "status": "pass",
+      "evidence": [
+        "integrations/csv/VAL-CSV-002-column-mapping.png",
+        "integrations/csv/VAL-CSV-002-columns-mapped.png"
+      ],
+      "notes": "After uploading, user sees a mapping UI (Step 2: Map Columns) with dropdowns for Date* (required), Name/Description* (required), Amount* (required), and Category (optional, shown as 'None (optional)'). Each dropdown lists CSV columns with sample data. The 'Next: Preview' button is disabled (not in interactive elements) until all required fields are mapped. After mapping all columns, the button becomes active. A live preview table shows mapped data. No console errors."
+    },
+    "VAL-CSV-003": {
+      "status": "pass",
+      "evidence": [
+        "integrations/csv/VAL-CSV-003-import-preview.png",
+        "integrations/csv/VAL-CSV-003-import-complete.png"
+      ],
+      "notes": "Step 3 (Preview) shows summary cards (5 Total Parsed, 5 New Transactions, 0 Potential Duplicates) and a table with Status, Date, Name, Amount (formatted as currency), and Category columns. All 5 transactions show 'New' status badges. User can confirm with 'Import 5 Transactions' button or cancel with 'Back' button. After importing, Step 4 shows 'Import Complete' success screen with count of 5 imported and options to 'Import Another File' or 'View Transactions'. No console errors."
+    },
+    "VAL-CSV-004": {
+      "status": "pass",
+      "evidence": [
+        "integrations/csv/VAL-CSV-004-duplicate-flags.png",
+        "integrations/csv/VAL-CSV-004-duplicates-unchecked.png"
+      ],
+      "notes": "After importing the same CSV file again to the same account (Alliant Primary Checking), the preview step shows 5 Total Parsed, 0 New Transactions, 5 Potential Duplicates (red). A yellow warning banner says '5 potential duplicates detected - These transactions match existing ones with the same date, amount, and similar name.' A 'Skip duplicates' checkbox is checked by default, showing all transactions with 'Skip' status and 'Import 0 Transactions' button (disabled). Unchecking the checkbox changes status to 'Duplicate' (orange badges) and enables 'Import 5 Transactions' button, allowing user to choose to import duplicates. No console errors."
+    },
+    "VAL-CSV-005": {
+      "status": "pass",
+      "evidence": [
+        "integrations/csv/VAL-CSV-005-account-selection.png"
+      ],
+      "notes": "The CSV import flow requires account selection on Step 1 (Upload) before or during file upload. A labeled dropdown 'Account *' (required, marked with red asterisk) is present at the top of the page with all available accounts listed (Alliant Primary Checking, Alliant Savings, Capital One Quicksilver, Wealthfront Investment, plus Plaid-connected accounts). The user must select an account. The selected account persists through subsequent import steps. No console errors."
+    },
+    "VAL-CSV-006": {
+      "status": "pass",
+      "evidence": [
+        "integrations/csv/VAL-CSV-006-binary-error.png",
+        "integrations/csv/VAL-CSV-006-empty-error.png"
+      ],
+      "notes": "Uploading a binary file shows a clear error message 'CSV must have at least a header row and one data row' with the drop zone highlighted in red. Uploading an empty file shows 'File is empty' error with the drop zone highlighted in red. Neither case crashes the app or shows garbled data. The upload area remains functional for retrying with a valid file. No console errors."
+    }
+  },
+  "frictions": [],
+  "blockers": [],
+  "toolsUsed": ["agent-browser"]
+}

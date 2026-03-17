@@ -1,0 +1,42 @@
+{
+  "milestone": "integrations",
+  "round": 1,
+  "status": "fail",
+  "assertionsSummary": {
+    "total": 21,
+    "passed": 20,
+    "failed": 0,
+    "blocked": 1
+  },
+  "passedAssertions": [
+    "VAL-PLAID-001",
+    "VAL-PLAID-002",
+    "VAL-PLAID-003",
+    "VAL-PLAID-004",
+    "VAL-PLAID-005",
+    "VAL-PLAID-006",
+    "VAL-PLAID-007",
+    "VAL-PLAID-008",
+    "VAL-CSV-001",
+    "VAL-CSV-002",
+    "VAL-CSV-003",
+    "VAL-CSV-004",
+    "VAL-CSV-005",
+    "VAL-CSV-006",
+    "VAL-AICAT-002",
+    "VAL-AICAT-003",
+    "VAL-AICAT-004",
+    "VAL-AICAT-005",
+    "VAL-AICAT-006",
+    "VAL-CROSS-002"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [
+    {
+      "id": "VAL-AICAT-001",
+      "blockedBy": "OpenAI API key quota exceeded (429 error). The AI categorization feature code is implemented and correctly calls GPT-4o-mini, but the API key has exceeded its billing quota. The categorize endpoint properly handles the error (shows user-friendly message, transactions preserved, retry available). Merchant rule-based categorization works correctly as a fallback path. This is an external dependency issue, not a code issue."
+    }
+  ],
+  "appliedUpdates": [],
+  "previousRound": null
+}

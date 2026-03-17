@@ -1,0 +1,73 @@
+{
+  "group": "aicat",
+  "testedAt": "2026-03-17T00:50:00.000Z",
+  "assertions": {
+    "VAL-AICAT-001": {
+      "status": "blocked",
+      "evidence": [
+        "integrations/aicat/VAL-AICAT-001-before-categorize.png",
+        "integrations/aicat/VAL-AICAT-001-uncategorized-visible.png",
+        "integrations/aicat/VAL-AICAT-001-page2-uncategorized.png",
+        "integrations/aicat/VAL-AICAT-001-after-categorize.png",
+        "integrations/aicat/VAL-AICAT-001-after-categorize-scrolled.png"
+      ],
+      "notes": "The categorize endpoint exists and correctly sends uncategorized transactions to GPT-4o-mini. However, the OpenAI API key has exceeded its quota (429 error: 'You exceeded your current quota'). The UI correctly shows an error message 'Some transactions could not be categorized by AI. Merchant rules were applied successfully. You can retry.' with a Retry button. The feature code is implemented and functional, but cannot complete AI categorization due to the billing/quota issue. API response confirmed: POST /api/categorize -> 200, with aiError field indicating the 429 quota exceeded error. Transactions remained uncategorized but not corrupted."
+    },
+    "VAL-AICAT-002": {
+      "status": "pass",
+      "evidence": [
+        "integrations/aicat/VAL-AICAT-002-edit-form.png",
+        "integrations/aicat/VAL-AICAT-002-category-selected.png",
+        "integrations/aicat/VAL-AICAT-002-category-changed.png"
+      ],
+      "notes": "Edited 'Gas Station Shell' transaction (ID 426) from uncategorized to 'Vacations'. After saving, verified via GET /api/merchant-rules that a new merchant rule was created: merchantKey='gas station shell', category='Vacations'. The system automatically creates merchant rules when a user manually changes a transaction's category."
+    },
+    "VAL-AICAT-003": {
+      "status": "pass",
+      "evidence": [
+        "integrations/aicat/VAL-AICAT-003-add-form-filled.png",
+        "integrations/aicat/VAL-AICAT-003-auto-categorized.png"
+      ],
+      "notes": "Created a new uncategorized transaction 'TEST-AICAT: Gas Station Shell' (ID 822) via API. Ran POST /api/categorize with transactionIds=[822]. Response: ruleApplied=1, aiCategorized=0, total=1, remaining=0. The merchant rule for 'gas station shell' -> 'Vacations' was auto-applied without calling the AI. Verified transaction now has category='Vacations' via API and confirmed in the UI showing the 'Vacations' badge."
+    },
+    "VAL-AICAT-004": {
+      "status": "pass",
+      "evidence": [
+        "integrations/aicat/VAL-AICAT-004-search-result.png",
+        "integrations/aicat/VAL-AICAT-004-override-category.png"
+      ],
+      "notes": "Changed 'TEST-AICAT: Gas Station Shell' (originally categorized by merchant rule as 'Vacations') to 'Groceries' via the edit form. The change persisted - verified via API: category='Groceries'. Manual override works regardless of how the transaction was initially categorized. No console errors."
+    },
+    "VAL-AICAT-005": {
+      "status": "pass",
+      "evidence": [
+        "integrations/aicat/VAL-AICAT-001-after-categorize.png"
+      ],
+      "notes": "The OpenAI API returned a 429 quota exceeded error during categorization. The app handled it gracefully: (1) showed a user-friendly error message 'Some transactions could not be categorized by AI. Merchant rules were applied successfully. You can retry.' (2) transactions remained uncategorized but not lost or corrupted (verified amounts and names intact via API) (3) a Retry button was displayed. The API response included an aiError field with the error details while returning HTTP 200 (partial success). This is a real API failure scenario that demonstrated proper error handling."
+    },
+    "VAL-AICAT-006": {
+      "status": "pass",
+      "evidence": [
+        "integrations/aicat/VAL-AICAT-006-settings-top.png",
+        "integrations/aicat/VAL-AICAT-006-edit-rule.png"
+      ],
+      "notes": "The Settings page has a 'Merchant Rules' section that lists all saved merchant-to-category rules. Each rule shows the merchant name and mapped category. Edit (pencil icon) opens an inline category dropdown for changing the rule. Delete (trash icon) is available for each rule. Three rules were visible: 'CREDIT CARD 3333 PAYMENT */' -> Large Purchases, 'Gas Station Shell' -> Vacations, 'TEST-AICAT: Gas Station Shell' -> Groceries. No console errors."
+    },
+    "VAL-CROSS-002": {
+      "status": "pass",
+      "evidence": [
+        "integrations/aicat/VAL-CROSS-002-budget-page.png",
+        "integrations/aicat/VAL-CROSS-002-budget-scrolled.png"
+      ],
+      "notes": "Plaid-synced transactions (IDs 418-427) were previously synced from First Platypus Bank. Auto-categorization was run via the Categorize button, which applied merchant rules to categorize transactions (AI failed due to quota). The budget page for March 2026 shows categorized spending reflected correctly: Eating Out $186.57 (includes Plaid-synced Restaurant La Bella $78.25), Groceries $448.78 (includes Plaid Whole Foods $85.42), Home Goods $180.42 (includes Plaid Target $45.67), Subscriptions $41.97 (includes Plaid Netflix $15.99). Unbudgeted spending shows Vacations $52.10 (Plaid Gas Station Shell). The full flow works: sync → categorize (merchant rules) → budget reflects spending. No console errors."
+    }
+  },
+  "frictions": [
+    "OpenAI API key quota exceeded (429 error), preventing AI-based categorization testing. Merchant rule-based categorization worked as a fallback.",
+    "The Add Transaction modal form's submit button was difficult to interact with via automation when using page-level refs (modal overlapping issue). Used API-based transaction creation as a workaround for VAL-AICAT-003."
+  ],
+  "blockers": [
+    "OpenAI API quota exceeded prevents testing actual AI categorization (VAL-AICAT-001). The feature code is implemented but results cannot be verified end-to-end."
+  ],
+  "toolsUsed": ["agent-browser", "curl"]
+}

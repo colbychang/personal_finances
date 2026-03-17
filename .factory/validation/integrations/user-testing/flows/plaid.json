@@ -1,0 +1,76 @@
+{
+  "group": "plaid",
+  "assertions": {
+    "VAL-PLAID-001": {
+      "status": "pass",
+      "evidence": [
+        "integrations/plaid/settings-initial.png",
+        "integrations/plaid/VAL-PLAID-001-plaid-link-open.png"
+      ],
+      "notes": "Clicking 'Connect Bank' opens the Plaid Link modal/overlay UI. The /api/plaid/link-token endpoint returns 200 with a link_token and expiration. The Plaid Link UI initializes without error (no console errors). Sandbox mode banner visible at the bottom."
+    },
+    "VAL-PLAID-002": {
+      "status": "pass",
+      "evidence": [
+        "integrations/plaid/VAL-PLAID-002-login.png",
+        "integrations/plaid/VAL-PLAID-002-after-login.png",
+        "integrations/plaid/VAL-PLAID-002-connection-complete.png",
+        "integrations/plaid/VAL-PLAID-002-final.png"
+      ],
+      "notes": "Using sandbox test credentials (user_good / pass_good), completed the Plaid Link flow through institution selection -> login -> account selection -> save prompt. Successfully connected First Platypus Bank. After completion, the modal closed and the Settings page updated to show the connected institution with all 12 accounts and a 'Last synced' timestamp. No console errors."
+    },
+    "VAL-PLAID-003": {
+      "status": "pass",
+      "evidence": [
+        "integrations/plaid/VAL-PLAID-003-connections-list.png"
+      ],
+      "notes": "The Settings/Bank Connections page shows all connected institutions with their name (First Platypus Bank), connected accounts (names, masks, and balances), connection status (Last synced date), and action buttons (Sync, Disconnect). Full page screenshot shows two institutions listed with complete account details."
+    },
+    "VAL-PLAID-004": {
+      "status": "pass",
+      "evidence": [
+        "integrations/plaid/VAL-PLAID-004-before-disconnect.png",
+        "integrations/plaid/VAL-PLAID-004-after-disconnect.png",
+        "integrations/plaid/VAL-PLAID-004-final.png"
+      ],
+      "notes": "Clicking 'Disconnect' shows an 'Are you sure?' confirmation dialog with 'Yes, Disconnect' (red) and 'Cancel' buttons. After confirming, the institution was removed from the connections list. Verified by scrolling up to see only one connection remaining. No console errors."
+    },
+    "VAL-PLAID-005": {
+      "status": "pass",
+      "evidence": [
+        "integrations/plaid/VAL-PLAID-005-after-sync.png",
+        "integrations/plaid/VAL-PLAID-005-transactions-after-sync.png"
+      ],
+      "notes": "Clicking 'Sync' button fetched transactions from Plaid sandbox. UI showed 'Synced: 394 added, 0 updated, 0 removed.' message. Verified via API that total transactions increased from 5 to 423. Transactions page shows synced transactions with correct dates, amounts (negative for expenses), and merchant names (e.g., 'Uber 063015 SF**POOL**', 'CREDIT CARD 3333 PAYMENT *//'). POST /api/plaid/sync returns 200 with cursor. No console errors."
+    },
+    "VAL-PLAID-006": {
+      "status": "pass",
+      "evidence": [
+        "integrations/plaid/VAL-PLAID-006-incremental-sync.png"
+      ],
+      "notes": "Running sync a second time via UI showed 'Already up to date — no new transactions.' message as both inline text and toast notification. API call POST /api/plaid/sync returned {added:0, modified:0, removed:0} with a cursor value, confirming cursor-based incremental sync. Transaction count remained at 423 (no duplicates). No console errors."
+    },
+    "VAL-PLAID-007": {
+      "status": "pass",
+      "evidence": [
+        "integrations/plaid/VAL-PLAID-007-error.png",
+        "integrations/plaid/VAL-PLAID-007-close-confirm.png",
+        "integrations/plaid/VAL-PLAID-007-modal-closed.png"
+      ],
+      "notes": "Entering wrong credentials (wrong_user / wrong_pass) in the Plaid Link login form showed 'Incorrect credentials' error with red-highlighted fields. The Plaid UI properly handled the error without crashing. After closing the modal (via X button -> 'Yes, exit' confirmation), no partial or broken connection was saved - the Settings page still showed only the original valid connection. No console errors."
+    },
+    "VAL-PLAID-008": {
+      "status": "pass",
+      "evidence": [
+        "integrations/plaid/VAL-PLAID-008-two-institutions.png"
+      ],
+      "notes": "Created a second connection via sandbox-connect API. The Settings page displayed two separate First Platypus Bank connections, each with their own set of 12 accounts, individual Sync and Disconnect buttons, and independent sync status. Full page screenshot confirms both institutions are listed and managed independently. Each institution's accounts are clearly attributed to the correct connection. No console errors."
+    }
+  },
+  "frictions": [
+    "Plaid Link iframe is cross-origin, requiring mouse coordinate-based interactions instead of element refs. This made clicking precise targets (like 'Continue without phone number') challenging and required multiple attempts.",
+    "The 'Continue without phone number' link is visually close to the 'Terms' link, and imprecise coordinate clicks occasionally opened the Terms page in a new tab instead."
+  ],
+  "blockers": [],
+  "toolsUsed": ["agent-browser", "curl"]
+}
