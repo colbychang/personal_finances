@@ -1,0 +1,62 @@
+{
+  "featureId": "spending-analytics",
+  "reviewedAt": "2026-03-17T03:15:00.000Z",
+  "commitId": "996a0bff751184edfd08f63d4768a0f3316a7e63",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Solid implementation covering all required features: spending by category donut chart with Recharts, monthly spending trends bar chart, category drill-down with individual transactions, time period selector (month/3mo/6mo/year), navigation integration, and proper exclusion of transfers and income. The DB query layer handles splits correctly and has comprehensive test coverage (16 tests). The API route cleanly separates overview vs drill-down via the category param. SSR initial data loading in the server component is a good pattern. Minor quality issues noted below — none blocking.",
+    "issues": [
+      {
+        "file": "src/app/(pages)/analytics/AnalyticsClient.tsx",
+        "line": 305,
+        "severity": "non_blocking",
+        "description": "The SpendingDonutChart component duplicates nearly all code from the existing src/components/charts/SpendingPieChart.tsx (same DEFAULT_COLORS, same tooltip/label formatting, same Cell mapping). The only meaningful difference is the onClick handler and innerRadius using percentages. The existing component could have been extended with an optional onClick prop to avoid code duplication."
+      },
+      {
+        "file": "src/app/(pages)/analytics/AnalyticsClient.tsx",
+        "line": 313,
+        "severity": "non_blocking",
+        "description": "Errors in fetchData are silently swallowed (catch {}) with no user notification. AGENTS.md convention says to use the useToast hook for error notifications. While this is a read operation (not a mutation), silently keeping stale data when a period change fails could confuse users who see the period button change but data doesn't update."
+      },
+      {
+        "file": "src/app/(pages)/analytics/AnalyticsClient.tsx",
+        "line": 327,
+        "severity": "non_blocking",
+        "description": "Same silent error handling in handleCategoryClick — sets empty transactions array on failure without any user-facing error message. Users would see an empty drill-down panel with 'No transactions found' which is misleading when there are transactions but the fetch failed."
+      },
+      {
+        "file": "src/db/queries/analytics.ts",
+        "line": 131,
+        "severity": "non_blocking",
+        "description": "getMonthlySpendingTrends uses `new Date()` internally making it non-deterministic. The function signature accepts `months` count but not a reference date. This makes tests time-dependent — the test at analytics.test.ts:184 assumes current month is March 2026 and will fail in April 2026 or later. Consider accepting an optional `referenceDate` parameter for testability."
+      },
+      {
+        "file": "src/db/queries/analytics.ts",
+        "line": 198,
+        "severity": "non_blocking",
+        "description": "getCategoryTransactions does not filter out income (negative amounts), while getSpendingByCategory does. This means a refund transaction (e.g., category='Groceries', amount=-5000) would appear in the drill-down but wouldn't be counted in the category spending total. This is arguably reasonable behavior (showing refunds in context), but the inconsistency is undocumented."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "Worker created a new SpendingDonutChart inside AnalyticsClient.tsx that duplicates the existing SpendingPieChart component at src/components/charts/SpendingPieChart.tsx. Both share identical DEFAULT_COLORS, tooltip formatting, and Recharts PieChart setup. AGENTS.md doesn't mention reusing existing chart components, and there's no library note about shared chart components.",
+      "evidence": "src/app/(pages)/analytics/AnalyticsClient.tsx lines 88-143 vs src/components/charts/SpendingPieChart.tsx — nearly identical code with same DEFAULT_COLORS array, same label/tooltip/legend configuration."
+    },
+    {
+      "area": "conventions",
+      "observation": "AGENTS.md states 'tests must cover BOTH the database query layer AND the API route handlers', but the analytics tests only cover DB query functions. However, this matches the project-wide pattern — examining other test files (categories.test.ts, accounts.test.ts, etc.) shows they also only test query functions, not route handlers. The convention in AGENTS.md doesn't match actual practice.",
+      "evidence": "src/__tests__/api/analytics.test.ts imports from @/db/queries/analytics, not from the route handler. Same pattern in src/__tests__/api/categories.test.ts which imports from @/db/queries/categories. The API route's getDateRange() and getTrendMonths() helper functions have zero test coverage."
+    },
+    {
+      "area": "conventions",
+      "observation": "Time-dependent function getMonthlySpendingTrends uses new Date() internally without an injectable reference date. Tests hardcode expected months (Oct 2025–Mar 2026) based on the assumption the current month is March 2026. This will cause test failures when the calendar moves forward. A pattern for time-injectable functions could be documented.",
+      "evidence": "src/db/queries/analytics.ts:131 — `const now = new Date()`. Test at src/__tests__/api/analytics.test.ts:184 expects result[0].month to be '2025-10' and result[5].month to be '2026-03', which only holds in March 2026."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "The spending-analytics feature is well-implemented with all required functionality: donut chart for spending by category, bar chart for monthly trends, category drill-down with individual transactions, time period selector, and proper navigation integration. Transfers and income are correctly excluded from spending calculations. Transaction splits are handled properly. The implementation includes 16 comprehensive tests covering the DB query layer. Non-blocking issues include code duplication with an existing SpendingPieChart component, silent error handling without toast notifications, time-dependent tests in getMonthlySpendingTrends, and a minor inconsistency where getCategoryTransactions doesn't filter negative amounts while getSpendingByCategory does. Overall: PASS."
+}

@@ -1,0 +1,39 @@
+{
+  "featureId": "pwa-setup",
+  "reviewedAt": "2026-03-17T15:35:00.000Z",
+  "commitId": "32826b09ad86d15179820ed2c9938fab768e8d40",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Solid PWA implementation covering all requirements: manifest.json with correct fields, service worker with network-first (pages) and stale-while-revalidate (static assets) caching strategies, offline indicator using useSyncExternalStore, layout integration via Next.js metadata API, and thorough touch target audit across 11 files plus a global CSS rule for form inputs. 23 tests cover manifest fields, service worker structure, icon validity, and layout integration. Two non-blocking issues noted.",
+    "issues": [
+      {
+        "file": "public/manifest.json",
+        "line": 14,
+        "severity": "non_blocking",
+        "description": "Icon purpose is set to 'any maskable' as a single combined value. Per the W3C Web App Manifest spec, using both purposes on one icon entry means the same image is used for both 'any' and 'maskable' contexts. Maskable icons require extra safe-zone padding (~10% inset) that may cause the 'any' usage to look smaller than intended. Best practice is to provide separate icon entries for 'any' and 'maskable' purposes (or at least ensure the placeholder icons have adequate safe-zone padding). This won't block installability but may affect visual quality on some devices."
+      },
+      {
+        "file": "src/app/layout.tsx",
+        "line": 25,
+        "severity": "non_blocking",
+        "description": "Viewport sets maximumScale: 1, which prevents user zoom. This is a common PWA pattern to prevent unwanted zooming on form inputs, but it can hurt accessibility for users who need to zoom. Consider removing maximumScale or setting it higher (e.g., 5) to balance PWA behavior with WCAG 1.4.4 (Resize Text) compliance."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The service worker (public/sw.js) is written in plain JavaScript rather than TypeScript, which is the correct choice since service workers run in a separate context outside the Next.js build pipeline. This convention (static JS files in public/ for service workers) is not documented anywhere but is an implicit pattern worth noting for future PWA work.",
+      "evidence": "public/sw.js uses plain JS with a /// <reference lib=\"webworker\" /> comment for IDE support. This is standard practice for Next.js service workers."
+    },
+    {
+      "area": "conventions",
+      "observation": "The offline indicator uses z-[60] for its z-index stacking. The project doesn't appear to have a documented z-index scale, which could lead to z-index conflicts as more features are added.",
+      "evidence": "src/components/pwa/OfflineIndicator.tsx line with className containing z-[60]. No z-index convention found in AGENTS.md or architecture.md."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "The PWA setup feature passes review. All requirements are met: manifest.json contains all required fields (name, short_name, display: standalone, start_url: /, theme_color, background_color, 192x192 and 512x512 icons), the service worker implements proper caching strategies (network-first for pages with cache fallback, stale-while-revalidate for static assets, API bypass), the offline indicator uses the correct React pattern (useSyncExternalStore) for browser state, and touch targets were audited and fixed across 11 component files with a global CSS rule for form inputs. Tests are comprehensive with 23 cases. Two non-blocking issues: combined 'any maskable' icon purpose and maximumScale:1 accessibility concern."
+}

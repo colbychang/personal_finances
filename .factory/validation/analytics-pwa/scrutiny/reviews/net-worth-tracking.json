@@ -1,0 +1,51 @@
+{
+  "featureId": "net-worth-tracking",
+  "reviewedAt": "2026-03-17T03:15:00.000Z",
+  "commitId": "0396e7e",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Solid implementation covering all feature requirements. Four query functions (createSnapshot, getAllSnapshots, getSnapshotByMonth, getAccountBalanceHistory) are well-structured and correct. API routes handle validation, error cases, and proper HTTP status codes. The /net-worth page uses Server Component for initial data fetch with Client Component children for interactivity. Empty state, summary cards, Recharts line chart (with single-point graceful handling), snapshot history table with expandable detail view, and per-account balance history table are all implemented. 11 tests cover calculation correctness, upsert behavior, edge cases (zero balances, no accounts), and history tracking. The implementation correctly uses the isAsset boolean flag rather than type-checking account types, which is more robust. Money is stored as integer cents throughout, consistent with project conventions.",
+    "issues": [
+      {
+        "file": "src/db/queries/snapshots.ts",
+        "line": 87,
+        "severity": "non_blocking",
+        "description": "Snapshot replacement uses delete-where on hardcoded day format (`${month}-01`). If the day format ever changes in createSnapshot, the delete in the replacement path would fail to clean up old account_snapshots. Consider using a snapshotId foreign key on account_snapshots for more robust cascading, or at minimum, matching on day LIKE '${month}%' for the delete."
+      },
+      {
+        "file": "src/app/(pages)/net-worth/NetWorthClient.tsx",
+        "line": 246,
+        "severity": "non_blocking",
+        "description": "handleSelectMonth sets selectedMonth before the fetch completes but only sets selectedDetail on success. If the fetch fails silently (catch block is empty), the UI shows the selected month highlighted in the history table but no detail panel appears. This is not a crash but could confuse users. Consider showing a brief error or clearing selectedMonth on failure."
+      },
+      {
+        "file": "src/app/(pages)/net-worth/NetWorthClient.tsx",
+        "line": 219,
+        "severity": "non_blocking",
+        "description": "refreshData silently swallows all errors. While the comment explains this is intentional (initial data still shown), for snapshot creation which the user explicitly triggered, a toast notification on refresh failure would improve UX. The POST itself shows errors, but if the subsequent GET refresh fails, the user sees stale data without knowing."
+      },
+      {
+        "file": "src/app/api/snapshots/route.ts",
+        "line": 1,
+        "severity": "non_blocking",
+        "description": "NextRequest is imported but not strictly needed for the POST handler (could use plain Request). Minor unused-import-like concern, though it's used for type clarity."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "AGENTS.md states 'Test both layers: For features with API endpoints, tests must cover BOTH the database query layer AND the API route handlers.' However, ALL existing test files in the project (accounts, transactions, budgets, categories, etc.) only test the query layer, never importing or testing route handlers. The convention in AGENTS.md does not match the actual project pattern. Either AGENTS.md should be updated to reflect reality, or all features are missing route-handler tests.",
+      "evidence": "All 14 files in src/__tests__/api/ import from @/db/queries/* only, never from route handlers. Checked accounts.test.ts, snapshots.test.ts, and searched for route imports across all test files — none found."
+    },
+    {
+      "area": "conventions",
+      "observation": "The architecture.md file's project structure shows snapshots API with only `route.ts`, but the feature added `[month]/route.ts` and `history/route.ts` sub-routes. The architecture doc is now slightly out of date.",
+      "evidence": ".factory/library/architecture.md shows '└── snapshots/ └── route.ts' but actual structure now includes snapshots/[month]/route.ts and snapshots/history/route.ts"
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "The net-worth-tracking feature is well-implemented and passes review. All required functionality is present: snapshot CRUD with correct asset/liability/net-worth calculation, 4 API endpoints with validation, Recharts line chart with single-point handling, summary cards, expandable snapshot history, per-account balance history table, and empty state guidance. 11 tests thoroughly cover the query layer including edge cases. Code follows project conventions (cents storage, Server/Client component split, formatCurrency utility, touch targets, useToast). Non-blocking issues noted: brittle day-format coupling in snapshot replacement, silent failure on detail fetch, and AGENTS.md convention mismatch on route-handler testing (project-wide, not specific to this feature)."
+}

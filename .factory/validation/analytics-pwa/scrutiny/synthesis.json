@@ -1,0 +1,112 @@
+{
+  "milestone": "analytics-pwa",
+  "round": 1,
+  "status": "pass",
+  "validatorsRun": {
+    "test": { "passed": true, "command": "npx vitest run", "exitCode": 0, "details": "288 tests passed across 22 files" },
+    "typecheck": { "passed": true, "command": "npx tsc --noEmit", "exitCode": 0 },
+    "lint": { "passed": true, "command": "npx eslint .", "exitCode": 0, "details": "0 errors, 1 warning (postcss.config.mjs import/no-anonymous-default-export)" }
+  },
+  "reviewsSummary": {
+    "total": 4,
+    "passed": 4,
+    "failed": 0,
+    "failedFeatures": []
+  },
+  "blockingIssues": [],
+  "nonBlockingIssues": [
+    {
+      "featureId": "net-worth-tracking",
+      "severity": "non_blocking",
+      "description": "Snapshot replacement uses delete-where on hardcoded day format; fragile coupling"
+    },
+    {
+      "featureId": "net-worth-tracking",
+      "severity": "non_blocking",
+      "description": "Silent error handling in handleSelectMonth and refreshData without user feedback"
+    },
+    {
+      "featureId": "dashboard-overview",
+      "severity": "non_blocking",
+      "description": "Month parameter validation allows semantically invalid months like '2026-00' or '2026-13'"
+    },
+    {
+      "featureId": "dashboard-overview",
+      "severity": "non_blocking",
+      "description": "Recent transactions are global (not month-scoped), potentially confusing on historical months"
+    },
+    {
+      "featureId": "dashboard-overview",
+      "severity": "non_blocking",
+      "description": "Silent error handling on month navigation without toast/notification"
+    },
+    {
+      "featureId": "spending-analytics",
+      "severity": "non_blocking",
+      "description": "SpendingDonutChart duplicates nearly all code from existing SpendingPieChart component"
+    },
+    {
+      "featureId": "spending-analytics",
+      "severity": "non_blocking",
+      "description": "Silent error handling in fetchData and handleCategoryClick without user notification"
+    },
+    {
+      "featureId": "spending-analytics",
+      "severity": "non_blocking",
+      "description": "getMonthlySpendingTrends uses new Date() internally, making tests time-dependent (will fail after March 2026)"
+    },
+    {
+      "featureId": "spending-analytics",
+      "severity": "non_blocking",
+      "description": "getCategoryTransactions doesn't filter income/negative amounts while getSpendingByCategory does"
+    },
+    {
+      "featureId": "pwa-setup",
+      "severity": "non_blocking",
+      "description": "Combined 'any maskable' icon purpose — best practice is separate entries"
+    },
+    {
+      "featureId": "pwa-setup",
+      "severity": "non_blocking",
+      "description": "Viewport maximumScale:1 prevents accessibility zoom (WCAG 1.4.4)"
+    }
+  ],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Update or remove the 'test both layers' convention. Currently AGENTS.md says tests must cover BOTH the database query layer AND the API route handlers, but all 22 test files in the project only test query functions directly — never testing HTTP route handlers. Either update AGENTS.md to reflect actual practice (query-layer-only testing is sufficient) or create a follow-up task to add route handler tests across all features.",
+      "evidence": "All 4 analytics-pwa reviewers and 14+ test files across src/__tests__/api/ only import from @/db/queries/*, never from route handlers. Pattern is consistent across all milestones (core-manual, integrations, analytics-pwa).",
+      "isSystemic": true
+    },
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Add convention for time-injectable functions: functions that depend on current date/time should accept an optional referenceDate parameter to enable deterministic testing. E.g., getMonthlySpendingTrends(db, months, referenceDate?).",
+      "evidence": "spending-analytics feature's getMonthlySpendingTrends uses new Date() internally. Tests hardcode expected months (Oct 2025–Mar 2026) which will fail after March 2026.",
+      "isSystemic": false
+    },
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Add convention for reusing existing UI components: before creating new chart/display components, workers should check src/components/ for existing components that could be extended with optional props rather than duplicated.",
+      "evidence": "spending-analytics created SpendingDonutChart inside AnalyticsClient.tsx that duplicates ~90% of the code from src/components/charts/SpendingPieChart.tsx (same colors, tooltip, legend).",
+      "isSystemic": false
+    },
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Document z-index scale convention. Current usage: z-[60] for offline indicator. As more overlays, modals, and indicators are added, a documented scale prevents conflicts. E.g., 10=dropdowns, 20=fixed-nav, 30=modals, 40=toasts, 50=offline-indicator.",
+      "evidence": "pwa-setup's OfflineIndicator uses z-[60]. No z-index convention found in AGENTS.md or architecture.md. The project already has modals, toasts, and bottom navigation that could conflict.",
+      "isSystemic": false
+    }
+  ],
+  "rejectedObservations": [
+    {
+      "observation": "Service worker plain JS convention — public/sw.js is written in plain JavaScript rather than TypeScript since service workers run outside the Next.js build pipeline.",
+      "reason": "Standard practice that doesn't need documentation. Any developer working with service workers in Next.js would know this."
+    },
+    {
+      "observation": "architecture.md is out of date with new routes and query files (snapshots sub-routes, dashboard, analytics).",
+      "reason": "This is true but architecture.md updates should be driven by the orchestrator as part of a broader documentation refresh rather than piecemeal by the scrutiny validator. Multiple prior milestones also added routes not reflected in architecture.md."
+    }
+  ],
+  "previousRound": null
+}
