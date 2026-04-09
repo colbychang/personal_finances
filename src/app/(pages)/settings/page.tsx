@@ -3,6 +3,7 @@ import { db } from "@/db/index";
 import { getAllCategories } from "@/db/queries/categories";
 import { CategoriesManager } from "@/components/categories/CategoriesManager";
 import { ConnectionsList } from "@/components/plaid/ConnectionsList";
+import { PlaidSetupNotice } from "@/components/plaid/PlaidSetupNotice";
 import { MerchantRulesManager } from "@/components/merchant-rules/MerchantRulesManager";
 
 export default function SettingsPage() {
@@ -23,6 +24,7 @@ export default function SettingsPage() {
             Bank Connections
           </h2>
         </div>
+        <PlaidSetupNotice />
         <ConnectionsList />
       </section>
 

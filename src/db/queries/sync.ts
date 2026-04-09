@@ -38,19 +38,20 @@ export interface SyncResult {
  * Build a map from Plaid external account_id to our internal account ID.
  * Uses the accounts table's externalRef field.
  */
-function buildAccountIdMap(database: DB): Map<string, number> {
-  const accounts = database
+function buildAccountIdMap(database: DB, connectionId: number): Map<string, number> {
+  const linkedAccounts = database
     .select({
-      id: schema.accounts.id,
-      externalRef: schema.accounts.externalRef,
+      accountId: schema.accountLinks.accountId,
+      externalKey: schema.accountLinks.externalKey,
     })
-    .from(schema.accounts)
+    .from(schema.accountLinks)
+    .where(eq(schema.accountLinks.connectionId, connectionId))
     .all();
 
   const map = new Map<string, number>();
-  for (const acct of accounts) {
-    if (acct.externalRef) {
-      map.set(acct.externalRef, acct.id);
+  for (const acct of linkedAccounts) {
+    if (acct.externalKey) {
+      map.set(acct.externalKey, acct.accountId);
     }
   }
   return map;
@@ -72,7 +73,7 @@ export function syncTransactionsFromPlaid(
   connectionId: number,
   data: PlaidSyncData
 ): SyncResult {
-  const accountMap = buildAccountIdMap(database);
+  const accountMap = buildAccountIdMap(database, connectionId);
   let addedCount = 0;
   let modifiedCount = 0;
   let removedCount = 0;

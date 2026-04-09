@@ -107,7 +107,15 @@ export async function POST(request: NextRequest) {
       access_token: accessToken,
     });
 
-    const plaidAccounts = accountsResponse.data.accounts;
+    const selectedAccountIds = new Set(
+      (body.accounts ?? []).map((account) => account.id)
+    );
+    const plaidAccounts =
+      selectedAccountIds.size > 0
+        ? accountsResponse.data.accounts.filter((account) =>
+            selectedAccountIds.has(account.account_id)
+          )
+        : accountsResponse.data.accounts;
 
     // Store accounts from Plaid response (which has balance info)
     const storedAccounts = [];
@@ -139,6 +147,7 @@ export async function POST(request: NextRequest) {
           balanceAvailable,
           isAsset,
         },
+        connection.id,
         institutionName
       );
 

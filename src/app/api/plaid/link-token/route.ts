@@ -9,13 +9,19 @@ import { Products, CountryCode } from "plaid";
 export async function POST() {
   try {
     const plaidClient = getPlaidClient();
+    const redirectUri = process.env.PLAID_REDIRECT_URI;
+    const oauthRedirectUri =
+      redirectUri && redirectUri.startsWith("https://")
+        ? redirectUri
+        : undefined;
 
     const response = await plaidClient.linkTokenCreate({
       user: { client_user_id: "personal-finance-user" },
       client_name: "Personal Finance Tracker",
-      products: [Products.Transactions, Products.Investments],
+      products: [Products.Transactions],
       country_codes: [CountryCode.Us],
       language: "en",
+      ...(oauthRedirectUri ? { redirect_uri: oauthRedirectUri } : {}),
     });
 
     return NextResponse.json({

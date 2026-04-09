@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import {
   usePlaidLink,
   type PlaidLinkOnSuccess,
@@ -10,6 +11,11 @@ import {
 import { Landmark, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/Toast";
+import {
+  exchangePublicToken,
+  storePlaidLinkToken,
+  storePlaidReturnTo,
+} from "@/components/plaid/client";
 
 interface PlaidLinkButtonProps {
   onSuccess: () => void;
@@ -21,6 +27,7 @@ export function PlaidLinkButton({ onSuccess, className }: PlaidLinkButtonProps) 
   const [loading, setLoading] = useState(false);
   const [fetchingToken, setFetchingToken] = useState(false);
   const { showToast } = useToast();
+  const pathname = usePathname();
 
   // Fetch link token from our API
   const fetchLinkToken = useCallback(async () => {
@@ -34,6 +41,7 @@ export function PlaidLinkButton({ onSuccess, className }: PlaidLinkButtonProps) 
       }
       const data = await response.json();
       setLinkToken(data.link_token);
+      storePlaidLinkToken(data.link_token);
     } catch (error) {
       console.error("Error fetching link token:", error);
       showToast("Failed to initialize bank connection. Please try again.", "error");
@@ -51,21 +59,12 @@ export function PlaidLinkButton({ onSuccess, className }: PlaidLinkButtonProps) 
     async (publicToken, metadata) => {
       setLoading(true);
       try {
-        const response = await fetch("/api/plaid/exchange-token", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            public_token: publicToken,
-            institution_id: metadata.institution?.institution_id,
-            institution_name: metadata.institution?.name,
-            accounts: metadata.accounts,
-          }),
+        await exchangePublicToken({
+          publicToken,
+          institutionId: metadata.institution?.institution_id,
+          institutionName: metadata.institution?.name,
+          accounts: metadata.accounts,
         });
-
-        if (!response.ok) {
-          const data = await response.json();
-          throw new Error(data.error || "Failed to connect bank");
-        }
 
         showToast(
           `Successfully connected ${metadata.institution?.name ?? "bank"}!`,
@@ -120,7 +119,10 @@ export function PlaidLinkButton({ onSuccess, className }: PlaidLinkButtonProps) 
 
   return (
     <button
-      onClick={() => open()}
+      onClick={() => {
+        storePlaidReturnTo(pathname);
+        open();
+      }}
       disabled={isDisabled}
       className={cn(
         "inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium",

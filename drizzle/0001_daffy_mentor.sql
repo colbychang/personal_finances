@@ -1,0 +1,1 @@
+ALTER TABLE `account_links` ADD `connection_id` integer NOT NULL REFERENCES connections(id);

@@ -205,6 +205,15 @@ describe("Database Schema", () => {
   });
 
   it("enforces unique constraint on account_links (external_key)", () => {
+    db.insert(schema.connections).values({
+      institutionName: "Test Bank",
+      provider: "plaid",
+      accessToken: "enc-token",
+      itemId: "item-test",
+      isEncrypted: true,
+    }).run();
+    const [connection] = db.select().from(schema.connections).all();
+
     db.insert(schema.institutions).values({
       name: "Test Bank",
       provider: "manual",
@@ -226,12 +235,26 @@ describe("Database Schema", () => {
     const [acct] = db.select().from(schema.accounts).all();
 
     db.insert(schema.accountLinks)
-      .values({ provider: "plaid", externalKey: "plaid-123", accountId: acct!.id, institutionName: "Test", displayName: "Checking" })
+      .values({
+        provider: "plaid",
+        externalKey: "plaid-123",
+        connectionId: connection!.id,
+        accountId: acct!.id,
+        institutionName: "Test",
+        displayName: "Checking",
+      })
       .run();
 
     expect(() => {
       db.insert(schema.accountLinks)
-        .values({ provider: "plaid", externalKey: "plaid-123", accountId: acct!.id, institutionName: "Test 2", displayName: "Savings" })
+        .values({
+          provider: "plaid",
+          externalKey: "plaid-123",
+          connectionId: connection!.id,
+          accountId: acct!.id,
+          institutionName: "Test 2",
+          displayName: "Savings",
+        })
         .run();
     }).toThrow();
   });

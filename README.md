@@ -46,11 +46,13 @@ Create a `.env.local` file in the project root:
 PLAID_CLIENT_ID=your_plaid_client_id
 PLAID_SECRET=your_plaid_secret
 PLAID_ENV=sandbox
+PLAID_REDIRECT_URI=https://your-public-app-url/plaid/oauth
 OPENAI_API_KEY=your_openai_api_key
 PLAID_TOKEN_ENCRYPTION_KEY=a_random_32_byte_hex_string
 ```
 
 Plaid credentials are required for bank linking. The OpenAI key is required for AI categorization. The encryption key secures stored Plaid access tokens.
+If you are using Plaid production with OAuth-enabled institutions, set `PLAID_REDIRECT_URI` to the exact `https://` redirect URL configured in Plaid Dashboard. A plain `http://localhost` redirect will be rejected by Plaid production.
 
 ### Run database migrations
 

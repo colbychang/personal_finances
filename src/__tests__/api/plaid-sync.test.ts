@@ -66,6 +66,7 @@ function setupConnectionWithAccount() {
       balanceAvailable: 95000,
       isAsset: true,
     },
+    conn.id,
     "Test Bank"
   );
 
@@ -143,6 +144,7 @@ describe("syncTransactionsFromPlaid", () => {
         balanceAvailable: 500000,
         isAsset: true,
       },
+      conn.id,
       "Test Bank"
     );
 

@@ -1,6 +1,7 @@
 import { Landmark } from "lucide-react";
 import { db } from "@/db/index";
 import { getAllAccountsGrouped } from "@/db/queries/accounts";
+import { PlaidSetupNotice } from "@/components/plaid/PlaidSetupNotice";
 import { AccountsClient } from "./AccountsClient";
 
 export default function AccountsPage() {
@@ -14,6 +15,7 @@ export default function AccountsPage() {
           <h1 className="text-2xl font-bold text-neutral-900">Accounts</h1>
         </div>
       </div>
+      <PlaidSetupNotice />
       <AccountsClient initialSections={sections} />
     </div>
   );

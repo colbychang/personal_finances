@@ -36,6 +36,11 @@ interface Connection {
   accounts: PlaidAccount[];
 }
 
+interface SyncResultInfo {
+  status: "success" | "error";
+  message: string;
+}
+
 function getAccountIcon(type: string) {
   switch (type) {
     case "credit":
@@ -234,6 +239,9 @@ export function ConnectionsList() {
                       <h3 className="font-semibold text-neutral-900">
                         {conn.institutionName}
                       </h3>
+                      <p className="mt-0.5 text-xs text-neutral-500">
+                        {getConnectionSummary(conn)}
+                      </p>
                       <div className="flex items-center gap-2 mt-0.5">
                         <ConnectionStatus
                           lastSyncAt={conn.lastSyncAt}
@@ -327,6 +335,13 @@ export function ConnectionsList() {
                   </div>
                 )}
 
+                {!result && (
+                  <ConnectionGuidance
+                    connection={conn}
+                    isSyncing={isSyncing}
+                  />
+                )}
+
                 {/* Accounts List */}
                 {conn.accounts.length > 0 ? (
                   <div className="divide-y divide-neutral-50">
@@ -371,9 +386,55 @@ export function ConnectionsList() {
   );
 }
 
-interface SyncResultInfo {
-  status: "success" | "error";
-  message: string;
+function getConnectionSummary(connection: Connection) {
+  const accountCount = connection.accounts.length;
+  if (accountCount === 0) {
+    return "Connected with no linked accounts yet.";
+  }
+
+  return `${accountCount} linked account${accountCount === 1 ? "" : "s"}`;
+}
+
+function ConnectionGuidance({
+  connection,
+  isSyncing,
+}: {
+  connection: Connection;
+  isSyncing: boolean;
+}) {
+  if (isSyncing) {
+    return null;
+  }
+
+  if (connection.lastSyncStatus === "error" && connection.lastSyncError) {
+    const isPreparingTransactions =
+      connection.lastSyncError ===
+      "Transactions are still being loaded. Please try again in a few minutes.";
+
+    return (
+      <div className="px-4 py-2 text-xs flex items-center gap-2 bg-amber-50 text-amber-800">
+        <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+        <span>
+          {isPreparingTransactions
+            ? "Plaid is still preparing your history. Wait a few minutes, then sync again."
+            : connection.lastSyncError}
+        </span>
+      </div>
+    );
+  }
+
+  if (!connection.lastSyncAt) {
+    return (
+      <div className="px-4 py-2 text-xs flex items-center gap-2 bg-blue-50 text-blue-800">
+        <RefreshCw className="h-3.5 w-3.5 shrink-0" />
+        <span>
+          Run your first sync to import recent transactions for these accounts.
+        </span>
+      </div>
+    );
+  }
+
+  return null;
 }
 
 function ConnectionStatus({

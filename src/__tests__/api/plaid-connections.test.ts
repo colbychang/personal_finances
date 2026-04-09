@@ -88,7 +88,7 @@ describe("connections queries", () => {
 
     it("returns connections with linked accounts", () => {
       // Create a connection
-      createConnection(db, {
+      const connection = createConnection(db, {
         institutionName: "Test Bank",
         provider: "plaid",
         accessToken: "enc-token",
@@ -111,6 +111,7 @@ describe("connections queries", () => {
           balanceAvailable: 100000,
           isAsset: true,
         },
+        connection.id,
         "Test Bank"
       );
 
@@ -141,6 +142,69 @@ describe("connections queries", () => {
       const conns = getAllConnections(db);
       expect(conns).toHaveLength(2);
     });
+
+    it("keeps same-bank connections isolated", () => {
+      const firstConnection = createConnection(db, {
+        institutionName: "Shared Bank",
+        provider: "plaid",
+        accessToken: "enc-1",
+        itemId: "item-1",
+        isEncrypted: true,
+      });
+      const secondConnection = createConnection(db, {
+        institutionName: "Shared Bank",
+        provider: "plaid",
+        accessToken: "enc-2",
+        itemId: "item-2",
+        isEncrypted: true,
+      });
+
+      const instId = findOrCreatePlaidInstitution(db, "Shared Bank", "ins_shared");
+
+      createPlaidAccount(
+        db,
+        {
+          institutionId: instId,
+          externalRef: "shared-acct-1",
+          name: "Checking 1",
+          mask: "1111",
+          type: "checking",
+          subtype: "checking",
+          balanceCurrent: 100000,
+          balanceAvailable: 100000,
+          isAsset: true,
+        },
+        firstConnection.id,
+        "Shared Bank"
+      );
+      createPlaidAccount(
+        db,
+        {
+          institutionId: instId,
+          externalRef: "shared-acct-2",
+          name: "Checking 2",
+          mask: "2222",
+          type: "checking",
+          subtype: "checking",
+          balanceCurrent: 200000,
+          balanceAvailable: 200000,
+          isAsset: true,
+        },
+        secondConnection.id,
+        "Shared Bank"
+      );
+
+      const conns = getAllConnections(db);
+      expect(conns).toHaveLength(2);
+      expect(conns.find((conn) => conn.id === firstConnection.id)?.accounts).toHaveLength(1);
+      expect(conns.find((conn) => conn.id === firstConnection.id)?.accounts[0]?.name).toBe(
+        "Checking 1"
+      );
+      expect(conns.find((conn) => conn.id === secondConnection.id)?.accounts).toHaveLength(1);
+      expect(conns.find((conn) => conn.id === secondConnection.id)?.accounts[0]?.name).toBe(
+        "Checking 2"
+      );
+    });
   });
 
   describe("deleteConnection", () => {
@@ -168,6 +232,7 @@ describe("connections queries", () => {
           balanceAvailable: 50000,
           isAsset: true,
         },
+        conn.id,
         "Delete Bank"
       );
 
@@ -189,6 +254,70 @@ describe("connections queries", () => {
     it("returns false for non-existent connection", () => {
       const result = deleteConnection(db, 99999);
       expect(result).toBe(false);
+    });
+
+    it("only deletes accounts linked to the requested connection", () => {
+      const firstConnection = createConnection(db, {
+        institutionName: "Shared Delete Bank",
+        provider: "plaid",
+        accessToken: "enc-1",
+        itemId: "item-1",
+        isEncrypted: true,
+      });
+      const secondConnection = createConnection(db, {
+        institutionName: "Shared Delete Bank",
+        provider: "plaid",
+        accessToken: "enc-2",
+        itemId: "item-2",
+        isEncrypted: true,
+      });
+
+      const instId = findOrCreatePlaidInstitution(db, "Shared Delete Bank");
+
+      createPlaidAccount(
+        db,
+        {
+          institutionId: instId,
+          externalRef: "delete-shared-1",
+          name: "Account 1",
+          mask: "1111",
+          type: "checking",
+          subtype: "checking",
+          balanceCurrent: 10000,
+          balanceAvailable: 10000,
+          isAsset: true,
+        },
+        firstConnection.id,
+        "Shared Delete Bank"
+      );
+      const secondAccount = createPlaidAccount(
+        db,
+        {
+          institutionId: instId,
+          externalRef: "delete-shared-2",
+          name: "Account 2",
+          mask: "2222",
+          type: "checking",
+          subtype: "checking",
+          balanceCurrent: 20000,
+          balanceAvailable: 20000,
+          isAsset: true,
+        },
+        secondConnection.id,
+        "Shared Delete Bank"
+      );
+
+      expect(deleteConnection(db, firstConnection.id)).toBe(true);
+
+      const remainingAccounts = db.select().from(schema.accounts).all();
+      expect(remainingAccounts).toHaveLength(1);
+      expect(remainingAccounts[0]?.id).toBe(secondAccount.id);
+
+      const remainingLinks = db.select().from(schema.accountLinks).all();
+      expect(remainingLinks).toHaveLength(1);
+      expect(remainingLinks[0]?.accountId).toBe(secondAccount.id);
+
+      expect(getConnectionById(db, secondConnection.id)).not.toBeNull();
     });
   });
 
@@ -216,6 +345,13 @@ describe("connections queries", () => {
 
   describe("createPlaidAccount", () => {
     it("creates a new Plaid account with link", () => {
+      const connection = createConnection(db, {
+        institutionName: "Test Bank",
+        provider: "plaid",
+        accessToken: "enc-test",
+        itemId: "item-test",
+        isEncrypted: true,
+      });
       const instId = findOrCreatePlaidInstitution(db, "Test Bank");
       const account = createPlaidAccount(
         db,
@@ -230,6 +366,7 @@ describe("connections queries", () => {
           balanceAvailable: 250000,
           isAsset: true,
         },
+        connection.id,
         "Test Bank"
       );
 
@@ -243,9 +380,17 @@ describe("connections queries", () => {
       expect(links).toHaveLength(1);
       expect(links[0]!.externalKey).toBe("plaid-acct-new");
       expect(links[0]!.accountId).toBe(account.id);
+      expect(links[0]!.connectionId).toBe(connection.id);
     });
 
     it("updates balance for existing account (same externalRef)", () => {
+      const connection = createConnection(db, {
+        institutionName: "Test Bank",
+        provider: "plaid",
+        accessToken: "enc-test",
+        itemId: "item-test",
+        isEncrypted: true,
+      });
       const instId = findOrCreatePlaidInstitution(db, "Test Bank");
       const acct1 = createPlaidAccount(
         db,
@@ -260,6 +405,7 @@ describe("connections queries", () => {
           balanceAvailable: 100000,
           isAsset: true,
         },
+        connection.id,
         "Test Bank"
       );
 
@@ -277,6 +423,7 @@ describe("connections queries", () => {
           balanceAvailable: 200000,
           isAsset: true,
         },
+        connection.id,
         "Test Bank"
       );
 

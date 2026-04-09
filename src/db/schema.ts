@@ -113,6 +113,9 @@ export const accountLinks = sqliteTable("account_links", {
   id: integer().primaryKey({ autoIncrement: true }),
   provider: text().notNull(), // "plaid" | "csv"
   externalKey: text("external_key").notNull().unique(),
+  connectionId: integer("connection_id")
+    .notNull()
+    .references(() => connections.id),
   accountId: integer("account_id")
     .notNull()
     .references(() => accounts.id),

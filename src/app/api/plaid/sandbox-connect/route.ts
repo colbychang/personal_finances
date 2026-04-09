@@ -88,6 +88,7 @@ export async function POST() {
           balanceAvailable,
           isAsset,
         },
+        connection.id,
         institutionName
       );
 

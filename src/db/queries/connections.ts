@@ -40,7 +40,7 @@ export function getAllConnections(database: DB): ConnectionWithAccounts[] {
         displayName: schema.accountLinks.displayName,
       })
       .from(schema.accountLinks)
-      .where(eq(schema.accountLinks.institutionName, conn.institutionName))
+      .where(eq(schema.accountLinks.connectionId, conn.id))
       .all();
 
     // Get full account details for linked accounts
@@ -138,7 +138,7 @@ export function deleteConnection(database: DB, id: number): boolean {
   const links = database
     .select({ accountId: schema.accountLinks.accountId })
     .from(schema.accountLinks)
-    .where(eq(schema.accountLinks.institutionName, conn.institutionName))
+    .where(eq(schema.accountLinks.connectionId, conn.id))
     .all();
 
   const accountIds = links.map((l) => l.accountId);
@@ -146,7 +146,7 @@ export function deleteConnection(database: DB, id: number): boolean {
   // Delete account links
   database
     .delete(schema.accountLinks)
-    .where(eq(schema.accountLinks.institutionName, conn.institutionName))
+    .where(eq(schema.accountLinks.connectionId, conn.id))
     .run();
 
   // Delete transactions and splits for associated accounts
@@ -199,13 +199,36 @@ export function findOrCreatePlaidInstitution(
   name: string,
   plaidInstitutionId?: string
 ): number {
-  const existing = database
-    .select()
-    .from(schema.institutions)
-    .where(eq(schema.institutions.name, name))
-    .get();
+  const existing =
+    (plaidInstitutionId
+      ? database
+          .select()
+          .from(schema.institutions)
+          .where(eq(schema.institutions.plaidInstitutionId, plaidInstitutionId))
+          .get()
+      : null) ??
+    database
+      .select()
+      .from(schema.institutions)
+      .where(eq(schema.institutions.name, name))
+      .get();
 
-  if (existing) return existing.id;
+  if (existing) {
+    if (
+      existing.name !== name ||
+      existing.plaidInstitutionId !== (plaidInstitutionId ?? existing.plaidInstitutionId)
+    ) {
+      database
+        .update(schema.institutions)
+        .set({
+          name,
+          plaidInstitutionId: plaidInstitutionId ?? existing.plaidInstitutionId,
+        })
+        .where(eq(schema.institutions.id, existing.id))
+        .run();
+    }
+    return existing.id;
+  }
 
   const result = database
     .insert(schema.institutions)
@@ -239,6 +262,7 @@ export interface CreatePlaidAccountInput {
 export function createPlaidAccount(
   database: DB,
   input: CreatePlaidAccountInput,
+  connectionId: number,
   institutionName: string
 ): typeof schema.accounts.$inferSelect {
   // Check if account with this external ref already exists
@@ -249,52 +273,75 @@ export function createPlaidAccount(
     .get();
 
   if (existing) {
-    // Update balance
+    // Keep account details current in case Plaid metadata changes over time.
     database
       .update(schema.accounts)
       .set({
+        institutionId: input.institutionId,
+        name: input.name,
+        mask: input.mask,
+        type: input.type,
+        subtype: input.subtype,
         balanceCurrent: input.balanceCurrent,
         balanceAvailable: input.balanceAvailable,
+        isAsset: input.isAsset,
       })
       .where(eq(schema.accounts.id, existing.id))
       .run();
-
-    return database
-      .select()
-      .from(schema.accounts)
-      .where(eq(schema.accounts.id, existing.id))
-      .get()!;
   }
 
-  const account = database
-    .insert(schema.accounts)
-    .values({
-      institutionId: input.institutionId,
-      externalRef: input.externalRef,
-      name: input.name,
-      mask: input.mask,
-      type: input.type,
-      subtype: input.subtype,
-      balanceCurrent: input.balanceCurrent,
-      balanceAvailable: input.balanceAvailable,
-      isAsset: input.isAsset,
-      currency: "USD",
-      source: "plaid",
-    })
-    .returning()
+  const account = existing
+    ? database
+        .select()
+        .from(schema.accounts)
+        .where(eq(schema.accounts.id, existing.id))
+        .get()!
+    : database
+        .insert(schema.accounts)
+        .values({
+          institutionId: input.institutionId,
+          externalRef: input.externalRef,
+          name: input.name,
+          mask: input.mask,
+          type: input.type,
+          subtype: input.subtype,
+          balanceCurrent: input.balanceCurrent,
+          balanceAvailable: input.balanceAvailable,
+          isAsset: input.isAsset,
+          currency: "USD",
+          source: "plaid",
+        })
+        .returning()
+        .get();
+
+  const existingLink = database
+    .select({ id: schema.accountLinks.id })
+    .from(schema.accountLinks)
+    .where(eq(schema.accountLinks.externalKey, input.externalRef))
     .get();
 
-  // Create account link
-  database
-    .insert(schema.accountLinks)
-    .values({
-      provider: "plaid",
-      externalKey: input.externalRef,
-      accountId: account.id,
-      institutionName,
-      displayName: input.name,
-    })
-    .run();
+  const linkValues = {
+    provider: "plaid" as const,
+    externalKey: input.externalRef,
+    connectionId,
+    accountId: account.id,
+    institutionName,
+    displayName: input.name,
+    updatedAt: new Date().toISOString(),
+  };
+
+  if (existingLink) {
+    database
+      .update(schema.accountLinks)
+      .set(linkValues)
+      .where(eq(schema.accountLinks.id, existingLink.id))
+      .run();
+  } else {
+    database
+      .insert(schema.accountLinks)
+      .values(linkValues)
+      .run();
+  }
 
   return account;
 }
