@@ -1,5 +1,6 @@
 "use client";
 
+import { AppFooter } from "./AppFooter";
 import { Sidebar } from "./Sidebar";
 import { BottomTabBar } from "./BottomTabBar";
 
@@ -18,6 +19,7 @@ export function AppShell({ children }: AppShellProps) {
         <main className="flex-1 overflow-y-auto pb-20 md:pb-0">
           {children}
         </main>
+        <AppFooter />
       </div>
 
       {/* Mobile bottom tab bar */}

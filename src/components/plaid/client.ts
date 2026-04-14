@@ -2,6 +2,7 @@
 
 const PLAID_LINK_TOKEN_KEY = "plaid:link-token";
 const PLAID_RETURN_TO_KEY = "plaid:return-to";
+const PLAID_CONSENT_KEY = "plaid:consent-v1";
 
 interface ExchangeTokenInput {
   publicToken: string;
@@ -67,4 +68,14 @@ export function clearStoredPlaidState() {
   if (typeof window === "undefined") return;
   window.localStorage.removeItem(PLAID_LINK_TOKEN_KEY);
   window.localStorage.removeItem(PLAID_RETURN_TO_KEY);
+}
+
+export function hasStoredPlaidConsent() {
+  if (typeof window === "undefined") return false;
+  return window.localStorage.getItem(PLAID_CONSENT_KEY) === "accepted";
+}
+
+export function storePlaidConsentAccepted() {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(PLAID_CONSENT_KEY, "accepted");
 }
