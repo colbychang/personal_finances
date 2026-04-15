@@ -34,6 +34,8 @@ export interface SyncResult {
 
 interface TransactionForMatching {
   id: number;
+  accountId: number;
+  accountName: string;
   postedAt: string;
   amount: number;
   name: string;
@@ -80,6 +82,126 @@ function isVenmoInstitution(institutionName: string) {
   return normalizeText(institutionName).includes("venmo");
 }
 
+function textIncludesAny(text: string, values: string[]) {
+  return values.some((value) => value.length > 0 && text.includes(value));
+}
+
+function getSearchableTransactionText(transaction: TransactionForMatching) {
+  return [
+    transaction.name,
+    transaction.merchant,
+    transaction.accountName,
+    transaction.institutionName,
+  ]
+    .filter(Boolean)
+    .map((value) => normalizeText(value))
+    .join(" ");
+}
+
+function getInstitutionTokens(value: string) {
+  return normalizeText(value)
+    .split(/[^a-z0-9]+/)
+    .filter((token) => token.length >= 4);
+}
+
+function hasTransferKeyword(transaction: TransactionForMatching) {
+  const text = getSearchableTransactionText(transaction);
+  const keywords = [
+    "transfer",
+    "payment",
+    "thank you",
+    "deposit",
+    "withdrawal",
+    "funds trfr",
+    "online banking",
+    "epayment",
+    "pymt",
+    "billpay",
+  ];
+  const excludedKeywords = [
+    "interest",
+    "dividend",
+    "rebate",
+    "refund",
+    "cashback",
+  ];
+
+  return (
+    textIncludesAny(text, keywords) && !textIncludesAny(text, excludedKeywords)
+  );
+}
+
+function referencesCounterparty(
+  source: TransactionForMatching,
+  counterparty: TransactionForMatching
+) {
+  const sourceText = getSearchableTransactionText(source);
+  const institutionTokens = getInstitutionTokens(counterparty.institutionName);
+  const accountTokens = getInstitutionTokens(counterparty.accountName);
+
+  return textIncludesAny(sourceText, [...institutionTokens, ...accountTokens]);
+}
+
+function scoreInternalTransferMatch(
+  outgoing: TransactionForMatching,
+  incoming: TransactionForMatching
+) {
+  if (outgoing.id === incoming.id || outgoing.accountId === incoming.accountId) {
+    return -1;
+  }
+
+  if (outgoing.isTransfer || incoming.isTransfer) {
+    return -1;
+  }
+
+  if (outgoing.amount <= 0 || incoming.amount >= 0) {
+    return -1;
+  }
+
+  const dateDistance = Math.abs(
+    dayNumber(outgoing.postedAt) - dayNumber(incoming.postedAt)
+  );
+
+  if (dateDistance > 1) {
+    return -1;
+  }
+
+  if (outgoing.amount !== -incoming.amount) {
+    return -1;
+  }
+
+  let score = 0;
+
+  if (hasTransferKeyword(outgoing)) {
+    score += 2;
+  }
+
+  if (hasTransferKeyword(incoming)) {
+    score += 2;
+  }
+
+  if (referencesCounterparty(outgoing, incoming)) {
+    score += 3;
+  }
+
+  if (referencesCounterparty(incoming, outgoing)) {
+    score += 3;
+  }
+
+  if (
+    normalizeText(outgoing.institutionName) ===
+    normalizeText(incoming.institutionName)
+  ) {
+    score += 1;
+  }
+
+  if (dateDistance === 0) {
+    score += 1;
+  }
+
+  return score;
+}
+
 function isStandardTransferName(name: string) {
   return normalizeText(name).includes("standard transfer");
 }
@@ -114,6 +236,8 @@ function reconcileVenmoFundingDuplicates(database: DB) {
   const transactions = database
     .select({
       id: schema.transactions.id,
+      accountId: schema.transactions.accountId,
+      accountName: schema.accounts.name,
       postedAt: schema.transactions.postedAt,
       amount: schema.transactions.amount,
       name: schema.transactions.name,
@@ -190,6 +314,98 @@ function reconcileVenmoFundingDuplicates(database: DB) {
         notes: nextNote,
       })
       .where(eq(schema.transactions.id, bankTransaction.id))
+      .run();
+  }
+}
+
+function reconcileInternalAccountTransfers(database: DB) {
+  const transactions = database
+    .select({
+      id: schema.transactions.id,
+      accountId: schema.transactions.accountId,
+      accountName: schema.accounts.name,
+      postedAt: schema.transactions.postedAt,
+      amount: schema.transactions.amount,
+      name: schema.transactions.name,
+      merchant: schema.transactions.merchant,
+      notes: schema.transactions.notes,
+      institutionName: schema.institutions.name,
+      isTransfer: schema.transactions.isTransfer,
+    })
+    .from(schema.transactions)
+    .innerJoin(
+      schema.accounts,
+      eq(schema.transactions.accountId, schema.accounts.id)
+    )
+    .innerJoin(
+      schema.institutions,
+      eq(schema.accounts.institutionId, schema.institutions.id)
+    )
+    .all();
+
+  const outgoingTransactions = transactions
+    .filter((transaction) => transaction.amount > 0 && !transaction.isTransfer)
+    .sort((left, right) => {
+      if (left.postedAt !== right.postedAt) {
+        return left.postedAt < right.postedAt ? 1 : -1;
+      }
+      if (left.amount !== right.amount) {
+        return right.amount - left.amount;
+      }
+      return right.id - left.id;
+    });
+
+  const incomingTransactions = transactions.filter(
+    (transaction) => transaction.amount < 0 && !transaction.isTransfer
+  );
+  const matchedIncomingIds = new Set<number>();
+
+  for (const outgoing of outgoingTransactions) {
+    const candidates = incomingTransactions
+      .filter((incoming) => !matchedIncomingIds.has(incoming.id))
+      .map((incoming) => ({
+        incoming,
+        score: scoreInternalTransferMatch(outgoing, incoming),
+      }))
+      .filter(({ score }) => score >= 4)
+      .sort((left, right) => {
+        if (left.score !== right.score) {
+          return right.score - left.score;
+        }
+        return right.incoming.id - left.incoming.id;
+      });
+
+    const match = candidates[0]?.incoming;
+    if (!match) {
+      continue;
+    }
+
+    matchedIncomingIds.add(match.id);
+
+    const transferNote =
+      "Auto-marked as transfer to avoid counting a matched move between tracked accounts.";
+
+    const outgoingNote =
+      outgoing.notes?.trim().length ? outgoing.notes : transferNote;
+    const incomingNote =
+      match.notes?.trim().length ? match.notes : transferNote;
+
+    database
+      .update(schema.transactions)
+      .set({
+        isTransfer: true,
+        notes: outgoingNote,
+      })
+      .where(eq(schema.transactions.id, outgoing.id))
+      .run();
+
+    database
+      .update(schema.transactions)
+      .set({
+        isTransfer: true,
+        notes: incomingNote,
+      })
+      .where(eq(schema.transactions.id, match.id))
       .run();
   }
 }
@@ -338,6 +554,7 @@ export function syncTransactionsFromPlaid(
   }
 
   reconcileVenmoFundingDuplicates(database);
+  reconcileInternalAccountTransfers(database);
 
   return { added: addedCount, modified: modifiedCount, removed: removedCount };
 }

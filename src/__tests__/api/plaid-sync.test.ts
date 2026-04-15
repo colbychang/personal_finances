@@ -298,6 +298,317 @@ describe("syncTransactionsFromPlaid", () => {
     expect(venmoTxn!.isTransfer).toBe(false);
   });
 
+  it("marks matched transfers between tracked accounts as transfers", () => {
+    const alliantConnection = createConnection(db, {
+      institutionName: "Alliant Credit Union",
+      provider: "plaid",
+      accessToken: "encrypted-alliant-token",
+      itemId: "item-alliant",
+      isEncrypted: true,
+    });
+
+    const alliantInstitutionId = findOrCreatePlaidInstitution(
+      db,
+      "Alliant Credit Union",
+      "ins_alliant"
+    );
+
+    createPlaidAccount(
+      db,
+      {
+        institutionId: alliantInstitutionId,
+        externalRef: "alliant-checking-001",
+        name: "Checking",
+        mask: "1111",
+        type: "checking",
+        subtype: "checking",
+        balanceCurrent: 200000,
+        balanceAvailable: 200000,
+        isAsset: true,
+      },
+      alliantConnection.id,
+      "Alliant Credit Union"
+    );
+
+    const merrillConnection = createConnection(db, {
+      institutionName: "Merrill",
+      provider: "plaid",
+      accessToken: "encrypted-merrill-token",
+      itemId: "item-merrill",
+      isEncrypted: true,
+    });
+
+    const merrillInstitutionId = findOrCreatePlaidInstitution(
+      db,
+      "Merrill",
+      "ins_merrill"
+    );
+
+    createPlaidAccount(
+      db,
+      {
+        institutionId: merrillInstitutionId,
+        externalRef: "merrill-cma-001",
+        name: "CMA-Edge",
+        mask: "2222",
+        type: "checking",
+        subtype: "checking",
+        balanceCurrent: 500000,
+        balanceAvailable: 500000,
+        isAsset: true,
+      },
+      merrillConnection.id,
+      "Merrill"
+    );
+
+    syncTransactionsFromPlaid(db, alliantConnection.id, {
+      added: [
+        {
+          transaction_id: "alliant-transfer-001",
+          account_id: "alliant-checking-001",
+          amount: 1000,
+          date: "2026-04-01",
+          name: "Withdrawal Ach Merrill Lynch Type: Funds Trfr",
+          merchant_name: null,
+          pending: false,
+        },
+      ],
+      modified: [],
+      removed: [],
+    });
+
+    syncTransactionsFromPlaid(db, merrillConnection.id, {
+      added: [
+        {
+          transaction_id: "merrill-transfer-001",
+          account_id: "merrill-cma-001",
+          amount: -1000,
+          date: "2026-04-01",
+          name: "ALLIANT CREDIT UNION",
+          merchant_name: null,
+          pending: false,
+        },
+      ],
+      modified: [],
+      removed: [],
+    });
+
+    const alliantTxn = db
+      .select()
+      .from(schema.transactions)
+      .where(eq(schema.transactions.externalId, "alliant-transfer-001"))
+      .get();
+    const merrillTxn = db
+      .select()
+      .from(schema.transactions)
+      .where(eq(schema.transactions.externalId, "merrill-transfer-001"))
+      .get();
+
+    expect(alliantTxn?.isTransfer).toBe(true);
+    expect(merrillTxn?.isTransfer).toBe(true);
+    expect(alliantTxn?.notes).toContain("matched move between tracked accounts");
+    expect(merrillTxn?.notes).toContain("matched move between tracked accounts");
+  });
+
+  it("marks tracked-account transfers when the matching pair posts one day apart", () => {
+    const amexConnection = createConnection(db, {
+      institutionName: "American Express",
+      provider: "plaid",
+      accessToken: "encrypted-amex-token",
+      itemId: "item-amex",
+      isEncrypted: true,
+    });
+
+    const amexInstitutionId = findOrCreatePlaidInstitution(
+      db,
+      "American Express",
+      "ins_amex"
+    );
+
+    createPlaidAccount(
+      db,
+      {
+        institutionId: amexInstitutionId,
+        externalRef: "amex-checking-001",
+        name: "Rewards Checking",
+        mask: "5555",
+        type: "checking",
+        subtype: "checking",
+        balanceCurrent: 300000,
+        balanceAvailable: 300000,
+        isAsset: true,
+      },
+      amexConnection.id,
+      "American Express"
+    );
+
+    createPlaidAccount(
+      db,
+      {
+        institutionId: amexInstitutionId,
+        externalRef: "amex-card-001",
+        name: "American Express Gold Card",
+        mask: "6666",
+        type: "credit",
+        subtype: "credit card",
+        balanceCurrent: -150000,
+        balanceAvailable: null,
+        isAsset: false,
+      },
+      amexConnection.id,
+      "American Express"
+    );
+
+    syncTransactionsFromPlaid(db, amexConnection.id, {
+      added: [
+        {
+          transaction_id: "amex-checking-transfer-001",
+          account_id: "amex-checking-001",
+          amount: 1430.65,
+          date: "2026-04-07",
+          name: "Online Transfer / Payment: Debit",
+          merchant_name: null,
+          pending: false,
+        },
+        {
+          transaction_id: "amex-card-payment-001",
+          account_id: "amex-card-001",
+          amount: -1430.65,
+          date: "2026-04-06",
+          name: "ONLINE PAYMENT - THANK YOU",
+          merchant_name: null,
+          pending: false,
+        },
+      ],
+      modified: [],
+      removed: [],
+    });
+
+    const checkingTxn = db
+      .select()
+      .from(schema.transactions)
+      .where(eq(schema.transactions.externalId, "amex-checking-transfer-001"))
+      .get();
+    const cardTxn = db
+      .select()
+      .from(schema.transactions)
+      .where(eq(schema.transactions.externalId, "amex-card-payment-001"))
+      .get();
+
+    expect(checkingTxn?.isTransfer).toBe(true);
+    expect(cardTxn?.isTransfer).toBe(true);
+  });
+
+  it("does not mark same-day equal-and-opposite amounts as transfers without transfer clues", () => {
+    const firstConnection = createConnection(db, {
+      institutionName: "Wealthfront",
+      provider: "plaid",
+      accessToken: "encrypted-wealthfront-token",
+      itemId: "item-wealthfront",
+      isEncrypted: true,
+    });
+
+    const firstInstitutionId = findOrCreatePlaidInstitution(
+      db,
+      "Wealthfront",
+      "ins_wealthfront"
+    );
+
+    createPlaidAccount(
+      db,
+      {
+        institutionId: firstInstitutionId,
+        externalRef: "wealthfront-acct-001",
+        name: "Cash Account",
+        mask: "3333",
+        type: "checking",
+        subtype: "checking",
+        balanceCurrent: 100000,
+        balanceAvailable: 100000,
+        isAsset: true,
+      },
+      firstConnection.id,
+      "Wealthfront"
+    );
+
+    const secondConnection = createConnection(db, {
+      institutionName: "Capital One",
+      provider: "plaid",
+      accessToken: "encrypted-capital-one-token",
+      itemId: "item-capital-one",
+      isEncrypted: true,
+    });
+
+    const secondInstitutionId = findOrCreatePlaidInstitution(
+      db,
+      "Capital One",
+      "ins_capital_one"
+    );
+
+    createPlaidAccount(
+      db,
+      {
+        institutionId: secondInstitutionId,
+        externalRef: "capital-one-acct-001",
+        name: "Checking",
+        mask: "4444",
+        type: "checking",
+        subtype: "checking",
+        balanceCurrent: 100000,
+        balanceAvailable: 100000,
+        isAsset: true,
+      },
+      secondConnection.id,
+      "Capital One"
+    );
+
+    syncTransactionsFromPlaid(db, firstConnection.id, {
+      added: [
+        {
+          transaction_id: "wf-normal-expense",
+          account_id: "wealthfront-acct-001",
+          amount: 42.5,
+          date: "2026-04-02",
+          name: "Coffee Shop",
+          merchant_name: "Blue Bottle",
+          pending: false,
+        },
+      ],
+      modified: [],
+      removed: [],
+    });
+
+    syncTransactionsFromPlaid(db, secondConnection.id, {
+      added: [
+        {
+          transaction_id: "capital-income",
+          account_id: "capital-one-acct-001",
+          amount: -42.5,
+          date: "2026-04-02",
+          name: "Friend reimbursement",
+          merchant_name: null,
+          pending: false,
+        },
+      ],
+      modified: [],
+      removed: [],
+    });
+
+    const wealthfrontTxn = db
+      .select()
+      .from(schema.transactions)
+      .where(eq(schema.transactions.externalId, "wf-normal-expense"))
+      .get();
+    const capitalTxn = db
+      .select()
+      .from(schema.transactions)
+      .where(eq(schema.transactions.externalId, "capital-income"))
+      .get();
+
+    expect(wealthfrontTxn?.isTransfer).toBe(false);
+    expect(capitalTxn?.isTransfer).toBe(false);
+  });
+
   it("handles modified transactions by updating existing records", () => {
     const { conn } = setupConnectionWithAccount();
 
