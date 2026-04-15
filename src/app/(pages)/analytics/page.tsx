@@ -1,9 +1,15 @@
 import { BarChart3 } from "lucide-react";
 import { db } from "@/db/index";
 import { getSpendingByCategory, getMonthlySpendingTrends } from "@/db/queries/analytics";
+import { PublicProfileNotice } from "@/components/public/PublicProfileNotice";
+import { isPublicProfileMode } from "@/lib/deployment";
 import { AnalyticsClient } from "./AnalyticsClient";
 
 export default function AnalyticsPage() {
+  if (isPublicProfileMode()) {
+    return <PublicProfileNotice />;
+  }
+
   // Default period: current month
   const now = new Date();
   const currentYear = now.getFullYear();

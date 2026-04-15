@@ -1,5 +1,6 @@
 "use client";
 
+import { isPublicProfileMode } from "@/lib/deployment";
 import { AppFooter } from "./AppFooter";
 import { Sidebar } from "./Sidebar";
 import { BottomTabBar } from "./BottomTabBar";
@@ -9,13 +10,15 @@ interface AppShellProps {
 }
 
 export function AppShell({ children }: AppShellProps) {
+  const publicProfileMode = isPublicProfileMode();
+
   return (
     <>
       {/* Desktop sidebar */}
-      <Sidebar />
+      {!publicProfileMode && <Sidebar />}
 
       {/* Main content area */}
-      <div className="md:pl-60 flex flex-col min-h-screen">
+      <div className={publicProfileMode ? "flex flex-col min-h-screen" : "md:pl-60 flex flex-col min-h-screen"}>
         <main className="flex-1 overflow-y-auto pb-20 md:pb-0">
           {children}
         </main>
@@ -23,7 +26,7 @@ export function AppShell({ children }: AppShellProps) {
       </div>
 
       {/* Mobile bottom tab bar */}
-      <BottomTabBar />
+      {!publicProfileMode && <BottomTabBar />}
     </>
   );
 }

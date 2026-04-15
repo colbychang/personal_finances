@@ -1,9 +1,15 @@
 import { Upload } from "lucide-react";
 import { db } from "@/db/index";
 import { getAccountsForFilter } from "@/db/queries/transactions";
+import { PublicProfileNotice } from "@/components/public/PublicProfileNotice";
+import { isPublicProfileMode } from "@/lib/deployment";
 import { ImportClient } from "./ImportClient";
 
 export default function ImportPage() {
+  if (isPublicProfileMode()) {
+    return <PublicProfileNotice />;
+  }
+
   const accounts = getAccountsForFilter(db);
 
   return (

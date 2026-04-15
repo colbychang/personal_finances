@@ -65,6 +65,14 @@ In Vercel:
 At minimum, set the environment variables you need for the routes you intend to
 use. For the public Glacier landing page alone, none are strictly required.
 
+For a public-profile-only Vercel deployment, set:
+
+- `PUBLIC_PROFILE_ONLY=1`
+
+This disables the DB-backed finance pages during prerender so Vercel can build
+the public profile, privacy, and policy pages without requiring the local
+SQLite database.
+
 If you later expose Plaid flows through the deployed site, configure:
 
 - `PLAID_CLIENT_ID`

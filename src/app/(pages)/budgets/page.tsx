@@ -2,9 +2,15 @@ import { PiggyBank } from "lucide-react";
 import { db } from "@/db/index";
 import { getBudgetsForMonth } from "@/db/queries/budgets";
 import { getAllCategories } from "@/db/queries/categories";
+import { PublicProfileNotice } from "@/components/public/PublicProfileNotice";
+import { isPublicProfileMode } from "@/lib/deployment";
 import { BudgetsClient } from "./BudgetsClient";
 
 export default function BudgetsPage() {
+  if (isPublicProfileMode()) {
+    return <PublicProfileNotice />;
+  }
+
   // Default to current month
   const currentMonth = new Date().toISOString().slice(0, 7); // YYYY-MM
 

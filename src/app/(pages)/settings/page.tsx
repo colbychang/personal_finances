@@ -5,8 +5,14 @@ import { CategoriesManager } from "@/components/categories/CategoriesManager";
 import { ConnectionsList } from "@/components/plaid/ConnectionsList";
 import { PlaidSetupNotice } from "@/components/plaid/PlaidSetupNotice";
 import { MerchantRulesManager } from "@/components/merchant-rules/MerchantRulesManager";
+import { PublicProfileNotice } from "@/components/public/PublicProfileNotice";
+import { isPublicProfileMode } from "@/lib/deployment";
 
 export default function SettingsPage() {
+  if (isPublicProfileMode()) {
+    return <PublicProfileNotice />;
+  }
+
   const categories = getAllCategories(db);
 
   return (

@@ -1,9 +1,15 @@
 import { TrendingUp } from "lucide-react";
 import { db } from "@/db/index";
 import { getAllSnapshots, getAccountBalanceHistory, getLiveNetWorth } from "@/db/queries/snapshots";
+import { PublicProfileNotice } from "@/components/public/PublicProfileNotice";
+import { isPublicProfileMode } from "@/lib/deployment";
 import { NetWorthClient } from "./NetWorthClient";
 
 export default function NetWorthPage() {
+  if (isPublicProfileMode()) {
+    return <PublicProfileNotice />;
+  }
+
   const snapshots = getAllSnapshots(db);
   const accountHistory = getAccountBalanceHistory(db);
   const liveNetWorth = getLiveNetWorth(db);

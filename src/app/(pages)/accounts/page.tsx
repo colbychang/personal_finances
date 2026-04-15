@@ -2,9 +2,15 @@ import { Landmark } from "lucide-react";
 import { db } from "@/db/index";
 import { getAllAccountsGrouped } from "@/db/queries/accounts";
 import { PlaidSetupNotice } from "@/components/plaid/PlaidSetupNotice";
+import { PublicProfileNotice } from "@/components/public/PublicProfileNotice";
+import { isPublicProfileMode } from "@/lib/deployment";
 import { AccountsClient } from "./AccountsClient";
 
 export default function AccountsPage() {
+  if (isPublicProfileMode()) {
+    return <PublicProfileNotice />;
+  }
+
   const sections = getAllAccountsGrouped(db);
 
   return (

@@ -2,9 +2,15 @@ import { ArrowLeftRight } from "lucide-react";
 import { db } from "@/db/index";
 import { getTransactions, getAccountsForFilter } from "@/db/queries/transactions";
 import { getAllCategories } from "@/db/queries/categories";
+import { PublicProfileNotice } from "@/components/public/PublicProfileNotice";
+import { isPublicProfileMode } from "@/lib/deployment";
 import { TransactionsClient } from "./TransactionsClient";
 
 export default function TransactionsPage() {
+  if (isPublicProfileMode()) {
+    return <PublicProfileNotice />;
+  }
+
   // Fetch initial data server-side
   const initialData = getTransactions(db, { page: 1, limit: 20 });
   const accounts = getAccountsForFilter(db);

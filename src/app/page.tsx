@@ -1,9 +1,15 @@
 import { LayoutDashboard } from "lucide-react";
 import { db } from "@/db/index";
 import { getDashboardData } from "@/db/queries/dashboard";
+import { PublicProfileNotice } from "@/components/public/PublicProfileNotice";
+import { isPublicProfileMode } from "@/lib/deployment";
 import { DashboardClient } from "./DashboardClient";
 
 export default function DashboardPage() {
+  if (isPublicProfileMode()) {
+    return <PublicProfileNotice />;
+  }
+
   const currentMonth = new Date().toISOString().slice(0, 7);
   const data = getDashboardData(db, currentMonth);
 
