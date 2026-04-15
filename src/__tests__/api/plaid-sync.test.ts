@@ -184,6 +184,120 @@ describe("syncTransactionsFromPlaid", () => {
     expect(txnA.accountId).not.toBe(txnB.accountId);
   });
 
+  it("marks duplicate bank-side Venmo funding pulls as transfers when a matching Venmo payment exists", () => {
+    const bankConnection = createConnection(db, {
+      institutionName: "Wealthfront",
+      provider: "plaid",
+      accessToken: "encrypted-bank-token",
+      itemId: "item-bank",
+      isEncrypted: true,
+    });
+
+    const bankInstitutionId = findOrCreatePlaidInstitution(
+      db,
+      "Wealthfront",
+      "ins_bank"
+    );
+
+    createPlaidAccount(
+      db,
+      {
+        institutionId: bankInstitutionId,
+        externalRef: "wf-acct-001",
+        name: "Cash Account",
+        mask: "1234",
+        type: "checking",
+        subtype: "checking",
+        balanceCurrent: 100000,
+        balanceAvailable: 100000,
+        isAsset: true,
+      },
+      bankConnection.id,
+      "Wealthfront"
+    );
+
+    const venmoConnection = createConnection(db, {
+      institutionName: "Venmo - Personal",
+      provider: "plaid",
+      accessToken: "encrypted-venmo-token",
+      itemId: "item-venmo",
+      isEncrypted: true,
+    });
+
+    const venmoInstitutionId = findOrCreatePlaidInstitution(
+      db,
+      "Venmo - Personal",
+      "ins_venmo"
+    );
+
+    createPlaidAccount(
+      db,
+      {
+        institutionId: venmoInstitutionId,
+        externalRef: "venmo-acct-001",
+        name: "Personal Profile",
+        mask: "5678",
+        type: "checking",
+        subtype: "checking",
+        balanceCurrent: 50000,
+        balanceAvailable: 50000,
+        isAsset: true,
+      },
+      venmoConnection.id,
+      "Venmo - Personal"
+    );
+
+    syncTransactionsFromPlaid(db, venmoConnection.id, {
+      added: [
+        {
+          transaction_id: "venmo-payment-001",
+          account_id: "venmo-acct-001",
+          amount: 127.0,
+          date: "2026-04-13",
+          name: 'Max Fu "Dodgers giants"',
+          merchant_name: null,
+          pending: false,
+        },
+      ],
+      modified: [],
+      removed: [],
+    });
+
+    syncTransactionsFromPlaid(db, bankConnection.id, {
+      added: [
+        {
+          transaction_id: "bank-venmo-001",
+          account_id: "wf-acct-001",
+          amount: 127.0,
+          date: "2026-04-14",
+          name: "Venmo",
+          merchant_name: null,
+          pending: false,
+        },
+      ],
+      modified: [],
+      removed: [],
+    });
+
+    const bankTxn = db
+      .select()
+      .from(schema.transactions)
+      .where(eq(schema.transactions.externalId, "bank-venmo-001"))
+      .get();
+
+    const venmoTxn = db
+      .select()
+      .from(schema.transactions)
+      .where(eq(schema.transactions.externalId, "venmo-payment-001"))
+      .get();
+
+    expect(bankTxn).not.toBeNull();
+    expect(venmoTxn).not.toBeNull();
+    expect(bankTxn!.isTransfer).toBe(true);
+    expect(bankTxn!.notes).toContain("Auto-marked as transfer");
+    expect(venmoTxn!.isTransfer).toBe(false);
+  });
+
   it("handles modified transactions by updating existing records", () => {
     const { conn } = setupConnectionWithAccount();
 

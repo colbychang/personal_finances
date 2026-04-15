@@ -23,6 +23,7 @@ export async function GET(request: NextRequest) {
     const categoryParam = searchParams.get("category") ?? undefined;
     const accountIdParam = searchParams.get("accountId") ?? undefined;
     const search = searchParams.get("search") ?? undefined;
+    const needsReviewParam = searchParams.get("needsReview") ?? undefined;
     const pageParam = searchParams.get("page") ?? undefined;
     const limitParam = searchParams.get("limit") ?? undefined;
 
@@ -63,6 +64,8 @@ export async function GET(request: NextRequest) {
     // Parse pagination
     const page = pageParam ? parseInt(pageParam, 10) : undefined;
     const limit = limitParam ? parseInt(limitParam, 10) : undefined;
+    const needsReview =
+      needsReviewParam === "1" || needsReviewParam === "true";
 
     const result = getTransactions(db, {
       dateFrom,
@@ -70,6 +73,7 @@ export async function GET(request: NextRequest) {
       category,
       accountId,
       search,
+      needsReview,
       page: isNaN(page as number) ? undefined : page,
       limit: isNaN(limit as number) ? undefined : limit,
     });

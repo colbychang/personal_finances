@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Privacy Policy | Personal Finance Tracker",
-  description: "Privacy Policy for Personal Finance Tracker",
+  title: "Privacy Policy | Glacier Finance Tracker",
+  description: "Privacy Policy for Glacier Finance Tracker",
 };
 
 function Section({
@@ -36,7 +36,7 @@ export default function PrivacyPolicyPage() {
 
       <Section title="Overview">
         <p>
-          This Privacy Policy describes how Personal Finance Tracker collects,
+          This Privacy Policy describes how Glacier Finance Tracker collects,
           uses, stores, and deletes information when you choose to connect
           financial accounts or otherwise use the application.
         </p>

@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Data Deletion & Retention Policy | Personal Finance Tracker",
-  description: "Data Deletion and Retention Policy for Personal Finance Tracker",
+  title: "Data Deletion & Retention Policy | Glacier Finance Tracker",
+  description: "Data Deletion and Retention Policy for Glacier Finance Tracker",
 };
 
 function Section({
@@ -36,7 +36,7 @@ export default function DataPolicyPage() {
 
       <Section title="Retention Approach">
         <p>
-          Personal Finance Tracker retains connected account and transaction
+          Glacier Finance Tracker retains connected account and transaction
           data while a Plaid connection remains active so the application can
           provide account views, budgeting, analytics, net worth, and related
           history.

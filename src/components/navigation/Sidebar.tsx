@@ -1,9 +1,10 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { sidebarLinks } from "./nav-links";
+import { AppBrand } from "./AppBrand";
+import Link from "next/link";
 
 export function Sidebar() {
   const pathname = usePathname();
@@ -12,9 +13,7 @@ export function Sidebar() {
     <aside className="hidden md:flex md:w-60 md:flex-col md:fixed md:inset-y-0 bg-white border-r border-neutral-200">
       {/* Logo / App Name */}
       <div className="flex items-center h-16 px-6 border-b border-neutral-200">
-        <h1 className="text-lg font-bold text-primary truncate">
-          Finance Tracker
-        </h1>
+        <AppBrand />
       </div>
 
       {/* Navigation links */}

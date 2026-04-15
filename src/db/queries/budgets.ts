@@ -1,4 +1,4 @@
-import { eq, and, gte, lt, inArray } from "drizzle-orm";
+import { eq, and, gte, lt, inArray, desc, sql, isNull } from "drizzle-orm";
 import type { drizzle } from "drizzle-orm/better-sqlite3";
 import * as schema from "../schema";
 
@@ -33,6 +33,21 @@ export interface BudgetSummary {
   totalBudgeted: number; // cents
   totalSpent: number; // cents
   totalRemaining: number; // cents
+  reviewSummary: ReviewSummary;
+}
+
+export interface ReviewTransaction {
+  id: number;
+  postedAt: string;
+  name: string;
+  amount: number;
+  accountName: string;
+}
+
+export interface ReviewSummary {
+  uncategorizedCount: number;
+  uncategorizedAmount: number;
+  transactions: ReviewTransaction[];
 }
 
 // ─── Query Functions ────────────────────────────────────────────────────
@@ -45,7 +60,18 @@ export interface BudgetSummary {
 export function getBudgetsForMonth(database: DB, month: string): BudgetSummary {
   // Validate month format YYYY-MM
   if (!/^\d{4}-\d{2}$/.test(month)) {
-    return { budgets: [], unbudgeted: [], totalBudgeted: 0, totalSpent: 0, totalRemaining: 0 };
+    return {
+      budgets: [],
+      unbudgeted: [],
+      totalBudgeted: 0,
+      totalSpent: 0,
+      totalRemaining: 0,
+      reviewSummary: {
+        uncategorizedCount: 0,
+        uncategorizedAmount: 0,
+        transactions: [],
+      },
+    };
   }
 
   // Calculate date range for the month
@@ -109,7 +135,61 @@ export function getBudgetsForMonth(database: DB, month: string): BudgetSummary {
     unbudgeted.reduce((sum, u) => sum + u.spent, 0);
   const totalRemaining = totalBudgeted - budgets.reduce((sum, b) => sum + b.spent, 0);
 
-  return { budgets, unbudgeted, totalBudgeted, totalSpent, totalRemaining };
+  const uncategorizedSummary = database
+    .select({
+      count: sql<number>`count(*)`,
+      amount: sql<number>`coalesce(sum(${schema.transactions.amount}), 0)`,
+    })
+    .from(schema.transactions)
+    .where(
+      and(
+        gte(schema.transactions.postedAt, startDate),
+        lt(schema.transactions.postedAt, endDate),
+        eq(schema.transactions.isTransfer, false),
+        isNull(schema.transactions.category),
+        sql`${schema.transactions.amount} > 0`
+      )
+    )
+    .get();
+
+  const reviewTransactions = database
+    .select({
+      id: schema.transactions.id,
+      postedAt: schema.transactions.postedAt,
+      name: schema.transactions.name,
+      amount: schema.transactions.amount,
+      accountName: schema.accounts.name,
+    })
+    .from(schema.transactions)
+    .innerJoin(
+      schema.accounts,
+      eq(schema.transactions.accountId, schema.accounts.id)
+    )
+    .where(
+      and(
+        gte(schema.transactions.postedAt, startDate),
+        lt(schema.transactions.postedAt, endDate),
+        eq(schema.transactions.isTransfer, false),
+        isNull(schema.transactions.category),
+        sql`${schema.transactions.amount} > 0`
+      )
+    )
+    .orderBy(desc(schema.transactions.postedAt), desc(schema.transactions.id))
+    .limit(5)
+    .all();
+
+  return {
+    budgets,
+    unbudgeted,
+    totalBudgeted,
+    totalSpent,
+    totalRemaining,
+    reviewSummary: {
+      uncategorizedCount: uncategorizedSummary?.count ?? 0,
+      uncategorizedAmount: uncategorizedSummary?.amount ?? 0,
+      transactions: reviewTransactions,
+    },
+  };
 }
 
 /**

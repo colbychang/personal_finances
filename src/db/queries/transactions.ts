@@ -1,4 +1,4 @@
-import { eq, and, gte, lte, like, or, desc, sql, inArray } from "drizzle-orm";
+import { eq, and, gte, lte, like, or, desc, sql, inArray, isNull } from "drizzle-orm";
 import type { drizzle } from "drizzle-orm/better-sqlite3";
 import * as schema from "../schema";
 
@@ -27,6 +27,7 @@ export interface TransactionFilters {
   category?: string | string[];
   accountId?: number;
   search?: string;
+  needsReview?: boolean;
   page?: number;
   limit?: number;
 }
@@ -144,6 +145,12 @@ function buildWhereConditions(filters: TransactionFilters) {
         like(schema.transactions.notes, searchTerm)
       )!
     );
+  }
+
+  if (filters.needsReview) {
+    conditions.push(eq(schema.transactions.isTransfer, false));
+    conditions.push(isNull(schema.transactions.category));
+    conditions.push(sql`${schema.transactions.amount} > 0`);
   }
 
   return conditions;

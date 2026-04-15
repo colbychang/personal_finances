@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
   DollarSign,
   TrendingUp,
@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { formatCurrency, formatDate, formatMonth } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { subscribeToFinanceDataChanged } from "@/lib/client-events";
 import {
   AreaChart,
   Area,
@@ -672,6 +673,18 @@ export function DashboardClient({
       setIsLoading(false);
     }
   }, []);
+
+  useEffect(() => {
+    return subscribeToFinanceDataChanged(() => {
+      void fetchData(month);
+    });
+  }, [fetchData, month]);
+
+  useEffect(() => {
+    if (month === initialMonth) {
+      setData(initialData);
+    }
+  }, [initialData, initialMonth, month]);
 
   function handlePrevMonth() {
     const prev = navigateMonth(month, -1);

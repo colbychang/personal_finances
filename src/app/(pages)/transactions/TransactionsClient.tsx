@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useRouter } from "next/navigation";
 import {
   Search,
   SlidersHorizontal,
@@ -17,8 +18,10 @@ import {
   Sparkles,
   Loader2,
   RefreshCw,
+  AlertCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { subscribeToFinanceDataChanged } from "@/lib/client-events";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { CategorySelect } from "@/components/categories/CategorySelect";
 import { useToast } from "@/components/ui/Toast";
@@ -68,6 +71,7 @@ interface TransactionsClientProps {
   initialData: PaginatedResult;
   accounts: AccountOption[];
   categoryColors: CategoryColor[];
+  initialNeedsReview?: boolean;
 }
 
 // ─── Constants ──────────────────────────────────────────────────────────
@@ -80,8 +84,10 @@ export function TransactionsClient({
   initialData,
   accounts,
   categoryColors,
+  initialNeedsReview = false,
 }: TransactionsClientProps) {
   const { showToast } = useToast();
+  const router = useRouter();
 
   // Filter state
   const [search, setSearch] = useState("");
@@ -89,6 +95,7 @@ export function TransactionsClient({
   const [dateTo, setDateTo] = useState("");
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState("");
+  const [needsReviewOnly, setNeedsReviewOnly] = useState(initialNeedsReview);
   const [page, setPage] = useState(1);
 
   // Data state
@@ -132,12 +139,13 @@ export function TransactionsClient({
       }
       if (selectedAccountId) params.set("accountId", selectedAccountId);
       if (searchVal) params.set("search", searchVal);
+      if (needsReviewOnly) params.set("needsReview", "1");
       params.set("page", String(pageVal));
       params.set("limit", String(PAGE_LIMIT));
 
       return params.toString();
     },
-    [search, dateFrom, dateTo, selectedCategories, selectedAccountId, page]
+    [search, dateFrom, dateTo, selectedCategories, selectedAccountId, needsReviewOnly, page]
   );
 
   // Fetch transactions from API
@@ -160,15 +168,24 @@ export function TransactionsClient({
     [buildQueryString]
   );
 
+  useEffect(() => {
+    return subscribeToFinanceDataChanged(() => {
+      void fetchTransactions({ pageOverride: page });
+      router.refresh();
+    });
+  }, [fetchTransactions, page, router]);
+
   // Re-fetch when filters change (not search - that uses debounce)
   useEffect(() => {
     if (isFirstRender.current) {
       isFirstRender.current = false;
-      return;
+      if (!needsReviewOnly) {
+        return;
+      }
     }
     fetchTransactions({ pageOverride: page });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dateFrom, dateTo, selectedCategories, selectedAccountId, page]);
+  }, [dateFrom, dateTo, selectedCategories, selectedAccountId, needsReviewOnly, page]);
 
   // Debounced search
   function handleSearchChange(value: string) {
@@ -193,6 +210,7 @@ export function TransactionsClient({
     setDateTo("");
     setSelectedCategories([]);
     setSelectedAccountId("");
+    setNeedsReviewOnly(false);
     setPage(1);
     // fetch with empty filters
     setTimeout(() => {
@@ -204,7 +222,7 @@ export function TransactionsClient({
   }
 
   const hasActiveFilters =
-    search || dateFrom || dateTo || selectedCategories.length > 0 || selectedAccountId;
+    search || dateFrom || dateTo || selectedCategories.length > 0 || selectedAccountId || needsReviewOnly;
 
   // Get category color by name
   function getCategoryColor(categoryName: string | null): string {
@@ -416,6 +434,22 @@ export function TransactionsClient({
         >
           <Plus className="h-4 w-4" />
           <span className="hidden sm:inline">Add Transaction</span>
+        </button>
+
+        <button
+          onClick={() => {
+            applyFilter(() => setNeedsReviewOnly((prev) => !prev));
+          }}
+          className={cn(
+            "inline-flex items-center gap-2 px-4 py-2.5 rounded-[var(--radius-button)] font-medium transition-colors min-h-[44px] flex-shrink-0 border",
+            needsReviewOnly
+              ? "border-amber-300 bg-amber-50 text-amber-900"
+              : "border-neutral-300 bg-white text-neutral-700 hover:bg-neutral-50"
+          )}
+          title="Show uncategorized, non-transfer expense transactions"
+        >
+          <AlertCircle className="h-4 w-4" />
+          <span className="hidden sm:inline">Needs Review</span>
         </button>
 
         {/* Categorize All Button */}
@@ -631,6 +665,18 @@ export function TransactionsClient({
                   ))}
                 </select>
               </div>
+
+              <label className="flex items-center gap-3 rounded-[var(--radius-button)] border border-neutral-200 px-3 py-3">
+                <input
+                  type="checkbox"
+                  checked={needsReviewOnly}
+                  onChange={(e) => setNeedsReviewOnly(e.target.checked)}
+                  className="h-4 w-4 rounded border-neutral-300 text-primary focus:ring-primary"
+                />
+                <span className="text-sm text-neutral-700">
+                  Needs review only
+                </span>
+              </label>
             </div>
 
             {/* Actions */}

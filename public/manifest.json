@@ -1,7 +1,7 @@
 {
-  "name": "Personal Finance Tracker",
-  "short_name": "Finances",
-  "description": "Track your spending, budgets, and net worth",
+  "name": "Glacier Finance Tracker",
+  "short_name": "Glacier",
+  "description": "Track your spending, budgets, and net worth with Glacier",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#f8fafc",

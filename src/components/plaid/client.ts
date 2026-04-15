@@ -17,6 +17,25 @@ interface ExchangeTokenInput {
   }>;
 }
 
+export interface SyncPlaidConnectionResult {
+  success: boolean;
+  added: number;
+  modified: number;
+  removed: number;
+  cursor: string;
+}
+
+interface SyncError extends Error {
+  retryable?: boolean;
+  errorCode?: string;
+}
+
+interface SyncPlaidConnectionOptions {
+  maxRetries?: number;
+  retryDelayMs?: number;
+  onRetry?: (attempt: number, error: SyncError) => void;
+}
+
 export async function exchangePublicToken(input: ExchangeTokenInput) {
   const response = await fetch("/api/plaid/exchange-token", {
     method: "POST",
@@ -36,6 +55,73 @@ export async function exchangePublicToken(input: ExchangeTokenInput) {
   }
 
   return data;
+}
+
+function createSyncError(
+  message: string,
+  retryable?: boolean,
+  errorCode?: string
+): SyncError {
+  const error = new Error(message) as SyncError;
+  error.retryable = retryable;
+  error.errorCode = errorCode;
+  return error;
+}
+
+export async function syncPlaidConnection(
+  connectionId: number
+): Promise<SyncPlaidConnectionResult> {
+  const response = await fetch("/api/plaid/sync", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ connectionId }),
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw createSyncError(
+      data.error || "Failed to sync transactions",
+      data.retryable,
+      data.errorCode
+    );
+  }
+
+  return data as SyncPlaidConnectionResult;
+}
+
+function wait(ms: number) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
+export async function syncPlaidConnectionWithRetry(
+  connectionId: number,
+  options: SyncPlaidConnectionOptions = {}
+): Promise<SyncPlaidConnectionResult> {
+  const maxRetries = options.maxRetries ?? 4;
+  const retryDelayMs = options.retryDelayMs ?? 5000;
+  let attempt = 0;
+
+  while (true) {
+    try {
+      return await syncPlaidConnection(connectionId);
+    } catch (error) {
+      const syncError =
+        error instanceof Error
+          ? (error as SyncError)
+          : createSyncError("Failed to sync transactions");
+
+      if (!syncError.retryable || attempt >= maxRetries) {
+        throw syncError;
+      }
+
+      attempt += 1;
+      options.onRetry?.(attempt, syncError);
+      await wait(retryDelayMs * attempt);
+    }
+  }
 }
 
 export function storePlaidLinkToken(linkToken: string | null) {

@@ -8,13 +8,21 @@ import {
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Personal Finance Tracker",
-  description: "Track your spending, budgets, and net worth",
+  title: "Glacier Finance Tracker",
+  description: "Track your spending, budgets, and net worth with Glacier",
   manifest: "/manifest.json",
+  icons: {
+    icon: [
+      { url: "/glacier-icon.svg", type: "image/svg+xml" },
+      { url: "/icon-192x192.png", sizes: "192x192", type: "image/png" },
+    ],
+    shortcut: "/glacier-icon.svg",
+    apple: "/icon-192x192.png",
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "Finances",
+    title: "Glacier",
   },
 };
 

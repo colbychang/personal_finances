@@ -8,7 +8,7 @@ export function PublicProfileNotice() {
           Public Profile Mode
         </p>
         <h1 className="mt-4 text-3xl font-semibold text-neutral-900">
-          Glacier Personal Finance Tracking
+          Glacier Finance Tracker
         </h1>
         <p className="mt-4 text-base leading-7 text-neutral-600">
           This deployment is currently being used as a public-facing profile for

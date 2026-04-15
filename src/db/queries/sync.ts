@@ -32,6 +32,17 @@ export interface SyncResult {
   removed: number;
 }
 
+interface TransactionForMatching {
+  id: number;
+  postedAt: string;
+  amount: number;
+  name: string;
+  merchant: string | null;
+  notes: string | null;
+  institutionName: string;
+  isTransfer: boolean;
+}
+
 // ─── Account ID resolution ────────────────────────────────────────────
 
 /**
@@ -55,6 +66,132 @@ function buildAccountIdMap(database: DB, connectionId: number): Map<string, numb
     }
   }
   return map;
+}
+
+function normalizeText(value: string | null | undefined) {
+  return (value ?? "").trim().toLowerCase();
+}
+
+function dayNumber(date: string) {
+  return Math.floor(new Date(`${date}T00:00:00Z`).getTime() / 86_400_000);
+}
+
+function isVenmoInstitution(institutionName: string) {
+  return normalizeText(institutionName).includes("venmo");
+}
+
+function isStandardTransferName(name: string) {
+  return normalizeText(name).includes("standard transfer");
+}
+
+function isGenericVenmoBankPull(transaction: TransactionForMatching) {
+  if (transaction.isTransfer || transaction.amount <= 0) {
+    return false;
+  }
+
+  if (isVenmoInstitution(transaction.institutionName)) {
+    return false;
+  }
+
+  const name = normalizeText(transaction.name);
+  const merchant = normalizeText(transaction.merchant);
+  return name === "venmo" || merchant === "venmo" || name.startsWith("venmo ");
+}
+
+function isVenmoLedgerExpense(transaction: TransactionForMatching) {
+  if (transaction.isTransfer || transaction.amount <= 0) {
+    return false;
+  }
+
+  if (!isVenmoInstitution(transaction.institutionName)) {
+    return false;
+  }
+
+  return !isStandardTransferName(transaction.name);
+}
+
+function reconcileVenmoFundingDuplicates(database: DB) {
+  const transactions = database
+    .select({
+      id: schema.transactions.id,
+      postedAt: schema.transactions.postedAt,
+      amount: schema.transactions.amount,
+      name: schema.transactions.name,
+      merchant: schema.transactions.merchant,
+      notes: schema.transactions.notes,
+      institutionName: schema.institutions.name,
+      isTransfer: schema.transactions.isTransfer,
+    })
+    .from(schema.transactions)
+    .innerJoin(
+      schema.accounts,
+      eq(schema.transactions.accountId, schema.accounts.id)
+    )
+    .innerJoin(
+      schema.institutions,
+      eq(schema.accounts.institutionId, schema.institutions.id)
+    )
+    .all();
+
+  const bankCandidates = transactions.filter(isGenericVenmoBankPull);
+  const venmoCandidates = transactions.filter(isVenmoLedgerExpense);
+  const venmoCandidatesByAmount = new Map<number, TransactionForMatching[]>();
+
+  for (const transaction of venmoCandidates) {
+    const list = venmoCandidatesByAmount.get(transaction.amount) ?? [];
+    list.push(transaction);
+    venmoCandidatesByAmount.set(transaction.amount, list);
+  }
+
+  for (const list of venmoCandidatesByAmount.values()) {
+    list.sort((a, b) => {
+      const diff = dayNumber(a.postedAt) - dayNumber(b.postedAt);
+      return diff !== 0 ? diff : a.id - b.id;
+    });
+  }
+
+  const matchedVenmoIds = new Set<number>();
+
+  for (const bankTransaction of bankCandidates) {
+    const potentialMatches = (venmoCandidatesByAmount.get(bankTransaction.amount) ?? [])
+      .filter((candidate) => !matchedVenmoIds.has(candidate.id))
+      .map((candidate) => ({
+        candidate,
+        dateDistance: Math.abs(
+          dayNumber(candidate.postedAt) - dayNumber(bankTransaction.postedAt)
+        ),
+      }))
+      .filter(({ dateDistance }) => dateDistance <= 1)
+      .sort((left, right) => {
+        if (left.dateDistance !== right.dateDistance) {
+          return left.dateDistance - right.dateDistance;
+        }
+        return right.candidate.id - left.candidate.id;
+      });
+
+    const match = potentialMatches[0]?.candidate;
+    if (!match) {
+      continue;
+    }
+
+    matchedVenmoIds.add(match.id);
+
+    const existingNote = bankTransaction.notes?.trim();
+    const autoNote = "Auto-marked as transfer to avoid double-counting a matched Venmo transaction.";
+    const nextNote =
+      existingNote && existingNote.length > 0
+        ? existingNote
+        : autoNote;
+
+    database
+      .update(schema.transactions)
+      .set({
+        isTransfer: true,
+        notes: nextNote,
+      })
+      .where(eq(schema.transactions.id, bankTransaction.id))
+      .run();
+  }
 }
 
 // ─── Transaction sync ─────────────────────────────────────────────────
@@ -199,6 +336,8 @@ export function syncTransactionsFromPlaid(
 
     removedCount++;
   }
+
+  reconcileVenmoFundingDuplicates(database);
 
   return { added: addedCount, modified: modifiedCount, removed: removedCount };
 }

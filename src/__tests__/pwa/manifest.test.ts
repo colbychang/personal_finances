@@ -16,12 +16,12 @@ describe("PWA Manifest", () => {
 
   it("has required name field", () => {
     const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8"));
-    expect(manifest.name).toBe("Personal Finance Tracker");
+    expect(manifest.name).toBe("Glacier Finance Tracker");
   });
 
   it("has required short_name field", () => {
     const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8"));
-    expect(manifest.short_name).toBe("Finances");
+    expect(manifest.short_name).toBe("Glacier");
   });
 
   it("has display set to standalone", () => {

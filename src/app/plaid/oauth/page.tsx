@@ -13,6 +13,7 @@ import {
   exchangePublicToken,
   getStoredPlaidLinkToken,
   getStoredPlaidReturnTo,
+  syncPlaidConnectionWithRetry,
 } from "@/components/plaid/client";
 
 export default function PlaidOAuthPage() {
@@ -41,12 +42,23 @@ export default function PlaidOAuthPage() {
   const handleSuccess = useCallback<PlaidLinkOnSuccess>(
     async (publicToken, metadata) => {
       try {
-        await exchangePublicToken({
+        const exchangeResult = await exchangePublicToken({
           publicToken,
           institutionId: metadata.institution?.institution_id,
           institutionName: metadata.institution?.name,
           accounts: metadata.accounts,
         });
+        try {
+          await syncPlaidConnectionWithRetry(exchangeResult.connection_id, {
+            maxRetries: 4,
+            retryDelayMs: 5000,
+          });
+        } catch (syncError) {
+          console.warn(
+            "Initial transaction sync did not complete during OAuth resume:",
+            syncError
+          );
+        }
         returnToApp();
       } catch (error) {
         setError(

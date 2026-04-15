@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useCallback, useRef, useEffect } from "react";
 import {
   ChevronLeft,
@@ -13,6 +14,7 @@ import {
   Pencil,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { subscribeToFinanceDataChanged } from "@/lib/client-events";
 import { formatCurrency, formatMonth } from "@/lib/format";
 
 // ─── Types ──────────────────────────────────────────────────────────────
@@ -37,6 +39,17 @@ interface BudgetSummary {
   totalBudgeted: number;
   totalSpent: number;
   totalRemaining: number;
+  reviewSummary: {
+    uncategorizedCount: number;
+    uncategorizedAmount: number;
+    transactions: Array<{
+      id: number;
+      postedAt: string;
+      name: string;
+      amount: number;
+      accountName: string;
+    }>;
+  };
 }
 
 interface CategoryOption {
@@ -117,6 +130,18 @@ export function BudgetsClient({
       setIsLoading(false);
     }
   }, []);
+
+  useEffect(() => {
+    return subscribeToFinanceDataChanged(() => {
+      void fetchBudgets(month);
+    });
+  }, [fetchBudgets, month]);
+
+  useEffect(() => {
+    if (month === initialMonth) {
+      setData(initialData);
+    }
+  }, [initialData, initialMonth, month]);
 
   function handleMonthChange(direction: -1 | 1) {
     const newMonth = getAdjacentMonth(month, direction);
@@ -246,6 +271,7 @@ export function BudgetsClient({
 
   const hasBudgets = data.budgets.length > 0;
   const hasUnbudgeted = data.unbudgeted.length > 0;
+  const hasNeedsReview = data.reviewSummary.uncategorizedCount > 0;
 
   return (
     <div>
@@ -314,6 +340,59 @@ export function BudgetsClient({
         >
           <AlertCircle className="h-4 w-4 flex-shrink-0" />
           {copyMessage}
+        </div>
+      )}
+
+      {hasNeedsReview && (
+        <div className="mb-4 rounded-[var(--radius-card)] border border-amber-200 bg-amber-50 px-4 py-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <div className="flex items-center gap-2 text-amber-900">
+                <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                <h3 className="text-sm font-semibold">
+                  Transactions That Need Review
+                </h3>
+              </div>
+              <p className="mt-2 text-sm text-amber-900/90">
+                {data.reviewSummary.uncategorizedCount} uncategorized expense
+                transaction
+                {data.reviewSummary.uncategorizedCount === 1 ? "" : "s"} this
+                month totaling{" "}
+                <span className="font-semibold">
+                  {formatCurrency(data.reviewSummary.uncategorizedAmount)}
+                </span>
+                . These won&apos;t land in the right budget buckets until you
+                sort them.
+              </p>
+            </div>
+            <Link
+              href="/transactions?needsReview=1"
+              className="inline-flex items-center justify-center rounded-[var(--radius-button)] border border-amber-300 bg-white px-4 py-2.5 text-sm font-medium text-amber-900 transition-colors hover:bg-amber-100 min-h-[44px]"
+            >
+              Review in Transactions
+            </Link>
+          </div>
+
+          <div className="mt-4 space-y-2">
+            {data.reviewSummary.transactions.map((txn) => (
+              <div
+                key={txn.id}
+                className="flex items-center justify-between gap-3 rounded-[var(--radius-button)] bg-white/80 px-3 py-2 text-sm"
+              >
+                <div className="min-w-0">
+                  <p className="truncate font-medium text-neutral-900">
+                    {txn.name}
+                  </p>
+                  <p className="text-xs text-neutral-500">
+                    {txn.postedAt} · {txn.accountName}
+                  </p>
+                </div>
+                <span className="font-semibold text-neutral-900 currency flex-shrink-0">
+                  {formatCurrency(txn.amount)}
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 

@@ -11,10 +11,12 @@ import {
 } from "react-plaid-link";
 import { AlertTriangle, Landmark, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { dispatchFinanceDataChanged } from "@/lib/client-events";
 import { useToast } from "@/components/ui/Toast";
 import {
   exchangePublicToken,
   hasStoredPlaidConsent,
+  syncPlaidConnectionWithRetry,
   storePlaidLinkToken,
   storePlaidConsentAccepted,
   storePlaidReturnTo,
@@ -63,8 +65,9 @@ export function PlaidLinkButton({ onSuccess, className }: PlaidLinkButtonProps) 
   const handleSuccess = useCallback<PlaidLinkOnSuccess>(
     async (publicToken, metadata) => {
       setLoading(true);
+      const institutionName = metadata.institution?.name ?? "bank";
       try {
-        await exchangePublicToken({
+        const exchangeResult = await exchangePublicToken({
           publicToken,
           institutionId: metadata.institution?.institution_id,
           institutionName: metadata.institution?.name,
@@ -72,9 +75,44 @@ export function PlaidLinkButton({ onSuccess, className }: PlaidLinkButtonProps) 
         });
 
         showToast(
-          `Successfully connected ${metadata.institution?.name ?? "bank"}!`,
+          `Connected ${institutionName}. Importing transactions...`,
           "success"
         );
+        onSuccess();
+
+        try {
+          const syncResult = await syncPlaidConnectionWithRetry(
+            exchangeResult.connection_id,
+            {
+              maxRetries: 4,
+              retryDelayMs: 5000,
+            }
+          );
+
+          const importedCount = syncResult.added + syncResult.modified;
+          dispatchFinanceDataChanged({
+            source: "plaid-connect",
+            importedTransactions: importedCount,
+            affectedConnections: 1,
+          });
+          showToast(
+            importedCount === 0
+              ? `${institutionName} is connected and up to date.`
+              : `${institutionName} imported ${importedCount} transaction${importedCount === 1 ? "" : "s"}.`,
+            "success"
+          );
+        } catch (syncError) {
+          console.error("Initial transaction sync failed:", syncError);
+          showToast(
+            syncError instanceof Error &&
+              "retryable" in syncError &&
+              syncError.retryable
+              ? `${institutionName} connected, but Plaid is still preparing transactions. Use Sync again in a few minutes.`
+              : `${institutionName} connected, but the initial transaction sync failed. You can retry from Connections.`,
+            "error"
+          );
+        }
+
         onSuccess();
       } catch (error) {
         console.error("Error exchanging token:", error);

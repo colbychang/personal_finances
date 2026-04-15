@@ -13,6 +13,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { dispatchFinanceDataChanged } from "@/lib/client-events";
 import { useToast } from "@/components/ui/Toast";
 import { PlaidLinkButton } from "./PlaidLinkButton";
 
@@ -156,6 +157,11 @@ export function ConnectionsList() {
           ? "Already up to date — no new transactions."
           : `Synced: ${data.added} added, ${data.modified} updated, ${data.removed} removed.`;
 
+      dispatchFinanceDataChanged({
+        source: "plaid-sync",
+        importedTransactions: data.added + data.modified,
+        affectedConnections: 1,
+      });
       setSyncResult((prev) => ({
         ...prev,
         [connectionId]: { status: "success", message },

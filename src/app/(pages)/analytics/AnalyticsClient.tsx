@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
   PieChart,
   Pie,
@@ -17,6 +17,7 @@ import {
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { subscribeToFinanceDataChanged } from "@/lib/client-events";
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
@@ -367,6 +368,12 @@ export function AnalyticsClient({ initialData }: AnalyticsClientProps) {
       setIsLoading(false);
     }
   }, []);
+
+  useEffect(() => {
+    return subscribeToFinanceDataChanged(() => {
+      void fetchData(period);
+    });
+  }, [fetchData, period]);
 
   const handlePeriodChange = useCallback(
     (newPeriod: Period) => {

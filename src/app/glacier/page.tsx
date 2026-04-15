@@ -3,9 +3,9 @@ import Image from "next/image";
 import Link from "next/link";
 
 export const metadata: Metadata = {
-  title: "Glacier Personal Finance Tracking",
+  title: "Glacier Finance Tracker",
   description:
-    "Glacier Personal Finance Tracking helps consumers connect accounts, review transactions, and track spending trends.",
+    "Glacier Finance Tracker helps consumers connect accounts, review transactions, and track spending trends.",
 };
 
 function InfoCard({
@@ -35,7 +35,7 @@ export default function GlacierLandingPage() {
                 OAuth institution application profile
               </div>
               <h1 className="mt-6 text-4xl font-semibold tracking-tight text-white md:text-5xl">
-                Glacier Personal Finance Tracking
+                Glacier Finance Tracker
               </h1>
               <p className="mt-4 text-lg leading-8 text-sky-50/90">
                 A personal finance app for connecting accounts, importing
@@ -74,7 +74,7 @@ export default function GlacierLandingPage() {
                 <div className="mx-auto flex h-28 w-28 items-center justify-center rounded-[1.5rem] bg-white/10 ring-1 ring-white/20">
                   <Image
                     src="/glacier-icon.svg"
-                    alt="Glacier Personal Finance Tracking icon"
+                    alt="Glacier Finance Tracker icon"
                     width={112}
                     height={112}
                     priority
@@ -82,7 +82,7 @@ export default function GlacierLandingPage() {
                 </div>
                 <div className="mt-5 text-center">
                   <p className="text-lg font-semibold text-white">
-                    Glacier Personal Finance Tracking
+                    Glacier Finance Tracker
                   </p>
                   <p className="mt-2 text-sm leading-6 text-sky-50/85">
                     Connect selected financial institutions through Plaid to

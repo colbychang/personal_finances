@@ -6,13 +6,31 @@ import { PublicProfileNotice } from "@/components/public/PublicProfileNotice";
 import { isPublicProfileMode } from "@/lib/deployment";
 import { TransactionsClient } from "./TransactionsClient";
 
-export default function TransactionsPage() {
+type TransactionsPageProps = {
+  searchParams?: Promise<{
+    needsReview?: string | string[];
+  }>;
+};
+
+export default async function TransactionsPage({
+  searchParams,
+}: TransactionsPageProps) {
   if (isPublicProfileMode()) {
     return <PublicProfileNotice />;
   }
 
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const needsReviewParam = resolvedSearchParams?.needsReview;
+  const initialNeedsReview = Array.isArray(needsReviewParam)
+    ? needsReviewParam.includes("1") || needsReviewParam.includes("true")
+    : needsReviewParam === "1" || needsReviewParam === "true";
+
   // Fetch initial data server-side
-  const initialData = getTransactions(db, { page: 1, limit: 20 });
+  const initialData = getTransactions(db, {
+    page: 1,
+    limit: 20,
+    needsReview: initialNeedsReview,
+  });
   const accounts = getAccountsForFilter(db);
   const categories = getAllCategories(db);
 
@@ -32,6 +50,7 @@ export default function TransactionsPage() {
         initialData={initialData}
         accounts={accounts}
         categoryColors={categoryColors}
+        initialNeedsReview={initialNeedsReview}
       />
     </div>
   );

@@ -1,6 +1,7 @@
 "use client";
 
 import { isPublicProfileMode } from "@/lib/deployment";
+import { PlaidAutoSync } from "@/components/plaid/PlaidAutoSync";
 import { AppFooter } from "./AppFooter";
 import { Sidebar } from "./Sidebar";
 import { BottomTabBar } from "./BottomTabBar";
@@ -16,6 +17,7 @@ export function AppShell({ children }: AppShellProps) {
     <>
       {/* Desktop sidebar */}
       {!publicProfileMode && <Sidebar />}
+      {!publicProfileMode && <PlaidAutoSync />}
 
       {/* Main content area */}
       <div className={publicProfileMode ? "flex flex-col min-h-screen" : "md:pl-60 flex flex-col min-h-screen"}>
