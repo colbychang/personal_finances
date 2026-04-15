@@ -42,20 +42,33 @@ export function CategorySelect({
   const [isLoading, setIsLoading] = useState(true);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    async function fetchCategories() {
-      try {
-        const res = await fetch("/api/categories");
-        const data = await res.json();
-        setCategories(data.categories);
-      } catch {
-        console.error("Failed to fetch categories");
-      } finally {
-        setIsLoading(false);
-      }
+  function sortCategories(items: CategoryOption[]) {
+    return [...items].sort((left, right) =>
+      left.name.localeCompare(right.name, undefined, { sensitivity: "base" })
+    );
+  }
+
+  async function fetchCategories() {
+    try {
+      const res = await fetch("/api/categories");
+      const data = await res.json();
+      setCategories(sortCategories(data.categories));
+    } catch {
+      console.error("Failed to fetch categories");
+    } finally {
+      setIsLoading(false);
     }
-    fetchCategories();
+  }
+
+  useEffect(() => {
+    void fetchCategories();
   }, []);
+
+  useEffect(() => {
+    if (isOpen) {
+      void fetchCategories();
+    }
+  }, [isOpen]);
 
   // Close dropdown when clicking outside
   useEffect(() => {

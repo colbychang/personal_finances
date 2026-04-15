@@ -71,6 +71,10 @@ interface TransactionsClientProps {
   initialData: PaginatedResult;
   accounts: AccountOption[];
   categoryColors: CategoryColor[];
+  initialDateFrom?: string;
+  initialDateTo?: string;
+  initialSelectedCategories?: string[];
+  initialSelectedAccountId?: string;
   initialNeedsReview?: boolean;
 }
 
@@ -84,6 +88,10 @@ export function TransactionsClient({
   initialData,
   accounts,
   categoryColors,
+  initialDateFrom = "",
+  initialDateTo = "",
+  initialSelectedCategories = [],
+  initialSelectedAccountId = "",
   initialNeedsReview = false,
 }: TransactionsClientProps) {
   const { showToast } = useToast();
@@ -91,10 +99,14 @@ export function TransactionsClient({
 
   // Filter state
   const [search, setSearch] = useState("");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
-  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
-  const [selectedAccountId, setSelectedAccountId] = useState("");
+  const [dateFrom, setDateFrom] = useState(initialDateFrom);
+  const [dateTo, setDateTo] = useState(initialDateTo);
+  const [selectedCategories, setSelectedCategories] = useState<string[]>(
+    initialSelectedCategories
+  );
+  const [selectedAccountId, setSelectedAccountId] = useState(
+    initialSelectedAccountId
+  );
   const [needsReviewOnly, setNeedsReviewOnly] = useState(initialNeedsReview);
   const [page, setPage] = useState(1);
 
@@ -909,7 +921,18 @@ function TransactionCard({
   const displayAmount = Math.abs(transaction.amount);
 
   return (
-    <div className="bg-white rounded-[var(--radius-card)] border border-neutral-200 p-4 hover:shadow-sm transition-shadow">
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onEdit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onEdit();
+        }
+      }}
+      className="bg-white rounded-[var(--radius-card)] border border-neutral-200 p-4 hover:shadow-sm transition-shadow cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/30"
+    >
       <div className="flex items-center justify-between gap-3">
         {/* Left: Info */}
         <div className="flex-1 min-w-0">
@@ -963,7 +986,10 @@ function TransactionCard({
           {/* Action buttons */}
           <div className="flex items-center gap-0.5 ml-1">
             <button
-              onClick={onSplit}
+              onClick={(e) => {
+                e.stopPropagation();
+                onSplit();
+              }}
               className="p-2.5 rounded-[var(--radius-button)] text-neutral-400 hover:text-primary hover:bg-primary/5 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
               aria-label={`Split ${transaction.name}`}
               title="Split transaction"
@@ -971,7 +997,10 @@ function TransactionCard({
               <Scissors className="h-4 w-4" />
             </button>
             <button
-              onClick={onEdit}
+              onClick={(e) => {
+                e.stopPropagation();
+                onEdit();
+              }}
               className="p-2.5 rounded-[var(--radius-button)] text-neutral-400 hover:text-primary hover:bg-neutral-100 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
               aria-label={`Edit ${transaction.name}`}
               title="Edit transaction"
@@ -979,7 +1008,10 @@ function TransactionCard({
               <Pencil className="h-4 w-4" />
             </button>
             <button
-              onClick={onDelete}
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete();
+              }}
               className="p-2.5 rounded-[var(--radius-button)] text-neutral-400 hover:text-expense hover:bg-red-50 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
               aria-label={`Delete ${transaction.name}`}
               title="Delete transaction"

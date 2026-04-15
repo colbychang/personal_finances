@@ -8,6 +8,10 @@ import { TransactionsClient } from "./TransactionsClient";
 
 type TransactionsPageProps = {
   searchParams?: Promise<{
+    dateFrom?: string | string[];
+    dateTo?: string | string[];
+    category?: string | string[];
+    accountId?: string | string[];
     needsReview?: string | string[];
   }>;
 };
@@ -20,13 +24,52 @@ export default async function TransactionsPage({
   }
 
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const dateFromParam = resolvedSearchParams?.dateFrom;
+  const dateToParam = resolvedSearchParams?.dateTo;
+  const categoryParam = resolvedSearchParams?.category;
+  const accountIdParam = resolvedSearchParams?.accountId;
   const needsReviewParam = resolvedSearchParams?.needsReview;
+  const initialDateFrom = Array.isArray(dateFromParam)
+    ? dateFromParam[0] ?? ""
+    : dateFromParam ?? "";
+  const initialDateTo = Array.isArray(dateToParam)
+    ? dateToParam[0] ?? ""
+    : dateToParam ?? "";
+  const initialSelectedCategories = Array.isArray(categoryParam)
+    ? categoryParam.flatMap((value) =>
+        value
+          .split(",")
+          .map((category) => category.trim())
+          .filter(Boolean)
+      )
+    : categoryParam
+      ? categoryParam
+          .split(",")
+          .map((category) => category.trim())
+          .filter(Boolean)
+      : [];
+  const accountIdValue = Array.isArray(accountIdParam)
+    ? accountIdParam[0]
+    : accountIdParam;
+  const initialSelectedAccountId =
+    accountIdValue && /^\d+$/.test(accountIdValue) ? accountIdValue : "";
   const initialNeedsReview = Array.isArray(needsReviewParam)
     ? needsReviewParam.includes("1") || needsReviewParam.includes("true")
     : needsReviewParam === "1" || needsReviewParam === "true";
 
   // Fetch initial data server-side
   const initialData = getTransactions(db, {
+    dateFrom: initialDateFrom || undefined,
+    dateTo: initialDateTo || undefined,
+    category:
+      initialSelectedCategories.length === 0
+        ? undefined
+        : initialSelectedCategories.length === 1
+          ? initialSelectedCategories[0]
+          : initialSelectedCategories,
+    accountId: initialSelectedAccountId
+      ? Number(initialSelectedAccountId)
+      : undefined,
     page: 1,
     limit: 20,
     needsReview: initialNeedsReview,
@@ -50,6 +93,10 @@ export default async function TransactionsPage({
         initialData={initialData}
         accounts={accounts}
         categoryColors={categoryColors}
+        initialDateFrom={initialDateFrom}
+        initialDateTo={initialDateTo}
+        initialSelectedCategories={initialSelectedCategories}
+        initialSelectedAccountId={initialSelectedAccountId}
         initialNeedsReview={initialNeedsReview}
       />
     </div>

@@ -19,12 +19,14 @@ export interface BudgetWithSpending {
   spent: number; // cents (positive = expense)
   remaining: number; // cents (positive = under, negative = over)
   categoryColor: string | null;
+  transactions: CategoryTransaction[];
 }
 
 export interface UnbudgetedSpending {
   category: string;
   spent: number; // cents
   categoryColor: string | null;
+  transactions: CategoryTransaction[];
 }
 
 export interface BudgetSummary {
@@ -48,6 +50,16 @@ export interface ReviewSummary {
   uncategorizedCount: number;
   uncategorizedAmount: number;
   transactions: ReviewTransaction[];
+}
+
+export interface CategoryTransaction {
+  id: number;
+  postedAt: string;
+  name: string;
+  amount: number;
+  originalAmount: number;
+  accountName: string;
+  isSplit: boolean;
 }
 
 // ─── Query Functions ────────────────────────────────────────────────────
@@ -99,10 +111,8 @@ export function getBudgetsForMonth(database: DB, month: string): BudgetSummary {
 
   const categoryColorMap = new Map(allCategories.map((c) => [c.name, c.color]));
 
-  // Get spending per category for non-transfer, non-split transactions
-  // (transactions that have NO splits use their own category)
-  // (transactions that HAVE splits use split categories)
-  const spendingByCategory = getSpendingByCategory(database, startDate, endDate);
+  const { spendingByCategory, transactionsByCategory } =
+    getCategorySpendingDetails(database, startDate, endDate);
 
   // Build budget rows with spending
   const budgetedCategories = new Set<string>();
@@ -115,6 +125,7 @@ export function getBudgetsForMonth(database: DB, month: string): BudgetSummary {
       spent,
       remaining: b.amount - spent,
       categoryColor: categoryColorMap.get(b.category) ?? null,
+      transactions: transactionsByCategory.get(b.category) ?? [],
     };
   });
 
@@ -126,6 +137,7 @@ export function getBudgetsForMonth(database: DB, month: string): BudgetSummary {
         category,
         spent,
         categoryColor: categoryColorMap.get(category) ?? null,
+        transactions: transactionsByCategory.get(category) ?? [],
       });
     }
   }
@@ -196,22 +208,33 @@ export function getBudgetsForMonth(database: DB, month: string): BudgetSummary {
  * Calculate spending by category for a date range.
  * Includes split transaction portions. Excludes transfers and income.
  */
-function getSpendingByCategory(
+function getCategorySpendingDetails(
   database: DB,
   startDate: string,
   endDate: string
-): Map<string, number> {
+): {
+  spendingByCategory: Map<string, number>;
+  transactionsByCategory: Map<string, CategoryTransaction[]>;
+} {
   const spendingMap = new Map<string, number>();
+  const transactionsByCategory = new Map<string, CategoryTransaction[]>();
 
   // Get all non-transfer transactions in the date range
   const txns = database
     .select({
       id: schema.transactions.id,
+      postedAt: schema.transactions.postedAt,
+      name: schema.transactions.name,
       amount: schema.transactions.amount,
       category: schema.transactions.category,
       isTransfer: schema.transactions.isTransfer,
+      accountName: schema.accounts.name,
     })
     .from(schema.transactions)
+    .innerJoin(
+      schema.accounts,
+      eq(schema.transactions.accountId, schema.accounts.id)
+    )
     .where(
       and(
         gte(schema.transactions.postedAt, startDate),
@@ -255,16 +278,56 @@ function getSpendingByCategory(
       for (const split of splits) {
         const current = spendingMap.get(split.category) ?? 0;
         spendingMap.set(split.category, current + split.amount);
+        if (!transactionsByCategory.has(split.category)) {
+          transactionsByCategory.set(split.category, []);
+        }
+        transactionsByCategory.get(split.category)!.push({
+          id: txn.id,
+          postedAt: txn.postedAt,
+          name: txn.name,
+          amount: split.amount,
+          originalAmount: txn.amount,
+          accountName: txn.accountName,
+          isSplit: true,
+        });
       }
     } else {
       // Use transaction's own category
-      const category = txn.category ?? "Uncategorized";
+      if (!txn.category) {
+        continue;
+      }
+
+      const category = txn.category;
       const current = spendingMap.get(category) ?? 0;
       spendingMap.set(category, current + txn.amount);
+      if (!transactionsByCategory.has(category)) {
+        transactionsByCategory.set(category, []);
+      }
+      transactionsByCategory.get(category)!.push({
+        id: txn.id,
+        postedAt: txn.postedAt,
+        name: txn.name,
+        amount: txn.amount,
+        originalAmount: txn.amount,
+        accountName: txn.accountName,
+        isSplit: false,
+      });
     }
   }
 
-  return spendingMap;
+  for (const transactions of transactionsByCategory.values()) {
+    transactions.sort((left, right) => {
+      if (left.postedAt !== right.postedAt) {
+        return left.postedAt < right.postedAt ? 1 : -1;
+      }
+      return right.id - left.id;
+    });
+  }
+
+  return {
+    spendingByCategory: spendingMap,
+    transactionsByCategory,
+  };
 }
 
 // ─── Mutations ──────────────────────────────────────────────────────────

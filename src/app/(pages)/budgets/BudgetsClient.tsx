@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState, useCallback, useRef, useEffect } from "react";
 import {
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Copy,
@@ -12,10 +13,14 @@ import {
   Check,
   X,
   Pencil,
+  ExternalLink,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { subscribeToFinanceDataChanged } from "@/lib/client-events";
 import { formatCurrency, formatMonth } from "@/lib/format";
+import { useToast } from "@/components/ui/Toast";
+import { TransactionForm } from "@/components/transactions";
+import type { TransactionFormData } from "@/components/transactions";
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
@@ -25,12 +30,24 @@ interface BudgetWithSpending {
   spent: number;
   remaining: number;
   categoryColor: string | null;
+  transactions: CategoryTransaction[];
 }
 
 interface UnbudgetedSpending {
   category: string;
   spent: number;
   categoryColor: string | null;
+  transactions: CategoryTransaction[];
+}
+
+interface CategoryTransaction {
+  id: number;
+  postedAt: string;
+  name: string;
+  amount: number;
+  originalAmount: number;
+  accountName: string;
+  isSplit: boolean;
 }
 
 interface BudgetSummary {
@@ -60,10 +77,28 @@ interface CategoryOption {
   isPredefined: boolean;
 }
 
+interface AccountOption {
+  id: number;
+  name: string;
+  type: string;
+}
+
+interface EditableTransaction {
+  id: number;
+  accountId: number;
+  postedAt: string;
+  name: string;
+  amount: number;
+  category: string | null;
+  notes: string | null;
+  isTransfer: boolean;
+}
+
 interface BudgetsClientProps {
   initialMonth: string;
   initialData: BudgetSummary;
   categories: CategoryOption[];
+  accounts: AccountOption[];
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────
@@ -76,24 +111,56 @@ function getAdjacentMonth(month: string, direction: -1 | 1): string {
   return `${year}-${String(newMonth).padStart(2, "0")}`;
 }
 
+function getMonthDateRange(month: string): { dateFrom: string; dateTo: string } {
+  const [year, monthNum] = month.split("-").map(Number);
+  const lastDay = new Date(Date.UTC(year, monthNum, 0)).getUTCDate();
+  return {
+    dateFrom: `${month}-01`,
+    dateTo: `${month}-${String(lastDay).padStart(2, "0")}`,
+  };
+}
+
+function buildTransactionsHref(month: string, category: string): string {
+  const params = new URLSearchParams(getMonthDateRange(month));
+  params.set("category", category);
+  return `/transactions?${params.toString()}`;
+}
+
+function restoreScrollPosition(scrollY: number) {
+  if (typeof window === "undefined") return;
+
+  requestAnimationFrame(() => {
+    window.scrollTo({ top: scrollY });
+  });
+}
+
 // ─── Component ──────────────────────────────────────────────────────────
 
 export function BudgetsClient({
   initialMonth,
   initialData,
   categories,
+  accounts,
 }: BudgetsClientProps) {
+  const { showToast } = useToast();
   const [month, setMonth] = useState(initialMonth);
   const [data, setData] = useState<BudgetSummary>(initialData);
+  const [allCategories, setAllCategories] = useState(categories);
   const [isLoading, setIsLoading] = useState(false);
   const [copyMessage, setCopyMessage] = useState<string | null>(null);
   const [isCopying, setIsCopying] = useState(false);
+  const [expandedCategoryKey, setExpandedCategoryKey] = useState<string | null>(
+    null
+  );
 
   // Budget editing state
   const [editingCategory, setEditingCategory] = useState<string | null>(null);
   const [editAmount, setEditAmount] = useState("");
   const [editError, setEditError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [editingTransaction, setEditingTransaction] =
+    useState<EditableTransaction | null>(null);
+  const [isLoadingTransaction, setIsLoadingTransaction] = useState(false);
 
   // Ref for click-away detection on inline edit
   const editRef = useRef<HTMLDivElement>(null);
@@ -115,6 +182,10 @@ export function BudgetsClient({
   const [addCategory, setAddCategory] = useState("");
   const [addAmount, setAddAmount] = useState("");
   const [addError, setAddError] = useState<string | null>(null);
+  const [showCreateCategory, setShowCreateCategory] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [newCategoryError, setNewCategoryError] = useState<string | null>(null);
+  const [isCreatingCategory, setIsCreatingCategory] = useState(false);
 
   const fetchBudgets = useCallback(async (targetMonth: string) => {
     setIsLoading(true);
@@ -148,6 +219,7 @@ export function BudgetsClient({
     setMonth(newMonth);
     setEditingCategory(null);
     setShowAddForm(false);
+    setExpandedCategoryKey(null);
     fetchBudgets(newMonth);
   }
 
@@ -233,6 +305,44 @@ export function BudgetsClient({
     }
   }
 
+  async function handleCreateCategory() {
+    const trimmedName = newCategoryName.trim();
+
+    if (!trimmedName) {
+      setNewCategoryError("Please enter a category name");
+      return;
+    }
+
+    setIsCreatingCategory(true);
+    setNewCategoryError(null);
+
+    try {
+      const res = await fetch("/api/categories", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: trimmedName }),
+      });
+
+      const result = await res.json();
+
+      if (!res.ok) {
+        setNewCategoryError(result.error || "Failed to create category");
+        return;
+      }
+
+      setAllCategories((current) => [...current, result.category]);
+      setAddCategory(result.category.name);
+      setShowCreateCategory(false);
+      setNewCategoryName("");
+      setNewCategoryError(null);
+      showToast(`Created category "${result.category.name}"`, "success");
+    } catch {
+      setNewCategoryError("Failed to create category. Please try again.");
+    } finally {
+      setIsCreatingCategory(false);
+    }
+  }
+
   // ─── Copy Previous Month ─────────────────────────────────────
 
   async function handleCopyPrevious() {
@@ -265,13 +375,171 @@ export function BudgetsClient({
 
   // Get categories not yet budgeted for add form
   const budgetedCategories = new Set(data.budgets.map((b) => b.category));
-  const availableCategories = categories.filter(
+  const availableCategories = allCategories.filter(
     (c) => !budgetedCategories.has(c.name)
   );
 
   const hasBudgets = data.budgets.length > 0;
   const hasUnbudgeted = data.unbudgeted.length > 0;
   const hasNeedsReview = data.reviewSummary.uncategorizedCount > 0;
+
+  function toggleCategoryDetails(categoryKey: string) {
+    setExpandedCategoryKey((current) =>
+      current === categoryKey ? null : categoryKey
+    );
+  }
+
+  function getTransactionFormData(
+    transaction: EditableTransaction
+  ): TransactionFormData {
+    const isIncome = transaction.amount < 0;
+    return {
+      date: transaction.postedAt,
+      name: transaction.name,
+      amount: (Math.abs(transaction.amount) / 100).toFixed(2),
+      type: isIncome ? "income" : "expense",
+      accountId: String(transaction.accountId),
+      category: transaction.category ?? "",
+      notes: transaction.notes ?? "",
+      isTransfer: transaction.isTransfer,
+    };
+  }
+
+  async function handleTransactionClick(transactionId: number) {
+    setIsLoadingTransaction(true);
+    try {
+      const res = await fetch(`/api/transactions/${transactionId}`);
+      const result = await res.json();
+
+      if (!res.ok) {
+        showToast(result.error || "Failed to load transaction");
+        return;
+      }
+
+      setEditingTransaction(result.transaction as EditableTransaction);
+    } catch {
+      showToast("Failed to load transaction");
+    } finally {
+      setIsLoadingTransaction(false);
+    }
+  }
+
+  async function handleEditTransaction(formData: TransactionFormData) {
+    if (!editingTransaction) return;
+
+    const scrollY = typeof window === "undefined" ? 0 : window.scrollY;
+    setIsSaving(true);
+    try {
+      const res = await fetch(`/api/transactions/${editingTransaction.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          date: formData.date,
+          name: formData.name,
+          amount: parseFloat(formData.amount),
+          accountId: parseInt(formData.accountId, 10),
+          category: formData.category || null,
+          notes: formData.notes || null,
+          isTransfer: formData.isTransfer,
+          type: formData.type,
+        }),
+      });
+
+      const result = await res.json();
+
+      if (!res.ok) {
+        showToast(result.error || "Failed to update transaction");
+        return;
+      }
+
+      setEditingTransaction(null);
+      restoreScrollPosition(scrollY);
+      showToast("Transaction updated", "success");
+      await fetchBudgets(month);
+      restoreScrollPosition(scrollY);
+    } catch {
+      showToast("Failed to update transaction");
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  function renderCategoryTransactions(
+    categoryKey: string,
+    category: string,
+    transactions: CategoryTransaction[]
+  ) {
+    if (transactions.length === 0) {
+      return null;
+    }
+
+    const isExpanded = expandedCategoryKey === categoryKey;
+
+    if (!isExpanded) {
+      return null;
+    }
+
+    return (
+      <div className="mt-4 border-t border-neutral-200 pt-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-neutral-600">
+            {transactions.length} transaction
+            {transactions.length === 1 ? "" : "s"} in this category for{" "}
+            {formatMonth(month)}.
+          </p>
+
+          <Link
+            href={buildTransactionsHref(month, category)}
+            className="inline-flex items-center gap-2 rounded-[var(--radius-button)] border border-neutral-300 px-3 py-2 text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-50 min-h-[44px]"
+          >
+            <ExternalLink className="h-4 w-4" />
+            Open in Transactions
+          </Link>
+        </div>
+
+        {isExpanded && (
+          <div className="mt-3 max-h-72 overflow-y-auto rounded-[var(--radius-card)] border border-neutral-200 bg-neutral-50/70">
+            <div className="divide-y divide-neutral-200">
+              {transactions.map((transaction) => (
+                <button
+                  type="button"
+                  key={`${categoryKey}-${transaction.id}-${transaction.postedAt}-${transaction.amount}`}
+                  onClick={() => void handleTransactionClick(transaction.id)}
+                  className="flex w-full items-start justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-white focus:bg-white focus:outline-none disabled:opacity-60"
+                  disabled={isLoadingTransaction}
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="truncate text-sm font-medium text-neutral-900">
+                        {transaction.name}
+                      </p>
+                      {transaction.isSplit && (
+                        <span className="rounded-full bg-neutral-200 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-600">
+                          Split
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-1 text-xs text-neutral-500">
+                      {transaction.postedAt} · {transaction.accountName}
+                    </p>
+                    {transaction.isSplit && (
+                      <p className="mt-1 text-xs text-neutral-500">
+                        {formatCurrency(transaction.amount)} of{" "}
+                        {formatCurrency(transaction.originalAmount)}
+                      </p>
+                    )}
+                  </div>
+                  <span className="flex-shrink-0 text-sm font-semibold text-neutral-900 currency">
+                    {formatCurrency(transaction.amount)}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -366,7 +634,10 @@ export function BudgetsClient({
               </p>
             </div>
             <Link
-              href="/transactions?needsReview=1"
+              href={`/transactions?${new URLSearchParams({
+                ...getMonthDateRange(month),
+                needsReview: "1",
+              }).toString()}`}
               className="inline-flex items-center justify-center rounded-[var(--radius-button)] border border-amber-300 bg-white px-4 py-2.5 text-sm font-medium text-amber-900 transition-colors hover:bg-amber-100 min-h-[44px]"
             >
               Review in Transactions
@@ -404,6 +675,9 @@ export function BudgetsClient({
             setAddCategory("");
             setAddAmount("");
             setAddError(null);
+            setShowCreateCategory(false);
+            setNewCategoryName("");
+            setNewCategoryError(null);
           }}
           className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary text-white rounded-[var(--radius-button)] font-medium hover:bg-primary-dark transition-colors min-h-[44px]"
         >
@@ -456,6 +730,67 @@ export function BudgetsClient({
                   </optgroup>
                 )}
               </select>
+              {!showCreateCategory ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowCreateCategory(true);
+                    setNewCategoryName("");
+                    setNewCategoryError(null);
+                  }}
+                  className="mt-2 text-xs font-medium text-primary hover:text-primary-dark"
+                >
+                  Create a new category
+                </button>
+              ) : (
+                <div className="mt-3 rounded-[var(--radius-button)] border border-primary/20 bg-primary/5 p-3">
+                  <label className="block text-xs font-medium text-neutral-600 mb-1">
+                    New category name
+                  </label>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <input
+                      type="text"
+                      value={newCategoryName}
+                      onChange={(e) => {
+                        setNewCategoryName(e.target.value);
+                        setNewCategoryError(null);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          void handleCreateCategory();
+                        }
+                      }}
+                      placeholder="e.g. Gifts, Skiing, Pet Care"
+                      className="flex-1 px-3 py-2.5 rounded-[var(--radius-button)] border border-neutral-300 text-sm min-h-[44px] bg-white focus:ring-primary"
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void handleCreateCategory()}
+                        disabled={isCreatingCategory}
+                        className="inline-flex items-center justify-center rounded-[var(--radius-button)] bg-primary px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-primary-dark disabled:opacity-50 min-h-[44px]"
+                      >
+                        {isCreatingCategory ? "Creating..." : "Create"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowCreateCategory(false);
+                          setNewCategoryName("");
+                          setNewCategoryError(null);
+                        }}
+                        className="inline-flex items-center justify-center rounded-[var(--radius-button)] border border-neutral-300 px-4 py-2.5 text-sm font-medium text-neutral-600 transition-colors hover:bg-neutral-50 min-h-[44px]"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                  {newCategoryError && (
+                    <p className="mt-2 text-xs text-expense">{newCategoryError}</p>
+                  )}
+                </div>
+              )}
             </div>
             <div className="w-full sm:w-40">
               <label className="block text-xs font-medium text-neutral-500 mb-1">
@@ -535,6 +870,7 @@ export function BudgetsClient({
         <div className="space-y-2 mb-6">
           {data.budgets.map((budget) => {
             const isEditing = editingCategory === budget.category;
+            const canExpand = budget.transactions.length > 0;
             const percentSpent =
               budget.budgeted > 0
                 ? Math.min((budget.spent / budget.budgeted) * 100, 100)
@@ -551,8 +887,52 @@ export function BudgetsClient({
                 key={budget.category}
                 className="bg-white rounded-[var(--radius-card)] border border-neutral-200 p-4"
               >
+                <div
+                  role={canExpand && !isEditing ? "button" : undefined}
+                  tabIndex={canExpand && !isEditing ? 0 : undefined}
+                  onClick={() => {
+                    if (canExpand && !isEditing) {
+                      toggleCategoryDetails(`budget:${budget.category}`);
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (!canExpand || isEditing) return;
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      toggleCategoryDetails(`budget:${budget.category}`);
+                    }
+                  }}
+                  aria-expanded={
+                    canExpand
+                      ? expandedCategoryKey === `budget:${budget.category}`
+                      : undefined
+                  }
+                  className={cn(
+                    "-m-4 rounded-[var(--radius-card)] p-4",
+                    canExpand && !isEditing
+                      ? "cursor-pointer transition-colors hover:bg-neutral-50/40"
+                      : ""
+                  )}
+                >
                 <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2 min-w-0">
+                  <div
+                    className={cn(
+                      "flex min-w-0 items-center gap-2 text-left",
+                      canExpand ? "" : "cursor-default"
+                    )}
+                  >
+                    {canExpand ? (
+                      <ChevronDown
+                        className={cn(
+                          "h-4 w-4 flex-shrink-0 text-neutral-400 transition-transform",
+                          expandedCategoryKey === `budget:${budget.category}`
+                            ? "rotate-180"
+                            : ""
+                        )}
+                      />
+                    ) : (
+                      <span className="h-4 w-4 flex-shrink-0" />
+                    )}
                     <span
                       className="w-3 h-3 rounded-full flex-shrink-0"
                       style={{
@@ -568,6 +948,8 @@ export function BudgetsClient({
                     <div
                       className="flex items-center gap-2"
                       ref={editRef}
+                      onClick={(e) => e.stopPropagation()}
+                      onKeyDown={(e) => e.stopPropagation()}
                     >
                       <div className="flex items-center">
                         <span className="text-sm text-neutral-400 mr-1">$</span>
@@ -619,7 +1001,8 @@ export function BudgetsClient({
                         {formatCurrency(budget.budgeted)}
                       </span>
                       <button
-                        onClick={() => {
+                        onClick={(e) => {
+                          e.stopPropagation();
                           setEditingCategory(budget.category);
                           setEditAmount((budget.budgeted / 100).toFixed(2));
                           setEditError(null);
@@ -667,6 +1050,13 @@ export function BudgetsClient({
                       : `${formatCurrency(budget.remaining)} left`}
                   </span>
                 </div>
+                </div>
+
+                {renderCategoryTransactions(
+                  `budget:${budget.category}`,
+                  budget.category,
+                  budget.transactions
+                )}
               </div>
             );
           })}
@@ -686,8 +1076,43 @@ export function BudgetsClient({
                 key={item.category}
                 className="bg-white rounded-[var(--radius-card)] border border-warning/20 p-4"
               >
+                <div
+                  role={item.transactions.length > 0 ? "button" : undefined}
+                  tabIndex={item.transactions.length > 0 ? 0 : undefined}
+                  onClick={() => {
+                    if (item.transactions.length > 0) {
+                      toggleCategoryDetails(`unbudgeted:${item.category}`);
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (item.transactions.length === 0) return;
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      toggleCategoryDetails(`unbudgeted:${item.category}`);
+                    }
+                  }}
+                  aria-expanded={
+                    item.transactions.length > 0
+                      ? expandedCategoryKey === `unbudgeted:${item.category}`
+                      : undefined
+                  }
+                  className={cn(
+                    "-m-4 rounded-[var(--radius-card)] p-4",
+                    item.transactions.length > 0
+                      ? "cursor-pointer transition-colors hover:bg-warning/5"
+                      : ""
+                  )}
+                >
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 text-left">
+                    <ChevronDown
+                      className={cn(
+                        "h-4 w-4 flex-shrink-0 text-neutral-400 transition-transform",
+                        expandedCategoryKey === `unbudgeted:${item.category}`
+                          ? "rotate-180"
+                          : ""
+                      )}
+                    />
                     <span
                       className="w-3 h-3 rounded-full flex-shrink-0"
                       style={{
@@ -702,10 +1127,28 @@ export function BudgetsClient({
                     {formatCurrency(item.spent)}
                   </span>
                 </div>
+                </div>
+
+                {renderCategoryTransactions(
+                  `unbudgeted:${item.category}`,
+                  item.category,
+                  item.transactions
+                )}
               </div>
             ))}
           </div>
         </div>
+      )}
+
+      {editingTransaction && (
+        <TransactionForm
+          mode="edit"
+          initialData={getTransactionFormData(editingTransaction)}
+          accounts={accounts}
+          onSubmit={handleEditTransaction}
+          onCancel={() => setEditingTransaction(null)}
+          isSubmitting={isSaving}
+        />
       )}
     </div>
   );
