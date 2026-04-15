@@ -23,6 +23,49 @@ export function getOpenAIClient(): OpenAI {
   return client;
 }
 
+function parseCategorizationContent(
+  content: string
+): Array<{ id: number; category: string }> {
+  const normalized = content.trim();
+  const strippedFence = normalized
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/, "")
+    .trim();
+
+  const candidates = [normalized, strippedFence];
+
+  for (const candidate of candidates) {
+    try {
+      const results = JSON.parse(candidate);
+      if (!Array.isArray(results)) {
+        continue;
+      }
+
+      return results.map((r: { id: unknown; category: unknown }) => {
+        if (typeof r.id !== "number" || typeof r.category !== "string") {
+          throw new Error("Invalid result format");
+        }
+        return { id: r.id, category: r.category };
+      });
+    } catch {
+      // Try the next parsing strategy below.
+    }
+  }
+
+  const jsonMatch = strippedFence.match(/\[[\s\S]*\]/);
+  if (jsonMatch) {
+    const results = JSON.parse(jsonMatch[0]);
+    return results.map((r: { id: unknown; category: unknown }) => ({
+      id: Number(r.id),
+      category: String(r.category),
+    }));
+  }
+
+  throw new Error(
+    `Failed to parse OpenAI response: ${normalized.substring(0, 200)}`
+  );
+}
+
 /**
  * Categorize transactions using OpenAI GPT-4o-mini.
  * Returns an array of { id, category } results.
@@ -55,30 +98,5 @@ export async function classifyTransactionsWithAI(
     throw new Error("Empty response from OpenAI");
   }
 
-  // Parse the JSON response
-  try {
-    const results = JSON.parse(content);
-    if (!Array.isArray(results)) {
-      throw new Error("Response is not an array");
-    }
-
-    // Validate each result
-    return results.map((r: { id: unknown; category: unknown }) => {
-      if (typeof r.id !== "number" || typeof r.category !== "string") {
-        throw new Error("Invalid result format");
-      }
-      return { id: r.id, category: r.category };
-    });
-  } catch {
-    // Try to extract JSON from the response (sometimes surrounded by markdown)
-    const jsonMatch = content.match(/\[[\s\S]*\]/);
-    if (jsonMatch) {
-      const results = JSON.parse(jsonMatch[0]);
-      return results.map((r: { id: unknown; category: unknown }) => ({
-        id: Number(r.id),
-        category: String(r.category),
-      }));
-    }
-    throw new Error(`Failed to parse OpenAI response: ${content.substring(0, 200)}`);
-  }
+  return parseCategorizationContent(content);
 }

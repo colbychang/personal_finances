@@ -11,6 +11,16 @@ import { classifyTransactionsWithAI } from "@/lib/openai";
 import { isNull } from "drizzle-orm";
 import * as schema from "@/db/schema";
 
+const AI_BATCH_SIZE = 40;
+
+function chunkArray<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+  return chunks;
+}
+
 /**
  * POST /api/categorize — categorize transactions
  * Body: { transactionIds: number[] } or { all: true } to categorize all uncategorized
@@ -61,32 +71,35 @@ export async function POST(request: NextRequest) {
     let aiError: string | null = null;
 
     if (remaining.length > 0) {
-      try {
-        // Get transaction details for AI
-        const uncategorizedTxns = getUncategorizedTransactions(db, remaining);
+      // Get transaction details for AI
+      const uncategorizedTxns = getUncategorizedTransactions(db, remaining);
 
-        if (uncategorizedTxns.length > 0) {
-          // Get full category list
-          const categories = getAllCategories(db);
-          const categoryNames = categories.map((c) => c.name);
+      if (uncategorizedTxns.length > 0) {
+        // Get full category list
+        const categories = getAllCategories(db);
+        const categoryNames = categories.map((c) => c.name);
+        const validCategorySet = new Set(categoryNames);
 
-          // Build prompt and call AI
-          const prompt = buildCategorizationPrompt(uncategorizedTxns, categoryNames);
-          const results = await classifyTransactionsWithAI(prompt);
+        for (const batch of chunkArray(uncategorizedTxns, AI_BATCH_SIZE)) {
+          try {
+            const prompt = buildCategorizationPrompt(batch, categoryNames);
+            const results = await classifyTransactionsWithAI(prompt);
 
-          // Filter results to only include valid categories
-          const validCategorySet = new Set(categoryNames);
-          const validResults = results.filter((r) => validCategorySet.has(r.category));
+            // Filter results to only include valid categories
+            const validResults = results.filter((r) =>
+              validCategorySet.has(r.category)
+            );
 
-          // Apply results
-          aiCategorized = applyCategorizationResults(db, validResults);
+            aiCategorized += applyCategorizationResults(db, validResults);
+          } catch (error) {
+            console.error("AI categorization batch error:", error);
+            aiError =
+              error instanceof Error
+                ? error.message
+                : "AI categorization failed. You can retry.";
+            break;
+          }
         }
-      } catch (error) {
-        console.error("AI categorization error:", error);
-        aiError =
-          error instanceof Error
-            ? error.message
-            : "AI categorization failed. You can retry.";
       }
     }
 

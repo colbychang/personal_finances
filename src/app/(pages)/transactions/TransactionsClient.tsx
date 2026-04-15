@@ -436,38 +436,33 @@ export function TransactionsClient({
           <span className="hidden sm:inline">Add Transaction</span>
         </button>
 
-        <button
-          onClick={() => {
-            applyFilter(() => setNeedsReviewOnly((prev) => !prev));
-          }}
-          className={cn(
-            "inline-flex items-center gap-2 px-4 py-2.5 rounded-[var(--radius-button)] font-medium transition-colors min-h-[44px] flex-shrink-0 border",
-            needsReviewOnly
-              ? "border-amber-300 bg-amber-50 text-amber-900"
-              : "border-neutral-300 bg-white text-neutral-700 hover:bg-neutral-50"
-          )}
-          title="Show uncategorized, non-transfer expense transactions"
-        >
-          <AlertCircle className="h-4 w-4" />
-          <span className="hidden sm:inline">Needs Review</span>
-        </button>
-
         {/* Categorize All Button */}
-        <button
-          onClick={handleCategorizeAll}
-          disabled={isCategorizing}
-          className="inline-flex items-center gap-2 px-4 py-2.5 bg-violet-600 text-white rounded-[var(--radius-button)] font-medium hover:bg-violet-700 transition-colors min-h-[44px] flex-shrink-0 disabled:opacity-50"
-          title="Auto-categorize uncategorized transactions"
-        >
-          {isCategorizing ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Sparkles className="h-4 w-4" />
-          )}
-          <span className="hidden sm:inline">
-            {isCategorizing ? "Categorizing..." : "Categorize"}
-          </span>
-        </button>
+        <div className="relative group flex-shrink-0">
+          <button
+            onClick={handleCategorizeAll}
+            disabled={isCategorizing}
+            aria-describedby="categorize-tooltip"
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-violet-600 text-white rounded-[var(--radius-button)] font-medium hover:bg-violet-700 transition-colors min-h-[44px] disabled:opacity-50"
+            title="Apply merchant rules first, then use AI to categorize uncategorized transactions."
+          >
+            {isCategorizing ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Sparkles className="h-4 w-4" />
+            )}
+            <span className="hidden sm:inline">
+              {isCategorizing ? "Categorizing..." : "Categorize"}
+            </span>
+          </button>
+          <div
+            id="categorize-tooltip"
+            role="tooltip"
+            className="pointer-events-none absolute left-1/2 top-full z-20 mt-2 w-72 -translate-x-1/2 rounded-[var(--radius-card)] border border-neutral-200 bg-neutral-900 px-3 py-2 text-xs leading-5 text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+          >
+            Applies any matching merchant rules first, then asks AI to sort the
+            remaining uncategorized transactions into your budget categories.
+          </div>
+        </div>
 
         {/* Search Input */}
         <div className="relative flex-1">
@@ -576,6 +571,28 @@ export function TransactionsClient({
               </option>
             ))}
           </select>
+        </div>
+
+        <div className="flex-shrink-0">
+          <label className="block text-xs font-medium text-neutral-500 mb-1">
+            Review
+          </label>
+          <button
+            onClick={() => {
+              applyFilter(() => setNeedsReviewOnly((prev) => !prev));
+            }}
+            aria-pressed={needsReviewOnly}
+            className={cn(
+              "inline-flex items-center gap-2 px-4 py-2.5 rounded-[var(--radius-button)] font-medium transition-colors min-h-[44px] border",
+              needsReviewOnly
+                ? "border-amber-300 bg-amber-50 text-amber-900"
+                : "border-neutral-300 bg-white text-neutral-700 hover:bg-neutral-50"
+            )}
+            title="Show uncategorized, non-transfer expense transactions"
+          >
+            <AlertCircle className="h-4 w-4" />
+            <span>Needs Review</span>
+          </button>
         </div>
 
         {/* Clear filters */}
