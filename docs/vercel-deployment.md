@@ -73,6 +73,10 @@ This disables the DB-backed finance pages during prerender so Vercel can build
 the public profile, privacy, and policy pages without requiring the local
 SQLite database.
 
+The repo also includes a `vercel-build` script that defaults
+`PUBLIC_PROFILE_ONLY` to `1` during Vercel builds unless you explicitly set a
+different value.
+
 If you later expose Plaid flows through the deployed site, configure:
 
 - `PLAID_CLIENT_ID`
