@@ -14,6 +14,7 @@ import {
   updateConnectionSyncStatus,
   updateAccountBalances,
 } from "@/db/queries/sync";
+import { getTransactions } from "@/db/queries/transactions";
 
 let sqlite: InstanceType<typeof Database>;
 let db: ReturnType<typeof drizzle>;
@@ -182,6 +183,196 @@ describe("syncTransactionsFromPlaid", () => {
     // txn-a should belong to checking (plaid-acct-001)
     // txn-b should belong to savings (plaid-acct-002)
     expect(txnA.accountId).not.toBe(txnB.accountId);
+  });
+
+  it("skips syncing transactions for investment accounts", () => {
+    const conn = createConnection(db, {
+      institutionName: "Merrill",
+      provider: "plaid",
+      accessToken: "encrypted-investment-token",
+      itemId: "item-investment",
+      isEncrypted: true,
+    });
+
+    const instId = findOrCreatePlaidInstitution(db, "Merrill", "ins_investment");
+    createPlaidAccount(
+      db,
+      {
+        institutionId: instId,
+        externalRef: "merrill-investment-001",
+        name: "Brokerage",
+        mask: "9999",
+        type: "investment",
+        subtype: "brokerage",
+        balanceCurrent: 2500000,
+        balanceAvailable: 2500000,
+        isAsset: true,
+      },
+      conn.id,
+      "Merrill"
+    );
+
+    const result = syncTransactionsFromPlaid(db, conn.id, {
+      added: [
+        {
+          transaction_id: "investment-dividend-001",
+          account_id: "merrill-investment-001",
+          amount: -25,
+          date: "2026-04-10",
+          name: "Dividend",
+          merchant_name: null,
+          pending: false,
+        },
+      ],
+      modified: [],
+      removed: [],
+    });
+
+    expect(result.added).toBe(0);
+
+    const stored = db
+      .select()
+      .from(schema.transactions)
+      .where(eq(schema.transactions.externalId, "investment-dividend-001"))
+      .get();
+
+    expect(stored).toBeUndefined();
+  });
+
+  it("marks interest and dividend income transactions as excluded", () => {
+    const { conn } = setupConnectionWithAccount();
+
+    const result = syncTransactionsFromPlaid(db, conn.id, {
+      added: [
+        {
+          transaction_id: "interest-income-001",
+          account_id: "plaid-acct-001",
+          amount: -2.98,
+          date: "2026-04-01",
+          name: "March interest Interest payment PAID_INTEREST",
+          merchant_name: null,
+          pending: false,
+        },
+      ],
+      modified: [],
+      removed: [],
+    });
+
+    expect(result.added).toBe(1);
+
+    const stored = db
+      .select()
+      .from(schema.transactions)
+      .where(eq(schema.transactions.externalId, "interest-income-001"))
+      .get();
+
+    expect(stored?.isExcluded).toBe(true);
+
+    const visibleTransactions = getTransactions(db, { page: 1, limit: 20 });
+    expect(visibleTransactions.total).toBe(0);
+  });
+
+  it("excludes investment and retirement account transactions from the transactions list", () => {
+    const instId = findOrCreatePlaidInstitution(db, "Merrill", "ins_filter");
+    const connection = createConnection(db, {
+      institutionName: "Merrill",
+      provider: "plaid",
+      accessToken: "encrypted-filter-token",
+      itemId: "item-filter",
+      isEncrypted: true,
+    });
+
+    const checkingAccount = createPlaidAccount(
+      db,
+      {
+        institutionId: instId,
+        externalRef: "checking-001",
+        name: "Cash Management",
+        mask: "1111",
+        type: "checking",
+        subtype: "checking",
+        balanceCurrent: 500000,
+        balanceAvailable: 500000,
+        isAsset: true,
+      },
+      connection.id,
+      "Merrill"
+    );
+
+    const investmentAccount = createPlaidAccount(
+      db,
+      {
+        institutionId: instId,
+        externalRef: "investment-001",
+        name: "Brokerage",
+        mask: "2222",
+        type: "investment",
+        subtype: "brokerage",
+        balanceCurrent: 2500000,
+        balanceAvailable: 2500000,
+        isAsset: true,
+      },
+      connection.id,
+      "Merrill"
+    );
+
+    const retirementAccount = createPlaidAccount(
+      db,
+      {
+        institutionId: instId,
+        externalRef: "retirement-001",
+        name: "Roth IRA",
+        mask: "3333",
+        type: "retirement",
+        subtype: "ira",
+        balanceCurrent: 1200000,
+        balanceAvailable: 1200000,
+        isAsset: true,
+      },
+      connection.id,
+      "Merrill"
+    );
+
+    db.insert(schema.transactions)
+      .values([
+        {
+          accountId: checkingAccount.id,
+          postedAt: "2026-04-10",
+          name: "Coffee Shop",
+          amount: 750,
+          category: "Eating Out",
+          pending: false,
+          isTransfer: false,
+          reviewState: "none",
+        },
+        {
+          accountId: investmentAccount.id,
+          postedAt: "2026-04-10",
+          name: "Dividend",
+          amount: -2500,
+          category: null,
+          pending: false,
+          isTransfer: false,
+          reviewState: "none",
+        },
+        {
+          accountId: retirementAccount.id,
+          postedAt: "2026-04-10",
+          name: "Reinvestment",
+          amount: -1500,
+          category: null,
+          pending: false,
+          isTransfer: false,
+          reviewState: "none",
+        },
+      ])
+      .run();
+
+    const result = getTransactions(db, { page: 1, limit: 20 });
+
+    expect(result.total).toBe(1);
+    expect(result.transactions).toHaveLength(1);
+    expect(result.transactions[0]?.name).toBe("Coffee Shop");
   });
 
   it("marks duplicate bank-side Venmo funding pulls as transfers when a matching Venmo payment exists", () => {
@@ -410,7 +601,7 @@ describe("syncTransactionsFromPlaid", () => {
     expect(merrillTxn?.notes).toContain("matched move between tracked accounts");
   });
 
-  it("marks tracked-account transfers when the matching pair posts one day apart", () => {
+  it("marks tracked-account transfers when the matching pair posts within four days", () => {
     const amexConnection = createConnection(db, {
       institutionName: "American Express",
       provider: "plaid",
@@ -474,7 +665,7 @@ describe("syncTransactionsFromPlaid", () => {
           transaction_id: "amex-card-payment-001",
           account_id: "amex-card-001",
           amount: -1430.65,
-          date: "2026-04-06",
+          date: "2026-04-03",
           name: "ONLINE PAYMENT - THANK YOU",
           merchant_name: null,
           pending: false,
@@ -497,6 +688,187 @@ describe("syncTransactionsFromPlaid", () => {
 
     expect(checkingTxn?.isTransfer).toBe(true);
     expect(cardTxn?.isTransfer).toBe(true);
+  });
+
+  it("marks Venmo Standard transfers as transfers and flags exact duplicates as cancelled", () => {
+    const venmoConnection = createConnection(db, {
+      institutionName: "Venmo - Personal",
+      provider: "plaid",
+      accessToken: "encrypted-venmo-token",
+      itemId: "item-venmo-standard-transfer",
+      isEncrypted: true,
+    });
+
+    const venmoInstitutionId = findOrCreatePlaidInstitution(
+      db,
+      "Venmo - Personal",
+      "ins_venmo_standard_transfer"
+    );
+
+    createPlaidAccount(
+      db,
+      {
+        institutionId: venmoInstitutionId,
+        externalRef: "venmo-standard-transfer-acct-001",
+        name: "Venmo",
+        mask: "7777",
+        type: "checking",
+        subtype: "checking",
+        balanceCurrent: 500000,
+        balanceAvailable: 500000,
+        isAsset: true,
+      },
+      venmoConnection.id,
+      "Venmo - Personal"
+    );
+
+    syncTransactionsFromPlaid(db, venmoConnection.id, {
+      added: [
+        {
+          transaction_id: "venmo-standard-transfer-001",
+          account_id: "venmo-standard-transfer-acct-001",
+          amount: 2593,
+          date: "2026-04-03",
+          name: "Standard transfer",
+          merchant_name: null,
+          pending: false,
+        },
+        {
+          transaction_id: "venmo-standard-transfer-002",
+          account_id: "venmo-standard-transfer-acct-001",
+          amount: 2593,
+          date: "2026-04-03",
+          name: "Standard transfer",
+          merchant_name: null,
+          pending: false,
+        },
+      ],
+      modified: [],
+      removed: [],
+    });
+
+    const firstTransfer = db
+      .select()
+      .from(schema.transactions)
+      .where(eq(schema.transactions.externalId, "venmo-standard-transfer-001"))
+      .get();
+    const duplicateTransfer = db
+      .select()
+      .from(schema.transactions)
+      .where(eq(schema.transactions.externalId, "venmo-standard-transfer-002"))
+      .get();
+
+    expect(firstTransfer?.isTransfer).toBe(true);
+    expect(firstTransfer?.notes).toContain("money movement");
+    expect(duplicateTransfer?.isTransfer).toBe(true);
+    expect(duplicateTransfer?.notes).toContain("duplicate/cancelled");
+  });
+
+  it("marks the non-Venmo counterpart of a Venmo Standard transfer as a transfer", () => {
+    const wealthfrontConnection = createConnection(db, {
+      institutionName: "Wealthfront",
+      provider: "plaid",
+      accessToken: "encrypted-wealthfront-token",
+      itemId: "item-wealthfront-venmo",
+      isEncrypted: true,
+    });
+
+    const wealthfrontInstitutionId = findOrCreatePlaidInstitution(
+      db,
+      "Wealthfront",
+      "ins_wealthfront_venmo"
+    );
+
+    createPlaidAccount(
+      db,
+      {
+        institutionId: wealthfrontInstitutionId,
+        externalRef: "wealthfront-cash-001",
+        name: "High Yield Cash",
+        mask: "1212",
+        type: "savings",
+        subtype: "savings",
+        balanceCurrent: 1000000,
+        balanceAvailable: 1000000,
+        isAsset: true,
+      },
+      wealthfrontConnection.id,
+      "Wealthfront"
+    );
+
+    const venmoConnection = createConnection(db, {
+      institutionName: "Venmo - Personal",
+      provider: "plaid",
+      accessToken: "encrypted-venmo-token",
+      itemId: "item-venmo-counterpart",
+      isEncrypted: true,
+    });
+
+    const venmoInstitutionId = findOrCreatePlaidInstitution(
+      db,
+      "Venmo - Personal",
+      "ins_venmo_counterpart"
+    );
+
+    createPlaidAccount(
+      db,
+      {
+        institutionId: venmoInstitutionId,
+        externalRef: "venmo-wallet-001",
+        name: "Venmo",
+        mask: "3434",
+        type: "checking",
+        subtype: "checking",
+        balanceCurrent: 500000,
+        balanceAvailable: 500000,
+        isAsset: true,
+      },
+      venmoConnection.id,
+      "Venmo - Personal"
+    );
+
+    syncTransactionsFromPlaid(db, venmoConnection.id, {
+      added: [
+        {
+          transaction_id: "venmo-standard-transfer-counterpart-001",
+          account_id: "venmo-wallet-001",
+          amount: 2593,
+          date: "2026-04-03",
+          name: "Standard transfer",
+          merchant_name: null,
+          pending: false,
+        },
+      ],
+      modified: [],
+      removed: [],
+    });
+
+    syncTransactionsFromPlaid(db, wealthfrontConnection.id, {
+      added: [
+        {
+          transaction_id: "wealthfront-venmo-counterpart-001",
+          account_id: "wealthfront-cash-001",
+          amount: -2593,
+          date: "2026-04-06",
+          name: "Venmo",
+          merchant_name: null,
+          pending: false,
+        },
+      ],
+      modified: [],
+      removed: [],
+    });
+
+    const counterpart = db
+      .select()
+      .from(schema.transactions)
+      .where(
+        eq(schema.transactions.externalId, "wealthfront-venmo-counterpart-001")
+      )
+      .get();
+
+    expect(counterpart?.isTransfer).toBe(true);
+    expect(counterpart?.notes).toContain("matched Venmo Standard transfer");
   });
 
   it("does not mark same-day equal-and-opposite amounts as transfers without transfer clues", () => {

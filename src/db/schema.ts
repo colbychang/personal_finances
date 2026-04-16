@@ -39,6 +39,7 @@ export const transactions = sqliteTable("transactions", {
     .references(() => accounts.id),
   externalId: text("external_id"),
   postedAt: text("posted_at").notNull(), // YYYY-MM-DD
+  overrideMonth: text("override_month"), // YYYY-MM, optional budgeting month override
   name: text().notNull(),
   merchant: text(),
   amount: integer().notNull(), // cents (positive = expense, negative = income)
@@ -47,6 +48,7 @@ export const transactions = sqliteTable("transactions", {
   notes: text(),
   categoryOverride: text("category_override"),
   isTransfer: integer("is_transfer", { mode: "boolean" }).notNull().default(false),
+  isExcluded: integer("is_excluded", { mode: "boolean" }).notNull().default(false),
   reviewState: text("review_state").notNull().default("none"), // "none" | "reviewed" | "flagged"
 });
 
@@ -59,6 +61,14 @@ export const budgets = sqliteTable("budgets", {
 }, (table) => [
   uniqueIndex("budgets_month_category_unique").on(table.month, table.category),
 ]);
+
+// ─── Budget Templates ──────────────────────────────────────────────────
+export const budgetTemplates = sqliteTable("budget_templates", {
+  id: integer().primaryKey({ autoIncrement: true }),
+  category: text().notNull().unique(),
+  amount: integer().notNull(), // cents
+  updatedAt: text("updated_at").notNull().default(sql`(CURRENT_TIMESTAMP)`),
+});
 
 // ─── Snapshots ─────────────────────────────────────────────────────────
 export const snapshots = sqliteTable("snapshots", {

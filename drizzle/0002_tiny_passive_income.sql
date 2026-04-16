@@ -1,0 +1,1 @@
+ALTER TABLE `transactions` ADD COLUMN `is_excluded` integer DEFAULT false NOT NULL;

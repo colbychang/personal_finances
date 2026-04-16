@@ -10,6 +10,7 @@ type TransactionsPageProps = {
   searchParams?: Promise<{
     dateFrom?: string | string[];
     dateTo?: string | string[];
+    effectiveMonth?: string | string[];
     category?: string | string[];
     accountId?: string | string[];
     needsReview?: string | string[];
@@ -28,6 +29,7 @@ export default async function TransactionsPage({
   const dateToParam = resolvedSearchParams?.dateTo;
   const categoryParam = resolvedSearchParams?.category;
   const accountIdParam = resolvedSearchParams?.accountId;
+  const effectiveMonthParam = resolvedSearchParams?.effectiveMonth;
   const needsReviewParam = resolvedSearchParams?.needsReview;
   const initialDateFrom = Array.isArray(dateFromParam)
     ? dateFromParam[0] ?? ""
@@ -51,8 +53,15 @@ export default async function TransactionsPage({
   const accountIdValue = Array.isArray(accountIdParam)
     ? accountIdParam[0]
     : accountIdParam;
+  const effectiveMonthValue = Array.isArray(effectiveMonthParam)
+    ? effectiveMonthParam[0]
+    : effectiveMonthParam;
   const initialSelectedAccountId =
     accountIdValue && /^\d+$/.test(accountIdValue) ? accountIdValue : "";
+  const initialEffectiveMonth =
+    effectiveMonthValue && /^\d{4}-\d{2}$/.test(effectiveMonthValue)
+      ? effectiveMonthValue
+      : "";
   const initialNeedsReview = Array.isArray(needsReviewParam)
     ? needsReviewParam.includes("1") || needsReviewParam.includes("true")
     : needsReviewParam === "1" || needsReviewParam === "true";
@@ -61,6 +70,7 @@ export default async function TransactionsPage({
   const initialData = getTransactions(db, {
     dateFrom: initialDateFrom || undefined,
     dateTo: initialDateTo || undefined,
+    effectiveMonth: initialEffectiveMonth || undefined,
     category:
       initialSelectedCategories.length === 0
         ? undefined
@@ -97,6 +107,7 @@ export default async function TransactionsPage({
         initialDateTo={initialDateTo}
         initialSelectedCategories={initialSelectedCategories}
         initialSelectedAccountId={initialSelectedAccountId}
+        initialEffectiveMonth={initialEffectiveMonth}
         initialNeedsReview={initialNeedsReview}
       />
     </div>

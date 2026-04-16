@@ -9,6 +9,7 @@ import { CategorySelect } from "@/components/categories/CategorySelect";
 
 export interface TransactionFormData {
   date: string;
+  overrideMonth: string;
   name: string;
   amount: string;
   type: "expense" | "income";
@@ -20,6 +21,7 @@ export interface TransactionFormData {
 
 interface FormErrors {
   date?: string;
+  overrideMonth?: string;
   name?: string;
   amount?: string;
   accountId?: string;
@@ -74,6 +76,13 @@ export function TransactionForm({
     // Name validation
     if (!form.name.trim()) {
       newErrors.name = "Name is required";
+    }
+
+    if (form.overrideMonth) {
+      const monthRegex = /^\d{4}-\d{2}$/;
+      if (!monthRegex.test(form.overrideMonth)) {
+        newErrors.overrideMonth = "Override month must be in YYYY-MM format";
+      }
     }
 
     // Amount validation
@@ -188,6 +197,42 @@ export function TransactionForm({
             />
             {errors.date && (
               <p className="mt-1 text-xs text-expense">{errors.date}</p>
+            )}
+          </div>
+
+          {/* Override Month */}
+          <div>
+            <label
+              htmlFor="txn-override-month"
+              className="block text-sm font-medium text-neutral-700 mb-1"
+            >
+              Budget Override Month
+            </label>
+            <input
+              id="txn-override-month"
+              type="month"
+              value={form.overrideMonth}
+              onChange={(e) => {
+                setForm({ ...form, overrideMonth: e.target.value });
+                if (errors.overrideMonth) {
+                  setErrors({ ...errors, overrideMonth: undefined });
+                }
+              }}
+              className={cn(
+                "w-full px-3 py-2.5 rounded-[var(--radius-button)] border text-sm min-h-[44px]",
+                errors.overrideMonth
+                  ? "border-expense focus:ring-expense"
+                  : "border-neutral-300 focus:ring-primary"
+              )}
+            />
+            <p className="mt-1 text-xs text-neutral-500">
+              Optional. Use this when the spending belongs to a different
+              budget month than the posted date.
+            </p>
+            {errors.overrideMonth && (
+              <p className="mt-1 text-xs text-expense">
+                {errors.overrideMonth}
+              </p>
             )}
           </div>
 

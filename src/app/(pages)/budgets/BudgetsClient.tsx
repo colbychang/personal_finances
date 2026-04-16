@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import { useState, useCallback, useRef, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
-  Copy,
   PiggyBank,
   AlertCircle,
   Plus,
@@ -14,6 +14,7 @@ import {
   X,
   Pencil,
   ExternalLink,
+  Bookmark,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { subscribeToFinanceDataChanged } from "@/lib/client-events";
@@ -29,6 +30,7 @@ interface BudgetWithSpending {
   budgeted: number;
   spent: number;
   remaining: number;
+  isInheritedDefault: boolean;
   categoryColor: string | null;
   transactions: CategoryTransaction[];
 }
@@ -83,10 +85,45 @@ interface AccountOption {
   type: string;
 }
 
+interface BudgetTemplate {
+  id: number;
+  category: string;
+  amount: number;
+  updatedAt: string;
+}
+
+interface TemplateDraft {
+  category: string;
+  amount: string;
+}
+
+function DefaultBudgetBadge() {
+  return (
+    <span className="group relative inline-flex">
+      <span
+        tabIndex={0}
+        className="inline-flex items-center rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary outline-none"
+        aria-describedby="default-budget-badge-tooltip"
+      >
+        Default
+      </span>
+      <span
+        id="default-budget-badge-tooltip"
+        role="tooltip"
+        className="pointer-events-none absolute left-1/2 top-full z-10 mt-2 hidden w-52 -translate-x-1/2 rounded-[var(--radius-button)] bg-neutral-900 px-3 py-2 text-[11px] font-medium leading-relaxed text-white shadow-lg group-hover:block group-focus-within:block"
+      >
+        This budget is inherited from your saved default budget model for months
+        without a custom override.
+      </span>
+    </span>
+  );
+}
+
 interface EditableTransaction {
   id: number;
   accountId: number;
   postedAt: string;
+  overrideMonth: string | null;
   name: string;
   amount: number;
   category: string | null;
@@ -99,6 +136,7 @@ interface BudgetsClientProps {
   initialData: BudgetSummary;
   categories: CategoryOption[];
   accounts: AccountOption[];
+  initialBudgetTemplates: BudgetTemplate[];
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────
@@ -121,7 +159,8 @@ function getMonthDateRange(month: string): { dateFrom: string; dateTo: string } 
 }
 
 function buildTransactionsHref(month: string, category: string): string {
-  const params = new URLSearchParams(getMonthDateRange(month));
+  const params = new URLSearchParams();
+  params.set("effectiveMonth", month);
   params.set("category", category);
   return `/transactions?${params.toString()}`;
 }
@@ -134,6 +173,24 @@ function restoreScrollPosition(scrollY: number) {
   });
 }
 
+function restoreBudgetDetailScroll(
+  scrollY: number,
+  container: HTMLDivElement | null,
+  containerScrollTop: number
+) {
+  if (typeof window === "undefined") return;
+
+  requestAnimationFrame(() => {
+    window.scrollTo({ top: scrollY });
+
+    requestAnimationFrame(() => {
+      if (container) {
+        container.scrollTop = containerScrollTop;
+      }
+    });
+  });
+}
+
 // ─── Component ──────────────────────────────────────────────────────────
 
 export function BudgetsClient({
@@ -141,14 +198,24 @@ export function BudgetsClient({
   initialData,
   categories,
   accounts,
+  initialBudgetTemplates,
 }: BudgetsClientProps) {
   const { showToast } = useToast();
+  const router = useRouter();
   const [month, setMonth] = useState(initialMonth);
   const [data, setData] = useState<BudgetSummary>(initialData);
   const [allCategories, setAllCategories] = useState(categories);
   const [isLoading, setIsLoading] = useState(false);
-  const [copyMessage, setCopyMessage] = useState<string | null>(null);
-  const [isCopying, setIsCopying] = useState(false);
+  const [templateMessage, setTemplateMessage] = useState<string | null>(null);
+  const [isSavingTemplate, setIsSavingTemplate] = useState(false);
+  const [isApplyingTemplate, setIsApplyingTemplate] = useState(false);
+  const [isEditingTemplate, setIsEditingTemplate] = useState(false);
+  const [isSavingTemplateEdits, setIsSavingTemplateEdits] = useState(false);
+  const [templateError, setTemplateError] = useState<string | null>(null);
+  const [defaultTemplates, setDefaultTemplates] = useState(initialBudgetTemplates);
+  const [templateDrafts, setTemplateDrafts] = useState<TemplateDraft[]>([]);
+  const [newTemplateCategory, setNewTemplateCategory] = useState("");
+  const [newTemplateAmount, setNewTemplateAmount] = useState("");
   const [expandedCategoryKey, setExpandedCategoryKey] = useState<string | null>(
     null
   );
@@ -164,6 +231,12 @@ export function BudgetsClient({
 
   // Ref for click-away detection on inline edit
   const editRef = useRef<HTMLDivElement>(null);
+  const categoryContainerRefs = useRef(new Map<string, HTMLDivElement | null>());
+  const pendingScrollRestoreRef = useRef<{
+    scrollY: number;
+    categoryKey: string | null;
+    containerScrollTop: number;
+  } | null>(null);
 
   useEffect(() => {
     if (!editingCategory) return;
@@ -186,6 +259,7 @@ export function BudgetsClient({
   const [newCategoryName, setNewCategoryName] = useState("");
   const [newCategoryError, setNewCategoryError] = useState<string | null>(null);
   const [isCreatingCategory, setIsCreatingCategory] = useState(false);
+  const hasTemplate = defaultTemplates.length > 0;
 
   const fetchBudgets = useCallback(async (targetMonth: string) => {
     setIsLoading(true);
@@ -202,6 +276,17 @@ export function BudgetsClient({
     }
   }, []);
 
+  const refreshTemplates = useCallback(async () => {
+    const res = await fetch("/api/budgets/template");
+    if (!res.ok) {
+      throw new Error("Failed to fetch budget template");
+    }
+    const result = await res.json();
+    const templates = (result.templates ?? []) as BudgetTemplate[];
+    setDefaultTemplates(templates);
+    return templates;
+  }, []);
+
   useEffect(() => {
     return subscribeToFinanceDataChanged(() => {
       void fetchBudgets(month);
@@ -214,12 +299,29 @@ export function BudgetsClient({
     }
   }, [initialData, initialMonth, month]);
 
+  useEffect(() => {
+    const pendingRestore = pendingScrollRestoreRef.current;
+    if (!pendingRestore) return;
+
+    const container = pendingRestore.categoryKey
+      ? categoryContainerRefs.current.get(pendingRestore.categoryKey) ?? null
+      : null;
+
+    restoreBudgetDetailScroll(
+      pendingRestore.scrollY,
+      container,
+      pendingRestore.containerScrollTop
+    );
+    pendingScrollRestoreRef.current = null;
+  }, [data, expandedCategoryKey]);
+
   function handleMonthChange(direction: -1 | 1) {
     const newMonth = getAdjacentMonth(month, direction);
     setMonth(newMonth);
     setEditingCategory(null);
     setShowAddForm(false);
     setExpandedCategoryKey(null);
+    router.replace(`/budgets?month=${newMonth}`, { scroll: false });
     fetchBudgets(newMonth);
   }
 
@@ -343,33 +445,177 @@ export function BudgetsClient({
     }
   }
 
-  // ─── Copy Previous Month ─────────────────────────────────────
+  // ─── Save Default Budget Model ───────────────────────────────
 
-  async function handleCopyPrevious() {
-    setIsCopying(true);
-    setCopyMessage(null);
+  async function handleSaveTemplate() {
+    setIsSavingTemplate(true);
+    setTemplateMessage(null);
+
     try {
-      const res = await fetch("/api/budgets/copy-previous", {
+      const res = await fetch("/api/budgets/template", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ month }),
       });
       const result = await res.json();
 
-      if (result.copied === 0) {
-        setCopyMessage("No budgets found for the previous month.");
+      if (result.saved === 0) {
+        setTemplateMessage("No budgets found for this month.");
       } else {
-        setCopyMessage(`Copied ${result.copied} budget(s) from the previous month.`);
+        const templates = await refreshTemplates();
+        setTemplateMessage(
+          `Saved ${result.saved} budget(s) as your default model. Future months will inherit it unless you override them.`
+        );
+        setDefaultTemplates(templates);
         await fetchBudgets(month);
       }
 
-      // Auto-dismiss message after 4 seconds
-      setTimeout(() => setCopyMessage(null), 4000);
+      setTimeout(() => setTemplateMessage(null), 5000);
     } catch {
-      setCopyMessage("Failed to copy budgets.");
-      setTimeout(() => setCopyMessage(null), 4000);
+      setTemplateMessage("Failed to save the default budget model.");
+      setTimeout(() => setTemplateMessage(null), 5000);
     } finally {
-      setIsCopying(false);
+      setIsSavingTemplate(false);
+    }
+  }
+
+  async function handleApplyTemplate() {
+    setIsApplyingTemplate(true);
+    setTemplateMessage(null);
+
+    try {
+      const res = await fetch("/api/budgets/template/apply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ month }),
+      });
+      const result = await res.json();
+
+      if (result.applied === 0) {
+        setTemplateMessage("No default budget model is saved yet.");
+      } else {
+        setTemplateMessage(
+          `Applied ${result.applied} default budget(s) to ${formatMonth(month)}.`
+        );
+        await fetchBudgets(month);
+      }
+
+      setTimeout(() => setTemplateMessage(null), 5000);
+    } catch {
+      setTemplateMessage("Failed to apply the default budget.");
+      setTimeout(() => setTemplateMessage(null), 5000);
+    } finally {
+      setIsApplyingTemplate(false);
+    }
+  }
+
+  function openTemplateEditor() {
+    setTemplateDrafts(
+      defaultTemplates
+        .slice()
+        .sort((left, right) => left.category.localeCompare(right.category))
+        .map((template) => ({
+          category: template.category,
+          amount: (template.amount / 100).toFixed(2),
+        }))
+    );
+    setNewTemplateCategory("");
+    setNewTemplateAmount("");
+    setTemplateError(null);
+    setIsEditingTemplate(true);
+  }
+
+  function closeTemplateEditor() {
+    setIsEditingTemplate(false);
+    setTemplateError(null);
+    setNewTemplateCategory("");
+    setNewTemplateAmount("");
+  }
+
+  function handleAddTemplateRow() {
+    if (!newTemplateCategory) {
+      setTemplateError("Choose a category to add to the default budget.");
+      return;
+    }
+
+    if (!newTemplateAmount) {
+      setTemplateError("Enter an amount for the new default budget.");
+      return;
+    }
+
+    const parsed = parseFloat(newTemplateAmount);
+    if (Number.isNaN(parsed) || parsed < 0) {
+      setTemplateError("Default budget amount must be zero or greater.");
+      return;
+    }
+
+    setTemplateDrafts((current) =>
+      [...current, { category: newTemplateCategory, amount: parsed.toFixed(2) }].sort(
+        (left, right) => left.category.localeCompare(right.category)
+      )
+    );
+    setNewTemplateCategory("");
+    setNewTemplateAmount("");
+    setTemplateError(null);
+  }
+
+  async function handleSaveTemplateEdits() {
+    const normalizedTemplates = templateDrafts.flatMap((draft, index) => {
+      const trimmedCategory = draft.category.trim();
+      const parsedAmount = parseFloat(draft.amount);
+
+      if (!trimmedCategory) {
+        setTemplateError(`Template row ${index + 1} is missing a category.`);
+        return [];
+      }
+
+      if (Number.isNaN(parsedAmount) || parsedAmount < 0) {
+        setTemplateError(
+          `Template amount for ${trimmedCategory} must be zero or greater.`
+        );
+        return [];
+      }
+
+      return [{ category: trimmedCategory, amount: parsedAmount }];
+    });
+
+    if (normalizedTemplates.length !== templateDrafts.length) {
+      return;
+    }
+
+    setIsSavingTemplateEdits(true);
+    setTemplateError(null);
+
+    try {
+      const res = await fetch("/api/budgets/template", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ templates: normalizedTemplates }),
+      });
+      const result = await res.json();
+
+      if (!res.ok) {
+        setTemplateError(
+          result.error ||
+            Object.values(result.errors ?? {})[0] ||
+            "Failed to update the default budget."
+        );
+        return;
+      }
+
+      await refreshTemplates();
+      await fetchBudgets(month);
+      closeTemplateEditor();
+      setTemplateMessage(
+        normalizedTemplates.length === 0
+          ? "Cleared the default budget model."
+          : "Updated the default budget model."
+      );
+      setTimeout(() => setTemplateMessage(null), 5000);
+    } catch {
+      setTemplateError("Failed to update the default budget.");
+    } finally {
+      setIsSavingTemplateEdits(false);
     }
   }
 
@@ -377,6 +623,10 @@ export function BudgetsClient({
   const budgetedCategories = new Set(data.budgets.map((b) => b.category));
   const availableCategories = allCategories.filter(
     (c) => !budgetedCategories.has(c.name)
+  );
+  const templateCategorySet = new Set(templateDrafts.map((draft) => draft.category));
+  const availableTemplateCategories = allCategories.filter(
+    (category) => !templateCategorySet.has(category.name)
   );
 
   const hasBudgets = data.budgets.length > 0;
@@ -395,6 +645,7 @@ export function BudgetsClient({
     const isIncome = transaction.amount < 0;
     return {
       date: transaction.postedAt,
+      overrideMonth: transaction.overrideMonth ?? "",
       name: transaction.name,
       amount: (Math.abs(transaction.amount) / 100).toFixed(2),
       type: isIncome ? "income" : "expense",
@@ -428,6 +679,10 @@ export function BudgetsClient({
     if (!editingTransaction) return;
 
     const scrollY = typeof window === "undefined" ? 0 : window.scrollY;
+    const categoryKey = expandedCategoryKey;
+    const containerScrollTop = categoryKey
+      ? categoryContainerRefs.current.get(categoryKey)?.scrollTop ?? 0
+      : 0;
     setIsSaving(true);
     try {
       const res = await fetch(`/api/transactions/${editingTransaction.id}`, {
@@ -435,6 +690,7 @@ export function BudgetsClient({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           date: formData.date,
+          overrideMonth: formData.overrideMonth || null,
           name: formData.name,
           amount: parseFloat(formData.amount),
           accountId: parseInt(formData.accountId, 10),
@@ -452,12 +708,16 @@ export function BudgetsClient({
         return;
       }
 
+      pendingScrollRestoreRef.current = {
+        scrollY,
+        categoryKey,
+        containerScrollTop,
+      };
       setEditingTransaction(null);
-      restoreScrollPosition(scrollY);
       showToast("Transaction updated", "success");
       await fetchBudgets(month);
-      restoreScrollPosition(scrollY);
     } catch {
+      restoreScrollPosition(scrollY);
       showToast("Failed to update transaction");
     } finally {
       setIsSaving(false);
@@ -498,7 +758,16 @@ export function BudgetsClient({
         </div>
 
         {isExpanded && (
-          <div className="mt-3 max-h-72 overflow-y-auto rounded-[var(--radius-card)] border border-neutral-200 bg-neutral-50/70">
+          <div
+            ref={(node) => {
+              if (node) {
+                categoryContainerRefs.current.set(categoryKey, node);
+              } else {
+                categoryContainerRefs.current.delete(categoryKey);
+              }
+            }}
+            className="mt-3 max-h-72 overflow-y-auto rounded-[var(--radius-card)] border border-neutral-200 bg-neutral-50/70"
+          >
             <div className="divide-y divide-neutral-200">
               {transactions.map((transaction) => (
                 <button
@@ -596,18 +865,19 @@ export function BudgetsClient({
         </div>
       )}
 
-      {/* ─── Copy Message ────────────────────────────────────────── */}
-      {copyMessage && (
+      {/* ─── Template Message ────────────────────────────────────── */}
+      {templateMessage && (
         <div
           className={cn(
             "mb-4 px-4 py-3 rounded-[var(--radius-card)] text-sm flex items-center gap-2",
-            copyMessage.includes("No budgets")
+            templateMessage.includes("No budgets")
+              || templateMessage.includes("No default budget")
               ? "bg-warning/10 text-warning border border-warning/20"
               : "bg-income/10 text-income border border-income/20"
           )}
         >
           <AlertCircle className="h-4 w-4 flex-shrink-0" />
-          {copyMessage}
+          {templateMessage}
         </div>
       )}
 
@@ -686,15 +956,202 @@ export function BudgetsClient({
         </button>
 
         <button
-          onClick={handleCopyPrevious}
-          disabled={isCopying}
+          onClick={() => void handleSaveTemplate()}
+          disabled={isSavingTemplate}
           className="inline-flex items-center gap-2 px-4 py-2.5 border border-neutral-300 text-neutral-700 rounded-[var(--radius-button)] font-medium hover:bg-neutral-50 transition-colors min-h-[44px] disabled:opacity-50"
         >
-          <Copy className="h-4 w-4" />
-          <span className="hidden sm:inline">Copy Previous Month</span>
-          <span className="sm:hidden">Copy Prev</span>
+          <Bookmark className="h-4 w-4" />
+          <span className="hidden sm:inline">
+            {hasTemplate ? "Update Default Budget" : "Save as Default Budget"}
+          </span>
+          <span className="sm:hidden">{hasTemplate ? "Update Default" : "Save Default"}</span>
+        </button>
+
+        <button
+          onClick={() => void handleApplyTemplate()}
+          disabled={!hasTemplate || isApplyingTemplate}
+          className="inline-flex items-center gap-2 px-4 py-2.5 border border-neutral-300 text-neutral-700 rounded-[var(--radius-button)] font-medium hover:bg-neutral-50 transition-colors min-h-[44px] disabled:opacity-50"
+        >
+          <Check className="h-4 w-4" />
+          <span className="hidden sm:inline">Apply Default Budget</span>
+          <span className="sm:hidden">Apply Default</span>
+        </button>
+
+        <button
+          onClick={openTemplateEditor}
+          className="inline-flex items-center gap-2 px-4 py-2.5 border border-neutral-300 text-neutral-700 rounded-[var(--radius-button)] font-medium hover:bg-neutral-50 transition-colors min-h-[44px]"
+        >
+          <Pencil className="h-4 w-4" />
+          <span className="hidden sm:inline">Edit Default Budget</span>
+          <span className="sm:hidden">Edit Default</span>
         </button>
       </div>
+
+      <p className="mb-6 text-sm text-neutral-500">
+        Default budgets automatically fill future months unless you set a custom amount for that month.
+      </p>
+
+      {isEditingTemplate && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-neutral-950/40 p-4">
+          <div className="w-full max-w-2xl rounded-[var(--radius-card)] border border-neutral-200 bg-white shadow-xl">
+            <div className="flex items-center justify-between border-b border-neutral-200 px-5 py-4">
+              <div>
+                <h3 className="text-base font-semibold text-neutral-900">
+                  Edit Default Budget
+                </h3>
+                <p className="mt-1 text-sm text-neutral-500">
+                  Manage the budget model that future months inherit by default.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeTemplateEditor}
+                className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-[var(--radius-button)] text-neutral-500 transition-colors hover:bg-neutral-100"
+                aria-label="Close default budget editor"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="max-h-[70vh] overflow-y-auto px-5 py-4">
+              <div className="space-y-3">
+                {templateDrafts.length === 0 ? (
+                  <div className="rounded-[var(--radius-card)] border border-dashed border-neutral-300 bg-neutral-50 px-4 py-6 text-sm text-neutral-500">
+                    No default budget categories saved yet. Add one below or save a month as your default model.
+                  </div>
+                ) : (
+                  templateDrafts.map((draft, index) => (
+                    <div
+                      key={`${draft.category}-${index}`}
+                      className="flex flex-col gap-3 rounded-[var(--radius-card)] border border-neutral-200 px-4 py-3 sm:flex-row sm:items-end"
+                    >
+                      <div className="flex-1">
+                        <label className="mb-1 block text-xs font-medium text-neutral-500">
+                          Category
+                        </label>
+                        <div className="min-h-[44px] rounded-[var(--radius-button)] border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-sm text-neutral-800">
+                          {draft.category}
+                        </div>
+                      </div>
+                      <div className="w-full sm:w-40">
+                        <label className="mb-1 block text-xs font-medium text-neutral-500">
+                          Amount ($)
+                        </label>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={draft.amount}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            setTemplateDrafts((current) =>
+                              current.map((entry, draftIndex) =>
+                                draftIndex === index ? { ...entry, amount: value } : entry
+                              )
+                            );
+                            setTemplateError(null);
+                          }}
+                          className="w-full min-h-[44px] rounded-[var(--radius-button)] border border-neutral-300 px-3 py-2.5 text-sm focus:ring-primary"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTemplateDrafts((current) =>
+                            current.filter((_, draftIndex) => draftIndex !== index)
+                          );
+                          setTemplateError(null);
+                        }}
+                        className="inline-flex min-h-[44px] items-center justify-center rounded-[var(--radius-button)] border border-neutral-300 px-4 py-2.5 text-sm font-medium text-neutral-600 transition-colors hover:bg-neutral-50"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              <div className="mt-5 rounded-[var(--radius-card)] border border-primary/20 bg-primary/5 px-4 py-4">
+                <h4 className="text-sm font-semibold text-neutral-900">
+                  Add Category to Default Budget
+                </h4>
+                <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
+                  <div className="flex-1">
+                    <label className="mb-1 block text-xs font-medium text-neutral-500">
+                      Category
+                    </label>
+                    <select
+                      value={newTemplateCategory}
+                      onChange={(e) => {
+                        setNewTemplateCategory(e.target.value);
+                        setTemplateError(null);
+                      }}
+                      className="w-full min-h-[44px] rounded-[var(--radius-button)] border border-neutral-300 bg-white px-3 py-2.5 text-sm focus:ring-primary"
+                    >
+                      <option value="">Select category...</option>
+                      {availableTemplateCategories.map((category) => (
+                        <option key={category.id} value={category.name}>
+                          {category.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="w-full sm:w-40">
+                    <label className="mb-1 block text-xs font-medium text-neutral-500">
+                      Amount ($)
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={newTemplateAmount}
+                      onChange={(e) => {
+                        setNewTemplateAmount(e.target.value);
+                        setTemplateError(null);
+                      }}
+                      placeholder="0.00"
+                      className="w-full min-h-[44px] rounded-[var(--radius-button)] border border-neutral-300 px-3 py-2.5 text-sm focus:ring-primary"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleAddTemplateRow}
+                    disabled={availableTemplateCategories.length === 0}
+                    className="inline-flex min-h-[44px] items-center justify-center rounded-[var(--radius-button)] bg-primary px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-primary-dark disabled:opacity-50"
+                  >
+                    Add
+                  </button>
+                </div>
+              </div>
+
+              {templateError && (
+                <p className="mt-3 text-sm text-expense">{templateError}</p>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between border-t border-neutral-200 px-5 py-4">
+              <p className="text-xs text-neutral-500">
+                Applying the default budget writes those category amounts into the current month without removing extra custom categories.
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={closeTemplateEditor}
+                  className="inline-flex min-h-[44px] items-center justify-center rounded-[var(--radius-button)] border border-neutral-300 px-4 py-2.5 text-sm font-medium text-neutral-600 transition-colors hover:bg-neutral-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleSaveTemplateEdits()}
+                  disabled={isSavingTemplateEdits}
+                  className="inline-flex min-h-[44px] items-center justify-center rounded-[var(--radius-button)] bg-primary px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-primary-dark disabled:opacity-50"
+                >
+                  {isSavingTemplateEdits ? "Saving..." : "Save Default Budget"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ─── Add Budget Form ─────────────────────────────────────── */}
       {showAddForm && (
@@ -859,8 +1316,8 @@ export function BudgetsClient({
             No budgets set for {formatMonth(month)}
           </h2>
           <p className="text-neutral-500 max-w-md mx-auto">
-            Start by setting budget amounts for your spending categories, or
-            copy budgets from a previous month.
+            Start by setting budget amounts for your spending categories, then
+            save them as your default budget model for future months.
           </p>
         </div>
       )}
@@ -942,6 +1399,9 @@ export function BudgetsClient({
                     <span className="text-sm font-semibold text-neutral-900 truncate">
                       {budget.category}
                     </span>
+                    {budget.isInheritedDefault && (
+                      <DefaultBudgetBadge />
+                    )}
                   </div>
 
                   {isEditing ? (

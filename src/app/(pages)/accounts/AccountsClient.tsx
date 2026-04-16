@@ -188,7 +188,7 @@ function AccountForm({
     }
 
     if (!form.type) {
-      newErrors.type = "Account type is required";
+      newErrors.type = "Account category is required";
     }
 
     if (!form.balance.trim()) {
@@ -296,13 +296,13 @@ function AccountForm({
             )}
           </div>
 
-          {/* Type */}
+          {/* Category */}
           <div>
             <label
               htmlFor="account-type"
               className="block text-sm font-medium text-neutral-700 mb-1"
             >
-              Account Type <span className="text-expense">*</span>
+              Account Category <span className="text-expense">*</span>
             </label>
             <select
               id="account-type"
@@ -318,13 +318,18 @@ function AccountForm({
                   : "border-neutral-300 focus:ring-primary"
               )}
             >
-              <option value="">Select type...</option>
+              <option value="">Select category...</option>
               <option value="checking">Checking</option>
               <option value="savings">Savings</option>
               <option value="credit">Credit Card</option>
               <option value="investment">Investment</option>
               <option value="retirement">Retirement</option>
             </select>
+            <p className="mt-1 text-xs text-neutral-500">
+              Investment and retirement accounts stay in net worth, but their
+              transactions are excluded from spending, budgets, and AI
+              categorization.
+            </p>
             {errors.type && (
               <p className="mt-1 text-xs text-expense">{errors.type}</p>
             )}

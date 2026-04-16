@@ -45,7 +45,7 @@ export async function GET(request: Request, context: RouteContext) {
 
 /**
  * PUT /api/transactions/[id] — update an existing transaction
- * Body: { date?, name?, amount?, accountId?, category?, notes?, isTransfer?, type? }
+ * Body: { date?, overrideMonth?, name?, amount?, accountId?, category?, notes?, isTransfer?, type? }
  * amount is in dollars (converted to cents). type is "expense" or "income".
  */
 export async function PUT(request: Request, context: RouteContext) {
@@ -58,7 +58,17 @@ export async function PUT(request: Request, context: RouteContext) {
     }
 
     const body = await request.json();
-    const { date, name, amount, accountId, category, notes, isTransfer, type } = body;
+    const {
+      date,
+      overrideMonth,
+      name,
+      amount,
+      accountId,
+      category,
+      notes,
+      isTransfer,
+      type,
+    } = body;
 
     // Validation
     const errors: Record<string, string> = {};
@@ -73,6 +83,15 @@ export async function PUT(request: Request, context: RouteContext) {
           errors.date = "Invalid date";
         }
       }
+    }
+
+    if (
+      overrideMonth !== undefined &&
+      overrideMonth !== null &&
+      overrideMonth !== "" &&
+      (typeof overrideMonth !== "string" || !/^\d{4}-\d{2}$/.test(overrideMonth))
+    ) {
+      errors.overrideMonth = "Override month must be in YYYY-MM format";
     }
 
     if (name !== undefined && (typeof name !== "string" || name.trim() === "")) {
@@ -94,6 +113,7 @@ export async function PUT(request: Request, context: RouteContext) {
     // Build update input
     const updates: Record<string, unknown> = {};
     if (date !== undefined) updates.postedAt = date;
+    if (overrideMonth !== undefined) updates.overrideMonth = overrideMonth || null;
     if (name !== undefined) updates.name = name.trim();
     if (accountId !== undefined) updates.accountId = accountId;
     if (category !== undefined) updates.category = category || null;

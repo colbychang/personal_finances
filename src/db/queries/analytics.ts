@@ -1,6 +1,8 @@
-import { eq, and, gte, lt, inArray } from "drizzle-orm";
+import { eq, and, inArray, notInArray, sql } from "drizzle-orm";
 import type { drizzle } from "drizzle-orm/better-sqlite3";
 import * as schema from "../schema";
+import { INVESTMENT_LIKE_ACCOUNT_TYPES } from "@/lib/account-types";
+import { effectiveTransactionMonth } from "./effective-month";
 
 type DB = ReturnType<typeof drizzle>;
 
@@ -41,6 +43,8 @@ export function getSpendingByCategory(
   startDate: string,
   endDate: string
 ): CategorySpendingItem[] {
+  const startMonth = startDate.slice(0, 7);
+  const endMonthExclusive = endDate.slice(0, 7);
   // Get all category colors
   const allCategories = database
     .select({ name: schema.categories.name, color: schema.categories.color })
@@ -56,11 +60,17 @@ export function getSpendingByCategory(
       category: schema.transactions.category,
     })
     .from(schema.transactions)
+    .innerJoin(
+      schema.accounts,
+      eq(schema.transactions.accountId, schema.accounts.id)
+    )
     .where(
       and(
-        gte(schema.transactions.postedAt, startDate),
-        lt(schema.transactions.postedAt, endDate),
-        eq(schema.transactions.isTransfer, false)
+        sql`${effectiveTransactionMonth} >= ${startMonth}`,
+        sql`${effectiveTransactionMonth} < ${endMonthExclusive}`,
+        eq(schema.transactions.isTransfer, false),
+        eq(schema.transactions.isExcluded, false),
+        notInArray(schema.accounts.type, [...INVESTMENT_LIKE_ACCOUNT_TYPES])
       )
     )
     .all();
@@ -138,26 +148,31 @@ export function getMonthlySpendingTrends(
     monthList.push(m);
   }
 
-  const startDate = `${monthList[0]}-01`;
-  // endDate is first day of month after the last month in the list
   const lastMonth = monthList[monthList.length - 1];
   const [lastYear, lastMon] = lastMonth.split("-").map(Number);
   const nextMon = lastMon === 12 ? `${lastYear + 1}-01` : `${lastYear}-${String(lastMon + 1).padStart(2, "0")}`;
-  const endDate = `${nextMon}-01`;
+  const endMonthExclusive = nextMon;
 
   // Get all non-transfer expense transactions in the range
   const txns = database
     .select({
       id: schema.transactions.id,
       postedAt: schema.transactions.postedAt,
+      overrideMonth: schema.transactions.overrideMonth,
       amount: schema.transactions.amount,
     })
     .from(schema.transactions)
+    .innerJoin(
+      schema.accounts,
+      eq(schema.transactions.accountId, schema.accounts.id)
+    )
     .where(
       and(
-        gte(schema.transactions.postedAt, startDate),
-        lt(schema.transactions.postedAt, endDate),
-        eq(schema.transactions.isTransfer, false)
+        sql`${effectiveTransactionMonth} >= ${monthList[0]}`,
+        sql`${effectiveTransactionMonth} < ${endMonthExclusive}`,
+        eq(schema.transactions.isTransfer, false),
+        eq(schema.transactions.isExcluded, false),
+        notInArray(schema.accounts.type, [...INVESTMENT_LIKE_ACCOUNT_TYPES])
       )
     )
     .all();
@@ -172,7 +187,7 @@ export function getMonthlySpendingTrends(
     // Skip income
     if (txn.amount < 0) continue;
 
-    const txnMonth = txn.postedAt.slice(0, 7); // YYYY-MM
+    const txnMonth = txn.overrideMonth ?? txn.postedAt.slice(0, 7); // YYYY-MM
     if (monthTotals.has(txnMonth)) {
       monthTotals.set(txnMonth, monthTotals.get(txnMonth)! + txn.amount);
     }
@@ -198,6 +213,8 @@ export function getCategoryTransactions(
   startDate: string,
   endDate: string
 ): CategoryTransaction[] {
+  const startMonth = startDate.slice(0, 7);
+  const endMonthExclusive = endDate.slice(0, 7);
   // 1. Direct category matches (non-transfer, positive amount only)
   const directTxns = database
     .select({
@@ -217,9 +234,11 @@ export function getCategoryTransactions(
     .where(
       and(
         eq(schema.transactions.category, category),
-        gte(schema.transactions.postedAt, startDate),
-        lt(schema.transactions.postedAt, endDate),
-        eq(schema.transactions.isTransfer, false)
+        sql`${effectiveTransactionMonth} >= ${startMonth}`,
+        sql`${effectiveTransactionMonth} < ${endMonthExclusive}`,
+        eq(schema.transactions.isTransfer, false),
+        eq(schema.transactions.isExcluded, false),
+        notInArray(schema.accounts.type, [...INVESTMENT_LIKE_ACCOUNT_TYPES])
       )
     )
     .all();
@@ -276,9 +295,11 @@ export function getCategoryTransactions(
       .where(
         and(
           inArray(schema.transactions.id, splitTxnIds),
-          gte(schema.transactions.postedAt, startDate),
-          lt(schema.transactions.postedAt, endDate),
-          eq(schema.transactions.isTransfer, false)
+          sql`${effectiveTransactionMonth} >= ${startMonth}`,
+          sql`${effectiveTransactionMonth} < ${endMonthExclusive}`,
+          eq(schema.transactions.isTransfer, false),
+          eq(schema.transactions.isExcluded, false),
+          notInArray(schema.accounts.type, [...INVESTMENT_LIKE_ACCOUNT_TYPES])
         )
       )
       .all();

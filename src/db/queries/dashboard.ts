@@ -1,6 +1,8 @@
-import { eq, and, gte, lt, desc, asc, inArray } from "drizzle-orm";
+import { eq, and, desc, asc, inArray, notInArray, sql } from "drizzle-orm";
 import type { drizzle } from "drizzle-orm/better-sqlite3";
 import * as schema from "../schema";
+import { INVESTMENT_LIKE_ACCOUNT_TYPES } from "@/lib/account-types";
+import { effectiveTransactionMonth } from "./effective-month";
 
 type DB = ReturnType<typeof drizzle>;
 
@@ -71,20 +73,6 @@ export interface DashboardData {
 // ─── Helper Functions ───────────────────────────────────────────────────
 
 /**
- * Calculate the date range for a YYYY-MM month string.
- */
-function getMonthRange(month: string): { startDate: string; endDate: string } {
-  const [year, monthNum] = month.split("-").map(Number);
-  const startDate = `${month}-01`;
-  const nextMonth =
-    monthNum === 12
-      ? `${year + 1}-01`
-      : `${year}-${String(monthNum + 1).padStart(2, "0")}`;
-  const endDate = `${nextMonth}-01`;
-  return { startDate, endDate };
-}
-
-/**
  * Get the previous month string for a YYYY-MM month.
  */
 function getPreviousMonth(month: string): string {
@@ -102,8 +90,7 @@ function getPreviousMonth(month: string): string {
  */
 function getSpendingByCategory(
   database: DB,
-  startDate: string,
-  endDate: string
+  month: string
 ): Map<string, number> {
   const spendingMap = new Map<string, number>();
 
@@ -115,11 +102,16 @@ function getSpendingByCategory(
       category: schema.transactions.category,
     })
     .from(schema.transactions)
+    .innerJoin(
+      schema.accounts,
+      eq(schema.transactions.accountId, schema.accounts.id)
+    )
     .where(
       and(
-        gte(schema.transactions.postedAt, startDate),
-        lt(schema.transactions.postedAt, endDate),
-        eq(schema.transactions.isTransfer, false)
+        sql`${effectiveTransactionMonth} = ${month}`,
+        eq(schema.transactions.isTransfer, false),
+        eq(schema.transactions.isExcluded, false),
+        notInArray(schema.accounts.type, [...INVESTMENT_LIKE_ACCOUNT_TYPES])
       )
     )
     .all();
@@ -181,12 +173,10 @@ export function getDashboardData(database: DB, month: string): DashboardData {
     .all();
   const categoryColorMap = new Map(allCategories.map((c) => [c.name, c.color]));
 
-  const { startDate, endDate } = getMonthRange(month);
   const prevMonth = getPreviousMonth(month);
-  const prevRange = getMonthRange(prevMonth);
 
   // ─── 1. Spending by Category (current month) ─────────────────────
-  const currentSpending = getSpendingByCategory(database, startDate, endDate);
+  const currentSpending = getSpendingByCategory(database, month);
 
   const spendingByCategory: CategorySpending[] = Array.from(currentSpending.entries())
     .map(([category, amount]) => ({
@@ -248,6 +238,13 @@ export function getDashboardData(database: DB, month: string): DashboardData {
       schema.accounts,
       eq(schema.transactions.accountId, schema.accounts.id)
     )
+    .where(
+      and(
+        eq(schema.transactions.isExcluded, false),
+        sql`lower(coalesce(${schema.transactions.category}, '')) <> 'income'`,
+        notInArray(schema.accounts.type, [...INVESTMENT_LIKE_ACCOUNT_TYPES])
+      )
+    )
     .orderBy(desc(schema.transactions.postedAt), desc(schema.transactions.id))
     .limit(10)
     .all();
@@ -286,11 +283,7 @@ export function getDashboardData(database: DB, month: string): DashboardData {
   };
 
   // ─── 5. Month-over-Month Comparison ──────────────────────────────
-  const prevSpending = getSpendingByCategory(
-    database,
-    prevRange.startDate,
-    prevRange.endDate
-  );
+  const prevSpending = getSpendingByCategory(database, prevMonth);
 
   // Merge all categories from both months
   const allCategoryNames = new Set<string>();

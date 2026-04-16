@@ -101,6 +101,22 @@ describe("createTransaction", () => {
 
     expect(txn.amount).toBe(-500000);
     expect(txn.category).toBe("Income");
+    expect(txn.isExcluded).toBe(true);
+  });
+
+  it("creates FOUNDATION ROBOT credits as excluded income-like transactions", () => {
+    const account = seedAccount();
+
+    const txn = createTransaction(db, {
+      accountId: account.id,
+      postedAt: "2026-03-31",
+      name: "FOUNDATION ROBOT",
+      amount: -427251,
+      category: "Large Purchases",
+      isTransfer: false,
+    });
+
+    expect(txn.isExcluded).toBe(true);
   });
 
   it("creates a transfer transaction", () => {

@@ -1,22 +1,35 @@
 import { PiggyBank } from "lucide-react";
 import { db } from "@/db/index";
-import { getBudgetsForMonth } from "@/db/queries/budgets";
+import { getBudgetsForMonth, getBudgetTemplates } from "@/db/queries/budgets";
 import { getAllCategories } from "@/db/queries/categories";
 import { getAccountsForFilter } from "@/db/queries/transactions";
 import { PublicProfileNotice } from "@/components/public/PublicProfileNotice";
 import { isPublicProfileMode } from "@/lib/deployment";
 import { BudgetsClient } from "./BudgetsClient";
 
-export default function BudgetsPage() {
+type BudgetsPageProps = {
+  searchParams?: Promise<{
+    month?: string | string[];
+  }>;
+};
+
+export default async function BudgetsPage({ searchParams }: BudgetsPageProps) {
   if (isPublicProfileMode()) {
     return <PublicProfileNotice />;
   }
 
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const monthParam = resolvedSearchParams?.month;
+  const monthValue = Array.isArray(monthParam) ? monthParam[0] : monthParam;
+
   // Default to current month
   const currentMonth = new Date().toISOString().slice(0, 7); // YYYY-MM
+  const activeMonth =
+    monthValue && /^\d{4}-\d{2}$/.test(monthValue) ? monthValue : currentMonth;
 
   // Fetch initial data server-side
-  const initialData = getBudgetsForMonth(db, currentMonth);
+  const initialData = getBudgetsForMonth(db, activeMonth);
+  const initialBudgetTemplates = getBudgetTemplates(db);
   const categories = getAllCategories(db);
   const accounts = getAccountsForFilter(db);
 
@@ -27,10 +40,11 @@ export default function BudgetsPage() {
         <h1 className="text-2xl font-bold text-neutral-900">Budgets</h1>
       </div>
       <BudgetsClient
-        initialMonth={currentMonth}
+        initialMonth={activeMonth}
         initialData={initialData}
         categories={categories}
         accounts={accounts}
+        initialBudgetTemplates={initialBudgetTemplates}
       />
     </div>
   );

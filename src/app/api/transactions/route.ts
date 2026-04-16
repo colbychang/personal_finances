@@ -22,6 +22,7 @@ export async function GET(request: NextRequest) {
     const dateTo = searchParams.get("dateTo") ?? undefined;
     const categoryParam = searchParams.get("category") ?? undefined;
     const accountIdParam = searchParams.get("accountId") ?? undefined;
+    const effectiveMonth = searchParams.get("effectiveMonth") ?? undefined;
     const search = searchParams.get("search") ?? undefined;
     const needsReviewParam = searchParams.get("needsReview") ?? undefined;
     const pageParam = searchParams.get("page") ?? undefined;
@@ -38,6 +39,12 @@ export async function GET(request: NextRequest) {
     if (dateTo && !isoDateRegex.test(dateTo)) {
       return NextResponse.json(
         { error: "dateTo must be in YYYY-MM-DD format" },
+        { status: 400 }
+      );
+    }
+    if (effectiveMonth && !/^\d{4}-\d{2}$/.test(effectiveMonth)) {
+      return NextResponse.json(
+        { error: "effectiveMonth must be in YYYY-MM format" },
         { status: 400 }
       );
     }
@@ -70,6 +77,7 @@ export async function GET(request: NextRequest) {
     const result = getTransactions(db, {
       dateFrom,
       dateTo,
+      effectiveMonth,
       category,
       accountId,
       search,
@@ -90,13 +98,23 @@ export async function GET(request: NextRequest) {
 
 /**
  * POST /api/transactions — create a new transaction
- * Body: { date, name, amount, accountId, category?, notes?, isTransfer?, type }
+ * Body: { date, overrideMonth?, name, amount, accountId, category?, notes?, isTransfer?, type }
  * amount is in dollars (converted to cents). type is "expense" or "income".
  */
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { date, name, amount, accountId, category, notes, isTransfer, type } = body;
+    const {
+      date,
+      overrideMonth,
+      name,
+      amount,
+      accountId,
+      category,
+      notes,
+      isTransfer,
+      type,
+    } = body;
 
     // Validation
     const errors: Record<string, string> = {};
@@ -111,6 +129,15 @@ export async function POST(request: NextRequest) {
       if (isNaN(parsed.getTime())) {
         errors.date = "Invalid date";
       }
+    }
+
+    if (
+      overrideMonth !== undefined &&
+      overrideMonth !== null &&
+      overrideMonth !== "" &&
+      (typeof overrideMonth !== "string" || !/^\d{4}-\d{2}$/.test(overrideMonth))
+    ) {
+      errors.overrideMonth = "Override month must be in YYYY-MM format";
     }
 
     // Name validation
@@ -143,6 +170,7 @@ export async function POST(request: NextRequest) {
     const transaction = createTransaction(db, {
       accountId,
       postedAt: date,
+      overrideMonth: overrideMonth || null,
       name: name.trim(),
       amount: signedAmount,
       category: category || undefined,

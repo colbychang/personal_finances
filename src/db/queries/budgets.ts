@@ -1,6 +1,16 @@
-import { eq, and, gte, lt, inArray, desc, sql, isNull } from "drizzle-orm";
+import {
+  eq,
+  and,
+  inArray,
+  desc,
+  sql,
+  isNull,
+  notInArray,
+} from "drizzle-orm";
 import type { drizzle } from "drizzle-orm/better-sqlite3";
 import * as schema from "../schema";
+import { INVESTMENT_LIKE_ACCOUNT_TYPES } from "@/lib/account-types";
+import { effectiveTransactionMonth } from "./effective-month";
 
 type DB = ReturnType<typeof drizzle>;
 
@@ -13,11 +23,24 @@ export interface BudgetRow {
   amount: number; // cents
 }
 
+export interface BudgetTemplateRow {
+  id: number;
+  category: string;
+  amount: number; // cents
+  updatedAt: string;
+}
+
+export interface BudgetTemplateInput {
+  category: string;
+  amount: number; // cents
+}
+
 export interface BudgetWithSpending {
   category: string;
   budgeted: number; // cents
   spent: number; // cents (positive = expense)
   remaining: number; // cents (positive = under, negative = over)
+  isInheritedDefault: boolean;
   categoryColor: string | null;
   transactions: CategoryTransaction[];
 }
@@ -66,7 +89,7 @@ export interface CategoryTransaction {
 
 /**
  * Get budgets for a month with actual spending calculated from transactions.
- * Spending = sum of non-transfer positive-amount transactions + split amounts
+ * Spending = net sum of categorized non-transfer transactions + split amounts
  * for the given month and category.
  */
 export function getBudgetsForMonth(database: DB, month: string): BudgetSummary {
@@ -86,19 +109,29 @@ export function getBudgetsForMonth(database: DB, month: string): BudgetSummary {
     };
   }
 
-  // Calculate date range for the month
-  const [year, monthNum] = month.split("-").map(Number);
-  const startDate = `${month}-01`;
-  // Get the first day of next month
-  const nextMonth = monthNum === 12 ? `${year + 1}-01` : `${year}-${String(monthNum + 1).padStart(2, "0")}`;
-  const endDate = `${nextMonth}-01`;
-
-  // Get all budgets for this month
-  const budgetRows = database
+  // Get all explicit budgets for this month
+  const monthBudgetRows = database
     .select()
     .from(schema.budgets)
     .where(eq(schema.budgets.month, month))
     .all();
+
+  // Pull in default/template budgets for categories without a month override.
+  const templateRows = database.select().from(schema.budgetTemplates).all();
+  const budgetedCategoriesFromMonth = new Set(
+    monthBudgetRows.map((budget) => budget.category)
+  );
+  const budgetRows = [
+    ...monthBudgetRows,
+    ...templateRows
+      .filter((template) => !budgetedCategoriesFromMonth.has(template.category))
+      .map((template) => ({
+        id: -template.id,
+        month,
+        category: template.category,
+        amount: template.amount,
+      })),
+  ];
 
   // Get all category info for color lookup
   const allCategories = database
@@ -112,7 +145,7 @@ export function getBudgetsForMonth(database: DB, month: string): BudgetSummary {
   const categoryColorMap = new Map(allCategories.map((c) => [c.name, c.color]));
 
   const { spendingByCategory, transactionsByCategory } =
-    getCategorySpendingDetails(database, startDate, endDate);
+    getCategorySpendingDetails(database, month);
 
   // Build budget rows with spending
   const budgetedCategories = new Set<string>();
@@ -124,6 +157,7 @@ export function getBudgetsForMonth(database: DB, month: string): BudgetSummary {
       budgeted: b.amount,
       spent,
       remaining: b.amount - spent,
+      isInheritedDefault: b.id < 0,
       categoryColor: categoryColorMap.get(b.category) ?? null,
       transactions: transactionsByCategory.get(b.category) ?? [],
     };
@@ -153,13 +187,18 @@ export function getBudgetsForMonth(database: DB, month: string): BudgetSummary {
       amount: sql<number>`coalesce(sum(${schema.transactions.amount}), 0)`,
     })
     .from(schema.transactions)
+    .innerJoin(
+      schema.accounts,
+      eq(schema.transactions.accountId, schema.accounts.id)
+    )
     .where(
       and(
-        gte(schema.transactions.postedAt, startDate),
-        lt(schema.transactions.postedAt, endDate),
+        sql`${effectiveTransactionMonth} = ${month}`,
         eq(schema.transactions.isTransfer, false),
+        eq(schema.transactions.isExcluded, false),
         isNull(schema.transactions.category),
-        sql`${schema.transactions.amount} > 0`
+        sql`${schema.transactions.amount} > 0`,
+        notInArray(schema.accounts.type, [...INVESTMENT_LIKE_ACCOUNT_TYPES])
       )
     )
     .get();
@@ -179,11 +218,12 @@ export function getBudgetsForMonth(database: DB, month: string): BudgetSummary {
     )
     .where(
       and(
-        gte(schema.transactions.postedAt, startDate),
-        lt(schema.transactions.postedAt, endDate),
+        sql`${effectiveTransactionMonth} = ${month}`,
         eq(schema.transactions.isTransfer, false),
+        eq(schema.transactions.isExcluded, false),
         isNull(schema.transactions.category),
-        sql`${schema.transactions.amount} > 0`
+        sql`${schema.transactions.amount} > 0`,
+        notInArray(schema.accounts.type, [...INVESTMENT_LIKE_ACCOUNT_TYPES])
       )
     )
     .orderBy(desc(schema.transactions.postedAt), desc(schema.transactions.id))
@@ -206,12 +246,12 @@ export function getBudgetsForMonth(database: DB, month: string): BudgetSummary {
 
 /**
  * Calculate spending by category for a date range.
- * Includes split transaction portions. Excludes transfers and income.
+ * Includes split transaction portions. Excludes transfers.
+ * Negative categorized transactions reduce the category's net spending.
  */
 function getCategorySpendingDetails(
   database: DB,
-  startDate: string,
-  endDate: string
+  month: string
 ): {
   spendingByCategory: Map<string, number>;
   transactionsByCategory: Map<string, CategoryTransaction[]>;
@@ -237,9 +277,10 @@ function getCategorySpendingDetails(
     )
     .where(
       and(
-        gte(schema.transactions.postedAt, startDate),
-        lt(schema.transactions.postedAt, endDate),
-        eq(schema.transactions.isTransfer, false)
+        sql`${effectiveTransactionMonth} = ${month}`,
+        eq(schema.transactions.isTransfer, false),
+        eq(schema.transactions.isExcluded, false),
+        notInArray(schema.accounts.type, [...INVESTMENT_LIKE_ACCOUNT_TYPES])
       )
     )
     .all();
@@ -268,9 +309,6 @@ function getCategorySpendingDetails(
 
   // Process each transaction
   for (const txn of txns) {
-    // Skip income (negative amounts)
-    if (txn.amount < 0) continue;
-
     const splits = splitsMap.get(txn.id);
 
     if (splits && splits.length > 0) {
@@ -404,6 +442,92 @@ export function copyBudgetsFromMonth(
   }
 
   return sourceBudgets.length;
+}
+
+/**
+ * Replace the default budget model with the currently visible budgets for a month.
+ * This saves a reusable template that future months will inherit unless they have
+ * a month-specific override for a category.
+ */
+export function replaceBudgetTemplatesFromMonth(
+  database: DB,
+  sourceMonth: string
+): number {
+  const sourceBudgets = getBudgetsForMonth(database, sourceMonth).budgets.map(
+    (budget) => ({
+      category: budget.category,
+      amount: budget.budgeted,
+    })
+  );
+
+  if (sourceBudgets.length === 0) {
+    return -1;
+  }
+
+  database.delete(schema.budgetTemplates).run();
+  database
+    .insert(schema.budgetTemplates)
+    .values(sourceBudgets)
+    .run();
+
+  return sourceBudgets.length;
+}
+
+export function replaceBudgetTemplates(
+  database: DB,
+  templates: BudgetTemplateInput[]
+): number {
+  database.delete(schema.budgetTemplates).run();
+
+  if (templates.length === 0) {
+    return 0;
+  }
+
+  database
+    .insert(schema.budgetTemplates)
+    .values(
+      templates.map((template) => ({
+        category: template.category,
+        amount: template.amount,
+      }))
+    )
+    .run();
+
+  return templates.length;
+}
+
+export function applyBudgetTemplatesToMonth(
+  database: DB,
+  month: string
+): number {
+  const templates = getBudgetTemplates(database);
+
+  if (templates.length === 0) {
+    return -1;
+  }
+
+  for (const template of templates) {
+    upsertBudget(database, {
+      month,
+      category: template.category,
+      amount: template.amount,
+    });
+  }
+
+  return templates.length;
+}
+
+export function getBudgetTemplates(database: DB): BudgetTemplateRow[] {
+  return database
+    .select({
+      id: schema.budgetTemplates.id,
+      category: schema.budgetTemplates.category,
+      amount: schema.budgetTemplates.amount,
+      updatedAt: schema.budgetTemplates.updatedAt,
+    })
+    .from(schema.budgetTemplates)
+    .orderBy(schema.budgetTemplates.category)
+    .all();
 }
 
 /**

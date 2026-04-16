@@ -4,13 +4,14 @@
  * - Send remaining uncategorized to OpenAI GPT-4o-mini.
  */
 
-import { eq, inArray, isNull } from "drizzle-orm";
+import { eq, inArray, isNull, notInArray, and } from "drizzle-orm";
 import type { drizzle } from "drizzle-orm/better-sqlite3";
 import * as schema from "@/db/schema";
 import {
   normalizeMerchantKey,
   getAllMerchantRules,
 } from "@/db/queries/merchant-rules";
+import { INVESTMENT_LIKE_ACCOUNT_TYPES } from "@/lib/account-types";
 
 type DB = ReturnType<typeof drizzle>;
 
@@ -44,7 +45,17 @@ export function applyMerchantRules(
       category: schema.transactions.category,
     })
     .from(schema.transactions)
-    .where(inArray(schema.transactions.id, transactionIds))
+    .innerJoin(
+      schema.accounts,
+      eq(schema.transactions.accountId, schema.accounts.id)
+    )
+    .where(
+      and(
+        inArray(schema.transactions.id, transactionIds),
+        eq(schema.transactions.isExcluded, false),
+        notInArray(schema.accounts.type, [...INVESTMENT_LIKE_ACCOUNT_TYPES])
+      )
+    )
     .all();
 
   // Get all merchant rules
@@ -116,7 +127,17 @@ export function getUncategorizedTransactions(
       category: schema.transactions.category,
     })
     .from(schema.transactions)
-    .where(inArray(schema.transactions.id, transactionIds))
+    .innerJoin(
+      schema.accounts,
+      eq(schema.transactions.accountId, schema.accounts.id)
+    )
+    .where(
+      and(
+        inArray(schema.transactions.id, transactionIds),
+        eq(schema.transactions.isExcluded, false),
+        notInArray(schema.accounts.type, [...INVESTMENT_LIKE_ACCOUNT_TYPES])
+      )
+    )
     .all();
 }
 
@@ -179,7 +200,17 @@ export function getAllUncategorizedTransactionIds(database: DB): number[] {
   const rows = database
     .select({ id: schema.transactions.id })
     .from(schema.transactions)
-    .where(isNull(schema.transactions.category))
+    .innerJoin(
+      schema.accounts,
+      eq(schema.transactions.accountId, schema.accounts.id)
+    )
+    .where(
+      and(
+        isNull(schema.transactions.category),
+        eq(schema.transactions.isExcluded, false),
+        notInArray(schema.accounts.type, [...INVESTMENT_LIKE_ACCOUNT_TYPES])
+      )
+    )
     .all();
 
   return rows.map((r) => r.id);

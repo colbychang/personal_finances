@@ -1,6 +1,21 @@
-import { eq, and, gte, lte, like, or, desc, sql, inArray, isNull } from "drizzle-orm";
+import {
+  eq,
+  and,
+  gte,
+  lte,
+  like,
+  or,
+  desc,
+  sql,
+  inArray,
+  isNull,
+  notInArray,
+} from "drizzle-orm";
 import type { drizzle } from "drizzle-orm/better-sqlite3";
 import * as schema from "../schema";
+import { INVESTMENT_LIKE_ACCOUNT_TYPES } from "@/lib/account-types";
+import { shouldExcludePassiveIncomeTransaction } from "@/lib/transaction-exclusions";
+import { effectiveTransactionMonth } from "./effective-month";
 
 type DB = ReturnType<typeof drizzle>;
 
@@ -9,6 +24,7 @@ export interface TransactionWithAccount {
   accountId: number;
   externalId: string | null;
   postedAt: string;
+  overrideMonth: string | null;
   name: string;
   merchant: string | null;
   amount: number; // cents
@@ -24,6 +40,7 @@ export interface TransactionWithAccount {
 export interface TransactionFilters {
   dateFrom?: string; // YYYY-MM-DD
   dateTo?: string;   // YYYY-MM-DD
+  effectiveMonth?: string; // YYYY-MM
   category?: string | string[];
   accountId?: number;
   search?: string;
@@ -76,6 +93,7 @@ export function getTransactions(
       accountId: schema.transactions.accountId,
       externalId: schema.transactions.externalId,
       postedAt: schema.transactions.postedAt,
+      overrideMonth: schema.transactions.overrideMonth,
       name: schema.transactions.name,
       merchant: schema.transactions.merchant,
       amount: schema.transactions.amount,
@@ -113,12 +131,24 @@ export function getTransactions(
 function buildWhereConditions(filters: TransactionFilters) {
   const conditions = [];
 
+  conditions.push(
+    notInArray(schema.accounts.type, [...INVESTMENT_LIKE_ACCOUNT_TYPES])
+  );
+  conditions.push(eq(schema.transactions.isExcluded, false));
+  conditions.push(
+    sql`lower(coalesce(${schema.transactions.category}, '')) <> 'income'`
+  );
+
   if (filters.dateFrom) {
     conditions.push(gte(schema.transactions.postedAt, filters.dateFrom));
   }
 
   if (filters.dateTo) {
     conditions.push(lte(schema.transactions.postedAt, filters.dateTo));
+  }
+
+  if (filters.effectiveMonth) {
+    conditions.push(sql`${effectiveTransactionMonth} = ${filters.effectiveMonth}`);
   }
 
   if (filters.category) {
@@ -179,6 +209,7 @@ export function getAccountsForFilter(
 export interface CreateTransactionInput {
   accountId: number;
   postedAt: string; // YYYY-MM-DD
+  overrideMonth?: string | null; // YYYY-MM
   name: string;
   amount: number; // cents (positive = expense, negative = income)
   category?: string;
@@ -198,11 +229,17 @@ export function createTransaction(
     .values({
       accountId: input.accountId,
       postedAt: input.postedAt,
+      overrideMonth: input.overrideMonth ?? null,
       name: input.name,
       amount: input.amount,
       category: input.category ?? null,
       notes: input.notes ?? null,
       isTransfer: input.isTransfer,
+      isExcluded: shouldExcludePassiveIncomeTransaction({
+        name: input.name,
+        category: input.category ?? null,
+        amount: input.amount,
+      }),
       pending: false,
       reviewState: "none",
     })
@@ -212,6 +249,7 @@ export function createTransaction(
 
 export interface UpdateTransactionInput {
   postedAt?: string;
+  overrideMonth?: string | null;
   name?: string;
   amount?: number;
   category?: string | null;
@@ -237,13 +275,26 @@ export function updateTransaction(
   if (!existing) return null;
 
   const updates: Record<string, unknown> = {};
+  const nextName = input.name ?? existing.name;
+  const nextAmount = input.amount ?? existing.amount;
+  const nextMerchant = existing.merchant;
   if (input.postedAt !== undefined) updates.postedAt = input.postedAt;
+  if (input.overrideMonth !== undefined) updates.overrideMonth = input.overrideMonth;
   if (input.name !== undefined) updates.name = input.name;
   if (input.amount !== undefined) updates.amount = input.amount;
   if (input.category !== undefined) updates.category = input.category;
   if (input.notes !== undefined) updates.notes = input.notes;
   if (input.isTransfer !== undefined) updates.isTransfer = input.isTransfer;
   if (input.accountId !== undefined) updates.accountId = input.accountId;
+  updates.isExcluded = shouldExcludePassiveIncomeTransaction({
+    name: nextName,
+    merchant: nextMerchant,
+    category:
+      input.category !== undefined
+        ? input.category
+        : (existing.category ?? null),
+    amount: nextAmount,
+  });
 
   if (Object.keys(updates).length > 0) {
     database
@@ -300,6 +351,7 @@ export function getTransactionById(
       accountId: schema.transactions.accountId,
       externalId: schema.transactions.externalId,
       postedAt: schema.transactions.postedAt,
+      overrideMonth: schema.transactions.overrideMonth,
       name: schema.transactions.name,
       merchant: schema.transactions.merchant,
       amount: schema.transactions.amount,

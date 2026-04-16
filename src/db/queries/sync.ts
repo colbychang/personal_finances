@@ -1,6 +1,8 @@
 import { eq } from "drizzle-orm";
 import type { drizzle } from "drizzle-orm/better-sqlite3";
 import * as schema from "../schema";
+import { excludesTransactionsForAccountType } from "@/lib/account-types";
+import { shouldExcludePassiveIncomeTransaction } from "@/lib/transaction-exclusions";
 
 type DB = ReturnType<typeof drizzle>;
 
@@ -51,20 +53,31 @@ interface TransactionForMatching {
  * Build a map from Plaid external account_id to our internal account ID.
  * Uses the accounts table's externalRef field.
  */
-function buildAccountIdMap(database: DB, connectionId: number): Map<string, number> {
+function buildAccountIdMap(
+  database: DB,
+  connectionId: number
+): Map<string, { accountId: number; accountType: string }> {
   const linkedAccounts = database
     .select({
       accountId: schema.accountLinks.accountId,
       externalKey: schema.accountLinks.externalKey,
+      accountType: schema.accounts.type,
     })
     .from(schema.accountLinks)
+    .innerJoin(
+      schema.accounts,
+      eq(schema.accountLinks.accountId, schema.accounts.id)
+    )
     .where(eq(schema.accountLinks.connectionId, connectionId))
     .all();
 
-  const map = new Map<string, number>();
+  const map = new Map<string, { accountId: number; accountType: string }>();
   for (const acct of linkedAccounts) {
     if (acct.externalKey) {
-      map.set(acct.externalKey, acct.accountId);
+      map.set(acct.externalKey, {
+        accountId: acct.accountId,
+        accountType: acct.accountType,
+      });
     }
   }
   return map;
@@ -162,7 +175,7 @@ function scoreInternalTransferMatch(
     dayNumber(outgoing.postedAt) - dayNumber(incoming.postedAt)
   );
 
-  if (dateDistance > 1) {
+  if (dateDistance > 4) {
     return -1;
   }
 
@@ -230,6 +243,122 @@ function isVenmoLedgerExpense(transaction: TransactionForMatching) {
   }
 
   return !isStandardTransferName(transaction.name);
+}
+
+function reconcileVenmoStandardTransfers(database: DB) {
+  const transactions = database
+    .select({
+      id: schema.transactions.id,
+      accountId: schema.transactions.accountId,
+      accountName: schema.accounts.name,
+      postedAt: schema.transactions.postedAt,
+      amount: schema.transactions.amount,
+      name: schema.transactions.name,
+      merchant: schema.transactions.merchant,
+      notes: schema.transactions.notes,
+      institutionName: schema.institutions.name,
+      isTransfer: schema.transactions.isTransfer,
+    })
+    .from(schema.transactions)
+    .innerJoin(
+      schema.accounts,
+      eq(schema.transactions.accountId, schema.accounts.id)
+    )
+    .innerJoin(
+      schema.institutions,
+      eq(schema.accounts.institutionId, schema.institutions.id)
+    )
+    .all();
+
+  const venmoStandardTransfers = transactions.filter(
+    (transaction) =>
+      isVenmoInstitution(transaction.institutionName) &&
+      isStandardTransferName(transaction.name)
+  );
+
+  const duplicatesByKey = new Map<string, typeof venmoStandardTransfers>();
+
+  for (const transaction of venmoStandardTransfers) {
+    const key = [
+      transaction.accountId,
+      transaction.postedAt,
+      transaction.amount,
+      normalizeText(transaction.name),
+    ].join(":");
+    const list = duplicatesByKey.get(key) ?? [];
+    list.push(transaction);
+    duplicatesByKey.set(key, list);
+  }
+
+  for (const [key, duplicates] of duplicatesByKey) {
+    duplicates.sort((left, right) => left.id - right.id);
+
+    for (let index = 0; index < duplicates.length; index += 1) {
+      const transaction = duplicates[index];
+      const isDuplicateExtra = duplicates.length > 1 && index > 0;
+
+      const baseNote =
+        "Auto-marked as transfer because Venmo Standard transfer activity is money movement, not spending.";
+      const duplicateNote =
+        "Auto-marked as a duplicate/cancelled Venmo Standard transfer.";
+      const desiredNote = isDuplicateExtra ? duplicateNote : baseNote;
+      const existingNote = transaction.notes?.trim() ?? "";
+      const nextNote =
+        existingNote.length > 0 ? existingNote : desiredNote;
+
+      database
+        .update(schema.transactions)
+        .set({
+          isTransfer: true,
+          notes: nextNote,
+        })
+        .where(eq(schema.transactions.id, transaction.id))
+        .run();
+    }
+
+    const primaryTransfer = duplicates[0];
+    if (!primaryTransfer || primaryTransfer.amount <= 0) {
+      continue;
+    }
+
+    const counterpart = transactions
+      .filter((transaction) => transaction.id !== primaryTransfer.id)
+      .filter((transaction) => !isVenmoInstitution(transaction.institutionName))
+      .filter((transaction) => !transaction.isTransfer)
+      .filter((transaction) => transaction.amount === -primaryTransfer.amount)
+      .map((transaction) => ({
+        transaction,
+        dateDistance: Math.abs(
+          dayNumber(transaction.postedAt) - dayNumber(primaryTransfer.postedAt)
+        ),
+        text: getSearchableTransactionText(transaction),
+      }))
+      .filter(({ dateDistance, text }) => dateDistance <= 4 && text.includes("venmo"))
+      .sort((left, right) => {
+        if (left.dateDistance !== right.dateDistance) {
+          return left.dateDistance - right.dateDistance;
+        }
+        return right.transaction.id - left.transaction.id;
+      })[0]?.transaction;
+
+    if (!counterpart) {
+      continue;
+    }
+
+    const counterpartNote =
+      counterpart.notes?.trim().length
+        ? counterpart.notes
+        : "Auto-marked as transfer to avoid counting a matched Venmo Standard transfer twice.";
+
+    database
+      .update(schema.transactions)
+      .set({
+        isTransfer: true,
+        notes: counterpartNote,
+      })
+      .where(eq(schema.transactions.id, counterpart.id))
+      .run();
+  }
 }
 
 function reconcileVenmoFundingDuplicates(database: DB) {
@@ -314,6 +443,36 @@ function reconcileVenmoFundingDuplicates(database: DB) {
         notes: nextNote,
       })
       .where(eq(schema.transactions.id, bankTransaction.id))
+      .run();
+  }
+}
+
+function reconcileExcludedPassiveIncomeTransactions(database: DB) {
+  const transactions = database
+    .select({
+      id: schema.transactions.id,
+      name: schema.transactions.name,
+      merchant: schema.transactions.merchant,
+      amount: schema.transactions.amount,
+      category: schema.transactions.category,
+      isExcluded: schema.transactions.isExcluded,
+    })
+    .from(schema.transactions)
+    .all();
+
+  for (const transaction of transactions) {
+    const shouldExclude = shouldExcludePassiveIncomeTransaction(transaction);
+
+    if (transaction.isExcluded === shouldExclude) {
+      continue;
+    }
+
+    database
+      .update(schema.transactions)
+      .set({
+        isExcluded: shouldExclude,
+      })
+      .where(eq(schema.transactions.id, transaction.id))
       .run();
   }
 }
@@ -433,11 +592,15 @@ export function syncTransactionsFromPlaid(
 
   // Process added transactions
   for (const txn of data.added) {
-    const accountId = accountMap.get(txn.account_id);
-    if (!accountId) {
+    const mappedAccount = accountMap.get(txn.account_id);
+    if (!mappedAccount) {
       // Skip transactions for unknown accounts
       continue;
     }
+    if (excludesTransactionsForAccountType(mappedAccount.accountType)) {
+      continue;
+    }
+    const accountId = mappedAccount.accountId;
 
     // Check if transaction already exists (deduplication)
     const existing = database
@@ -468,6 +631,12 @@ export function syncTransactionsFromPlaid(
         notes: null,
         categoryOverride: null,
         isTransfer: false,
+        isExcluded: shouldExcludePassiveIncomeTransaction({
+          name: txn.name,
+          merchant: txn.merchant_name,
+          category: null,
+          amount: amountCents,
+        }),
         reviewState: "none",
       })
       .run();
@@ -477,8 +646,14 @@ export function syncTransactionsFromPlaid(
 
   // Process modified transactions
   for (const txn of data.modified) {
-    const accountId = accountMap.get(txn.account_id);
-    if (!accountId) continue;
+    const mappedAccount = accountMap.get(txn.account_id);
+    if (!mappedAccount) continue;
+
+    if (excludesTransactionsForAccountType(mappedAccount.accountType)) {
+      continue;
+    }
+
+    const accountId = mappedAccount.accountId;
 
     const amountCents = Math.round(txn.amount * 100);
 
@@ -504,6 +679,12 @@ export function syncTransactionsFromPlaid(
           notes: null,
           categoryOverride: null,
           isTransfer: false,
+          isExcluded: shouldExcludePassiveIncomeTransaction({
+            name: txn.name,
+            merchant: txn.merchant_name,
+            category: null,
+            amount: amountCents,
+          }),
           reviewState: "none",
         })
         .run();
@@ -521,6 +702,12 @@ export function syncTransactionsFromPlaid(
         merchant: txn.merchant_name ?? null,
         amount: amountCents,
         pending: txn.pending,
+        isExcluded: shouldExcludePassiveIncomeTransaction({
+          name: txn.name,
+          merchant: txn.merchant_name,
+          category: null,
+          amount: amountCents,
+        }),
       })
       .where(eq(schema.transactions.id, existing.id))
       .run();
@@ -553,8 +740,10 @@ export function syncTransactionsFromPlaid(
     removedCount++;
   }
 
+  reconcileVenmoStandardTransfers(database);
   reconcileVenmoFundingDuplicates(database);
   reconcileInternalAccountTransfers(database);
+  reconcileExcludedPassiveIncomeTransactions(database);
 
   return { added: addedCount, modified: modifiedCount, removed: removedCount };
 }

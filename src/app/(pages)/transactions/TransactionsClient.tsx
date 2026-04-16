@@ -38,6 +38,7 @@ interface Transaction {
   id: number;
   accountId: number;
   postedAt: string;
+  overrideMonth: string | null;
   name: string;
   merchant: string | null;
   amount: number; // cents
@@ -75,6 +76,7 @@ interface TransactionsClientProps {
   initialDateTo?: string;
   initialSelectedCategories?: string[];
   initialSelectedAccountId?: string;
+  initialEffectiveMonth?: string;
   initialNeedsReview?: boolean;
 }
 
@@ -92,6 +94,7 @@ export function TransactionsClient({
   initialDateTo = "",
   initialSelectedCategories = [],
   initialSelectedAccountId = "",
+  initialEffectiveMonth = "",
   initialNeedsReview = false,
 }: TransactionsClientProps) {
   const { showToast } = useToast();
@@ -107,6 +110,7 @@ export function TransactionsClient({
   const [selectedAccountId, setSelectedAccountId] = useState(
     initialSelectedAccountId
   );
+  const [effectiveMonth, setEffectiveMonth] = useState(initialEffectiveMonth);
   const [needsReviewOnly, setNeedsReviewOnly] = useState(initialNeedsReview);
   const [page, setPage] = useState(1);
 
@@ -150,6 +154,7 @@ export function TransactionsClient({
         params.set("category", selectedCategories.join(","));
       }
       if (selectedAccountId) params.set("accountId", selectedAccountId);
+      if (effectiveMonth) params.set("effectiveMonth", effectiveMonth);
       if (searchVal) params.set("search", searchVal);
       if (needsReviewOnly) params.set("needsReview", "1");
       params.set("page", String(pageVal));
@@ -157,7 +162,7 @@ export function TransactionsClient({
 
       return params.toString();
     },
-    [search, dateFrom, dateTo, selectedCategories, selectedAccountId, needsReviewOnly, page]
+    [search, dateFrom, dateTo, selectedCategories, selectedAccountId, effectiveMonth, needsReviewOnly, page]
   );
 
   // Fetch transactions from API
@@ -197,7 +202,7 @@ export function TransactionsClient({
     }
     fetchTransactions({ pageOverride: page });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dateFrom, dateTo, selectedCategories, selectedAccountId, needsReviewOnly, page]);
+  }, [dateFrom, dateTo, selectedCategories, selectedAccountId, effectiveMonth, needsReviewOnly, page]);
 
   // Debounced search
   function handleSearchChange(value: string) {
@@ -222,6 +227,7 @@ export function TransactionsClient({
     setDateTo("");
     setSelectedCategories([]);
     setSelectedAccountId("");
+    setEffectiveMonth("");
     setNeedsReviewOnly(false);
     setPage(1);
     // fetch with empty filters
@@ -234,7 +240,7 @@ export function TransactionsClient({
   }
 
   const hasActiveFilters =
-    search || dateFrom || dateTo || selectedCategories.length > 0 || selectedAccountId || needsReviewOnly;
+    search || dateFrom || dateTo || selectedCategories.length > 0 || selectedAccountId || effectiveMonth || needsReviewOnly;
 
   // Get category color by name
   function getCategoryColor(categoryName: string | null): string {
@@ -253,6 +259,7 @@ export function TransactionsClient({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           date: formData.date,
+          overrideMonth: formData.overrideMonth || null,
           name: formData.name,
           amount: parseFloat(formData.amount),
           accountId: parseInt(formData.accountId, 10),
@@ -285,6 +292,7 @@ export function TransactionsClient({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           date: formData.date,
+          overrideMonth: formData.overrideMonth || null,
           name: formData.name,
           amount: parseFloat(formData.amount),
           accountId: parseInt(formData.accountId, 10),
@@ -340,6 +348,7 @@ export function TransactionsClient({
     const absAmount = Math.abs(txn.amount) / 100;
     return {
       date: txn.postedAt,
+      overrideMonth: txn.overrideMonth ?? "",
       name: txn.name,
       amount: absAmount.toFixed(2),
       type: isIncome ? "income" : "expense",
@@ -850,6 +859,7 @@ export function TransactionsClient({
           mode="add"
           initialData={{
             date: todayStr,
+            overrideMonth: "",
             name: "",
             amount: "",
             type: "expense",

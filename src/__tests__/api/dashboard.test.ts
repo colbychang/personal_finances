@@ -215,6 +215,20 @@ describe("Dashboard Queries", () => {
       expect(data.recentTransactions.length).toBe(1);
       expect(data.recentTransactions[0].accountName).toBe("Checking");
     });
+
+    it("hides income-category transactions from recent transactions", () => {
+      db.insert(schema.transactions).values([
+        { accountId: checkingId, postedAt: "2026-03-03", name: "Paycheck", amount: -500000, category: "Income", isTransfer: false, reviewState: "none" },
+        { accountId: checkingId, postedAt: "2026-03-02", name: "Roommate reimbursement", amount: -120000, category: "Rent/Home", isTransfer: false, reviewState: "none" },
+        { accountId: checkingId, postedAt: "2026-03-01", name: "Groceries", amount: 5000, category: "Groceries", isTransfer: false, reviewState: "none" },
+      ]).run();
+
+      const data = getDashboardData(db, "2026-03");
+
+      expect(data.recentTransactions.some((txn) => txn.name === "Paycheck")).toBe(false);
+      expect(data.recentTransactions.some((txn) => txn.name === "Roommate reimbursement")).toBe(true);
+      expect(data.recentTransactions.some((txn) => txn.name === "Groceries")).toBe(true);
+    });
   });
 
   describe("Net Worth Trend", () => {

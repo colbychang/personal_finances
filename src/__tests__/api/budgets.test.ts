@@ -6,9 +6,13 @@ import * as schema from "@/db/schema";
 import { seedCategories } from "@/db/seed";
 import { eq } from "drizzle-orm";
 import {
+  applyBudgetTemplatesToMonth,
   getBudgetsForMonth,
+  getBudgetTemplates,
   upsertBudget,
   copyBudgetsFromMonth,
+  replaceBudgetTemplates,
+  replaceBudgetTemplatesFromMonth,
   deleteBudget,
 } from "@/db/queries/budgets";
 
@@ -155,6 +159,93 @@ describe("Budget Queries", () => {
     });
   });
 
+  describe("budget templates", () => {
+    it("uses default budget templates when a month has no explicit budget", () => {
+      upsertBudget(db, { month: "2026-03", category: "Groceries", amount: 50000 });
+      upsertBudget(db, { month: "2026-03", category: "Travel", amount: 120000 });
+
+      const saved = replaceBudgetTemplatesFromMonth(db, "2026-03");
+      expect(saved).toBe(2);
+
+      const april = getBudgetsForMonth(db, "2026-04");
+      expect(april.budgets).toHaveLength(2);
+      expect(april.budgets.find((b) => b.category === "Groceries")?.budgeted).toBe(50000);
+      expect(april.budgets.find((b) => b.category === "Travel")?.budgeted).toBe(120000);
+      expect(
+        april.budgets.find((b) => b.category === "Groceries")?.isInheritedDefault
+      ).toBe(true);
+    });
+
+    it("lets explicit month budgets override the default template", () => {
+      upsertBudget(db, { month: "2026-03", category: "Groceries", amount: 50000 });
+      upsertBudget(db, { month: "2026-03", category: "Travel", amount: 120000 });
+      replaceBudgetTemplatesFromMonth(db, "2026-03");
+
+      upsertBudget(db, { month: "2026-04", category: "Groceries", amount: 65000 });
+
+      const april = getBudgetsForMonth(db, "2026-04");
+      expect(april.budgets.find((b) => b.category === "Groceries")?.budgeted).toBe(65000);
+      expect(april.budgets.find((b) => b.category === "Travel")?.budgeted).toBe(120000);
+      expect(
+        april.budgets.find((b) => b.category === "Groceries")?.isInheritedDefault
+      ).toBe(false);
+      expect(
+        april.budgets.find((b) => b.category === "Travel")?.isInheritedDefault
+      ).toBe(true);
+    });
+
+    it("stores the visible month budgets as the default template model", () => {
+      upsertBudget(db, { month: "2026-03", category: "Groceries", amount: 50000 });
+      upsertBudget(db, { month: "2026-03", category: "Travel", amount: 120000 });
+      replaceBudgetTemplatesFromMonth(db, "2026-03");
+
+      upsertBudget(db, { month: "2026-04", category: "Groceries", amount: 70000 });
+
+      const saved = replaceBudgetTemplatesFromMonth(db, "2026-04");
+      expect(saved).toBe(2);
+
+      const templates = getBudgetTemplates(db);
+      expect(templates.find((template) => template.category === "Groceries")?.amount).toBe(70000);
+      expect(templates.find((template) => template.category === "Travel")?.amount).toBe(120000);
+    });
+
+    it("applies the default budget template to a month", () => {
+      replaceBudgetTemplates(db, [
+        { category: "Groceries", amount: 50000 },
+        { category: "Travel", amount: 120000 },
+      ]);
+
+      const applied = applyBudgetTemplatesToMonth(db, "2026-06");
+      expect(applied).toBe(2);
+
+      const june = getBudgetsForMonth(db, "2026-06");
+      expect(june.budgets.find((b) => b.category === "Groceries")?.budgeted).toBe(50000);
+      expect(june.budgets.find((b) => b.category === "Travel")?.budgeted).toBe(120000);
+      expect(june.budgets.find((b) => b.category === "Groceries")?.isInheritedDefault).toBe(false);
+    });
+
+    it("returns -1 when applying a template that does not exist", () => {
+      expect(applyBudgetTemplatesToMonth(db, "2026-06")).toBe(-1);
+    });
+
+    it("replaces the default template with edited values", () => {
+      replaceBudgetTemplates(db, [{ category: "Groceries", amount: 50000 }]);
+
+      const saved = replaceBudgetTemplates(db, [
+        { category: "Travel", amount: 110000 },
+        { category: "Rent/Home", amount: 300000 },
+      ]);
+
+      expect(saved).toBe(2);
+
+      const templates = getBudgetTemplates(db);
+      expect(templates).toHaveLength(2);
+      expect(templates.find((template) => template.category === "Groceries")).toBeUndefined();
+      expect(templates.find((template) => template.category === "Travel")?.amount).toBe(110000);
+      expect(templates.find((template) => template.category === "Rent/Home")?.amount).toBe(300000);
+    });
+  });
+
   // ─── deleteBudget ─────────────────────────────────────────────────
 
   describe("deleteBudget", () => {
@@ -253,24 +344,38 @@ describe("Budget Queries", () => {
       expect(result.budgets[0].spent).toBe(0);
     });
 
-    it("excludes income (negative amount) from spending", () => {
-      upsertBudget(db, { month: "2026-03", category: "Income", amount: 500000 });
+    it("lets categorized credits offset budget spending", () => {
+      upsertBudget(db, { month: "2026-03", category: "Rent/Home", amount: 500000 });
 
       db.insert(schema.transactions)
-        .values({
-          accountId,
-          postedAt: "2026-03-15",
-          name: "Paycheck",
-          amount: -500000,
-          category: "Income",
-          isTransfer: false,
-          pending: false,
-          reviewState: "none",
-        })
+        .values([
+          {
+            accountId,
+            postedAt: "2026-03-01",
+            name: "Rent payment",
+            amount: 300000,
+            category: "Rent/Home",
+            isTransfer: false,
+            pending: false,
+            reviewState: "none",
+          },
+          {
+            accountId,
+            postedAt: "2026-03-15",
+            name: "Roommate reimbursement",
+            amount: -120000,
+            category: "Rent/Home",
+            isTransfer: false,
+            pending: false,
+            reviewState: "none",
+          },
+        ])
         .run();
 
       const result = getBudgetsForMonth(db, "2026-03");
-      expect(result.budgets[0].spent).toBe(0);
+      expect(result.budgets[0].spent).toBe(180000);
+      expect(result.budgets[0].remaining).toBe(320000);
+      expect(result.budgets[0].transactions).toHaveLength(2);
     });
 
     it("shows over-budget (negative remaining)", () => {
@@ -390,6 +495,31 @@ describe("Budget Queries", () => {
 
       const result = getBudgetsForMonth(db, "2026-03");
       expect(result.budgets[0].spent).toBe(5000); // 3000 + 2000
+    });
+
+    it("uses override month instead of posted month for budget spending", () => {
+      upsertBudget(db, { month: "2026-03", category: "Travel", amount: 150000 });
+      upsertBudget(db, { month: "2026-04", category: "Travel", amount: 150000 });
+
+      db.insert(schema.transactions)
+        .values({
+          accountId,
+          postedAt: "2026-03-20",
+          overrideMonth: "2026-04",
+          name: "Flight reservation",
+          amount: 45000,
+          category: "Travel",
+          isTransfer: false,
+          pending: false,
+          reviewState: "none",
+        })
+        .run();
+
+      const march = getBudgetsForMonth(db, "2026-03");
+      const april = getBudgetsForMonth(db, "2026-04");
+
+      expect(march.budgets.find((b) => b.category === "Travel")?.spent).toBe(0);
+      expect(april.budgets.find((b) => b.category === "Travel")?.spent).toBe(45000);
     });
 
     it("detects unbudgeted spending", () => {

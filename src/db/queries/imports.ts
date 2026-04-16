@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import type { drizzle } from "drizzle-orm/better-sqlite3";
 import * as schema from "../schema";
+import { shouldExcludePassiveIncomeTransaction } from "@/lib/transaction-exclusions";
 
 type DB = ReturnType<typeof drizzle>;
 
@@ -37,6 +38,11 @@ export function importTransactions(
         category: txn.category,
         pending: false,
         isTransfer: false,
+        isExcluded: shouldExcludePassiveIncomeTransaction({
+          name: txn.name,
+          category: txn.category,
+          amount: txn.amount,
+        }),
         reviewState: "none" as const,
       }))
     )

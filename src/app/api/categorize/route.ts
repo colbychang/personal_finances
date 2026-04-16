@@ -6,10 +6,9 @@ import {
   getUncategorizedTransactions,
   buildCategorizationPrompt,
   applyCategorizationResults,
+  getAllUncategorizedTransactionIds,
 } from "@/lib/categorize";
 import { classifyTransactionsWithAI } from "@/lib/openai";
-import { isNull } from "drizzle-orm";
-import * as schema from "@/db/schema";
 
 const AI_BATCH_SIZE = 40;
 
@@ -38,13 +37,7 @@ export async function POST(request: NextRequest) {
     let idsToProcess: number[];
 
     if (all === true) {
-      // Get all uncategorized transaction IDs
-      const uncategorized = db
-        .select({ id: schema.transactions.id })
-        .from(schema.transactions)
-        .where(isNull(schema.transactions.category))
-        .all();
-      idsToProcess = uncategorized.map((r) => r.id);
+      idsToProcess = getAllUncategorizedTransactionIds(db);
     } else if (Array.isArray(transactionIds) && transactionIds.length > 0) {
       idsToProcess = transactionIds.map((id: unknown) => Number(id)).filter((id) => !isNaN(id));
     } else {
