@@ -1,9 +1,20 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { SignOutButton } from "@/components/auth/SignOutButton";
+import { isPublicProfileMode } from "@/lib/deployment";
 import { AppBrand } from "./AppBrand";
 
 export function AppFooter() {
+  const pathname = usePathname();
+  const publicProfileMode = isPublicProfileMode();
+  const showSignOut =
+    !publicProfileMode &&
+    !pathname.startsWith("/sign-in") &&
+    !pathname.startsWith("/sign-up") &&
+    !pathname.startsWith("/access-pending");
+
   return (
     <footer className="border-t border-neutral-200 bg-white">
       <div className="max-w-6xl mx-auto px-4 md:px-8 py-4 flex flex-col gap-2 text-sm text-neutral-500 md:flex-row md:items-center md:justify-between">
@@ -19,6 +30,7 @@ export function AppFooter() {
           <Link href="/data-policy" className="hover:text-neutral-700 transition-colors">
             Data Policy
           </Link>
+          {showSignOut ? <SignOutButton /> : null}
         </div>
       </div>
     </footer>

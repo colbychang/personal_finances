@@ -2,6 +2,7 @@
 
 import { isPublicProfileMode } from "@/lib/deployment";
 import { PlaidAutoSync } from "@/components/plaid/PlaidAutoSync";
+import { usePathname } from "next/navigation";
 import { AppFooter } from "./AppFooter";
 import { Sidebar } from "./Sidebar";
 import { BottomTabBar } from "./BottomTabBar";
@@ -12,15 +13,21 @@ interface AppShellProps {
 
 export function AppShell({ children }: AppShellProps) {
   const publicProfileMode = isPublicProfileMode();
+  const pathname = usePathname();
+  const chromeHidden =
+    pathname.startsWith("/sign-in") ||
+    pathname.startsWith("/sign-up") ||
+    pathname.startsWith("/access-pending");
+  const showAppChrome = !publicProfileMode && !chromeHidden;
 
   return (
     <>
       {/* Desktop sidebar */}
-      {!publicProfileMode && <Sidebar />}
-      {!publicProfileMode && <PlaidAutoSync />}
+      {showAppChrome && <Sidebar />}
+      {showAppChrome && <PlaidAutoSync />}
 
       {/* Main content area */}
-      <div className={publicProfileMode ? "flex flex-col min-h-screen" : "md:pl-60 flex flex-col min-h-screen"}>
+      <div className={showAppChrome ? "md:pl-60 flex flex-col min-h-screen" : "flex flex-col min-h-screen"}>
         <main className="flex-1 overflow-y-auto pb-20 md:pb-0">
           {children}
         </main>
@@ -28,7 +35,7 @@ export function AppShell({ children }: AppShellProps) {
       </div>
 
       {/* Mobile bottom tab bar */}
-      {!publicProfileMode && <BottomTabBar />}
+      {showAppChrome && <BottomTabBar />}
     </>
   );
 }

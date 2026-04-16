@@ -19,6 +19,7 @@ A full-featured personal finance management app built as a Progressive Web App w
 
 - **Framework**: Next.js 16 (App Router, React 19)
 - **Database**: SQLite via better-sqlite3 with Drizzle ORM
+- **Authentication**: Supabase Auth (email/password with cookie-backed SSR sessions)
 - **Styling**: Tailwind CSS 4
 - **Charts**: Recharts
 - **Bank Integration**: Plaid SDK
@@ -49,10 +50,15 @@ PLAID_ENV=sandbox
 PLAID_REDIRECT_URI=https://your-public-app-url/plaid/oauth
 OPENAI_API_KEY=your_openai_api_key
 PLAID_TOKEN_ENCRYPTION_KEY=a_random_32_byte_hex_string
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+NEXT_PUBLIC_SITE_URL=http://localhost:3000
+AUTHORIZED_EMAILS=colby.chang@gmail.com
 ```
 
 Plaid credentials are required for bank linking. The OpenAI key is required for AI categorization. The encryption key secures stored Plaid access tokens.
 If you are using Plaid production with OAuth-enabled institutions, set `PLAID_REDIRECT_URI` to the exact `https://` redirect URL configured in Plaid Dashboard. A plain `http://localhost` redirect will be rejected by Plaid production.
+Supabase powers the new password-protected sign-in flow. `AUTHORIZED_EMAILS` is optional in code, but recommended while the app still uses the current single-tenant finance schema.
 
 ### Run database migrations
 
@@ -129,3 +135,19 @@ The app is a Progressive Web App and can be installed on mobile devices:
 2. Tap the share/menu button
 3. Select "Add to Home Screen"
 4. The app launches in standalone mode with offline support via a service worker
+
+## Supabase + Vercel rollout notes
+
+The auth foundation is now in the repo, but the finance data itself is still stored in the original SQLite schema. That means:
+
+- Password protection can be enabled now with Supabase.
+- Access can be limited to a small tester allowlist through `AUTHORIZED_EMAILS`.
+- The full multi-user hosted beta still requires migrating app data from local SQLite to a hosted Postgres database and then scoping every finance query to a user/workspace.
+
+The current recommended rollout path is:
+
+1. Keep the public Glacier pages on your existing Vercel deployment.
+2. Create a Supabase project and wire in the auth environment variables.
+3. Use `AUTHORIZED_EMAILS` to keep access restricted to you while we finish the data migration.
+4. Migrate the finance database to Supabase Postgres.
+5. Add workspace ownership to accounts, transactions, budgets, Plaid connections, and snapshots before inviting friends.
