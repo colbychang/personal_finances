@@ -90,7 +90,8 @@ function getPreviousMonth(month: string): string {
  */
 function getSpendingByCategory(
   database: DB,
-  month: string
+  month: string,
+  workspaceId?: number,
 ): Map<string, number> {
   const spendingMap = new Map<string, number>();
 
@@ -109,6 +110,9 @@ function getSpendingByCategory(
     .where(
       and(
         sql`${effectiveTransactionMonth} = ${month}`,
+        workspaceId === undefined
+          ? undefined
+          : eq(schema.transactions.workspaceId, workspaceId),
         eq(schema.transactions.isTransfer, false),
         eq(schema.transactions.isExcluded, false),
         notInArray(schema.accounts.type, [...INVESTMENT_LIKE_ACCOUNT_TYPES])
@@ -165,7 +169,11 @@ function getSpendingByCategory(
 /**
  * Get all dashboard data for a given month.
  */
-export function getDashboardData(database: DB, month: string): DashboardData {
+export function getDashboardData(
+  database: DB,
+  month: string,
+  workspaceId?: number,
+): DashboardData {
   // Get all category info for color lookup
   const allCategories = database
     .select({ name: schema.categories.name, color: schema.categories.color })
@@ -176,7 +184,7 @@ export function getDashboardData(database: DB, month: string): DashboardData {
   const prevMonth = getPreviousMonth(month);
 
   // ─── 1. Spending by Category (current month) ─────────────────────
-  const currentSpending = getSpendingByCategory(database, month);
+  const currentSpending = getSpendingByCategory(database, month, workspaceId);
 
   const spendingByCategory: CategorySpending[] = Array.from(currentSpending.entries())
     .map(([category, amount]) => ({
@@ -192,7 +200,14 @@ export function getDashboardData(database: DB, month: string): DashboardData {
   const budgetRows = database
     .select()
     .from(schema.budgets)
-    .where(eq(schema.budgets.month, month))
+    .where(
+      and(
+        eq(schema.budgets.month, month),
+        workspaceId === undefined
+          ? undefined
+          : eq(schema.budgets.workspaceId, workspaceId),
+      ),
+    )
     .all();
 
   const budgetItems: BudgetStatusItem[] = budgetRows.map((b) => {
@@ -240,6 +255,9 @@ export function getDashboardData(database: DB, month: string): DashboardData {
     )
     .where(
       and(
+        workspaceId === undefined
+          ? undefined
+          : eq(schema.transactions.workspaceId, workspaceId),
         eq(schema.transactions.isExcluded, false),
         sql`lower(coalesce(${schema.transactions.category}, '')) <> 'income'`,
         notInArray(schema.accounts.type, [...INVESTMENT_LIKE_ACCOUNT_TYPES])
@@ -256,6 +274,11 @@ export function getDashboardData(database: DB, month: string): DashboardData {
       isAsset: schema.accounts.isAsset,
     })
     .from(schema.accounts)
+    .where(
+      workspaceId === undefined
+        ? undefined
+        : eq(schema.accounts.workspaceId, workspaceId),
+    )
     .all();
 
   let totalAssets = 0;
@@ -273,7 +296,14 @@ export function getDashboardData(database: DB, month: string): DashboardData {
   const prevSnapshot = database
     .select()
     .from(schema.snapshots)
-    .where(eq(schema.snapshots.month, prevMonth))
+    .where(
+      and(
+        eq(schema.snapshots.month, prevMonth),
+        workspaceId === undefined
+          ? undefined
+          : eq(schema.snapshots.workspaceId, workspaceId),
+      ),
+    )
     .get();
 
   const netWorth: NetWorthTrend = {
@@ -283,7 +313,7 @@ export function getDashboardData(database: DB, month: string): DashboardData {
   };
 
   // ─── 5. Month-over-Month Comparison ──────────────────────────────
-  const prevSpending = getSpendingByCategory(database, prevMonth);
+  const prevSpending = getSpendingByCategory(database, prevMonth, workspaceId);
 
   // Merge all categories from both months
   const allCategoryNames = new Set<string>();
@@ -311,6 +341,11 @@ export function getDashboardData(database: DB, month: string): DashboardData {
       netWorth: schema.snapshots.netWorth,
     })
     .from(schema.snapshots)
+    .where(
+      workspaceId === undefined
+        ? undefined
+        : eq(schema.snapshots.workspaceId, workspaceId),
+    )
     .orderBy(asc(schema.snapshots.month))
     .all();
 

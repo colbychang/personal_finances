@@ -2,16 +2,18 @@ import { LayoutDashboard } from "lucide-react";
 import { db } from "@/db/index";
 import { getDashboardData } from "@/db/queries/dashboard";
 import { PublicProfileNotice } from "@/components/public/PublicProfileNotice";
+import { requireCurrentWorkspace } from "@/lib/auth/current-workspace";
 import { isPublicProfileMode } from "@/lib/deployment";
 import { DashboardClient } from "./DashboardClient";
 
-export default function DashboardPage() {
+export default async function DashboardPage() {
   if (isPublicProfileMode()) {
     return <PublicProfileNotice />;
   }
 
+  const { workspace } = await requireCurrentWorkspace();
   const currentMonth = new Date().toISOString().slice(0, 7);
-  const data = getDashboardData(db, currentMonth);
+  const data = getDashboardData(db, currentMonth, workspace.workspaceId);
 
   return (
     <div className="p-4 md:p-8 max-w-6xl mx-auto">

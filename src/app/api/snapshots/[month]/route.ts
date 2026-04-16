@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db/index";
 import { getSnapshotByMonth } from "@/db/queries/snapshots";
+import { requireCurrentWorkspace } from "@/lib/auth/current-workspace";
 
 /**
  * GET /api/snapshots/[month] — Return a specific snapshot with per-account balances.
@@ -10,6 +11,7 @@ export async function GET(
   { params }: { params: Promise<{ month: string }> }
 ) {
   try {
+    const { workspace } = await requireCurrentWorkspace();
     const { month } = await params;
 
     // Validate month format YYYY-MM
@@ -20,7 +22,7 @@ export async function GET(
       );
     }
 
-    const result = getSnapshotByMonth(db, month);
+    const result = getSnapshotByMonth(db, month, workspace.workspaceId);
 
     if (!result) {
       return NextResponse.json(

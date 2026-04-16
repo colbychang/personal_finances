@@ -2,17 +2,19 @@ import { TrendingUp } from "lucide-react";
 import { db } from "@/db/index";
 import { getAllSnapshots, getAccountBalanceHistory, getLiveNetWorth } from "@/db/queries/snapshots";
 import { PublicProfileNotice } from "@/components/public/PublicProfileNotice";
+import { requireCurrentWorkspace } from "@/lib/auth/current-workspace";
 import { isPublicProfileMode } from "@/lib/deployment";
 import { NetWorthClient } from "./NetWorthClient";
 
-export default function NetWorthPage() {
+export default async function NetWorthPage() {
   if (isPublicProfileMode()) {
     return <PublicProfileNotice />;
   }
 
-  const snapshots = getAllSnapshots(db);
-  const accountHistory = getAccountBalanceHistory(db);
-  const liveNetWorth = getLiveNetWorth(db);
+  const { workspace } = await requireCurrentWorkspace();
+  const snapshots = getAllSnapshots(db, workspace.workspaceId);
+  const accountHistory = getAccountBalanceHistory(db, workspace.workspaceId);
+  const liveNetWorth = getLiveNetWorth(db, workspace.workspaceId);
 
   return (
     <div className="p-4 md:p-8 max-w-4xl mx-auto">

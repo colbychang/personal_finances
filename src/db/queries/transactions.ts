@@ -38,6 +38,7 @@ export interface TransactionWithAccount {
 }
 
 export interface TransactionFilters {
+  workspaceId?: number;
   dateFrom?: string; // YYYY-MM-DD
   dateTo?: string;   // YYYY-MM-DD
   effectiveMonth?: string; // YYYY-MM
@@ -131,6 +132,10 @@ export function getTransactions(
 function buildWhereConditions(filters: TransactionFilters) {
   const conditions = [];
 
+  if (filters.workspaceId !== undefined) {
+    conditions.push(eq(schema.transactions.workspaceId, filters.workspaceId));
+  }
+
   conditions.push(
     notInArray(schema.accounts.type, [...INVESTMENT_LIKE_ACCOUNT_TYPES])
   );
@@ -191,7 +196,8 @@ function buildWhereConditions(filters: TransactionFilters) {
  * Returns id, name, and type.
  */
 export function getAccountsForFilter(
-  database: DB
+  database: DB,
+  workspaceId?: number,
 ): Array<{ id: number; name: string; type: string }> {
   return database
     .select({
@@ -200,6 +206,11 @@ export function getAccountsForFilter(
       type: schema.accounts.type,
     })
     .from(schema.accounts)
+    .where(
+      workspaceId === undefined
+        ? undefined
+        : eq(schema.accounts.workspaceId, workspaceId),
+    )
     .orderBy(schema.accounts.name)
     .all();
 }
@@ -222,11 +233,30 @@ export interface CreateTransactionInput {
  */
 export function createTransaction(
   database: DB,
-  input: CreateTransactionInput
+  input: CreateTransactionInput,
+  workspaceId?: number,
 ) {
+  if (workspaceId !== undefined) {
+    const account = database
+      .select({ id: schema.accounts.id })
+      .from(schema.accounts)
+      .where(
+        and(
+          eq(schema.accounts.id, input.accountId),
+          eq(schema.accounts.workspaceId, workspaceId),
+        ),
+      )
+      .get();
+
+    if (!account) {
+      throw new Error("Account not found in current workspace");
+    }
+  }
+
   return database
     .insert(schema.transactions)
     .values({
+      workspaceId: workspaceId ?? null,
       accountId: input.accountId,
       postedAt: input.postedAt,
       overrideMonth: input.overrideMonth ?? null,
@@ -264,12 +294,17 @@ export interface UpdateTransactionInput {
 export function updateTransaction(
   database: DB,
   id: number,
-  input: UpdateTransactionInput
+  input: UpdateTransactionInput,
+  workspaceId?: number,
 ) {
+  const existingWhere = workspaceId === undefined
+    ? eq(schema.transactions.id, id)
+    : and(eq(schema.transactions.id, id), eq(schema.transactions.workspaceId, workspaceId));
+
   const existing = database
     .select()
     .from(schema.transactions)
-    .where(eq(schema.transactions.id, id))
+    .where(existingWhere)
     .get();
 
   if (!existing) return null;
@@ -297,28 +332,53 @@ export function updateTransaction(
   });
 
   if (Object.keys(updates).length > 0) {
+    if (input.accountId !== undefined && workspaceId !== undefined) {
+      const account = database
+        .select({ id: schema.accounts.id })
+        .from(schema.accounts)
+        .where(
+          and(
+            eq(schema.accounts.id, input.accountId),
+            eq(schema.accounts.workspaceId, workspaceId),
+          ),
+        )
+        .get();
+
+      if (!account) {
+        throw new Error("Account not found in current workspace");
+      }
+    }
+
     database
       .update(schema.transactions)
       .set(updates)
-      .where(eq(schema.transactions.id, id))
+      .where(existingWhere)
       .run();
   }
 
   return database
     .select()
     .from(schema.transactions)
-    .where(eq(schema.transactions.id, id))
+    .where(existingWhere)
     .get()!;
 }
 
 /**
  * Delete a transaction and its splits. Returns true if found and deleted.
  */
-export function deleteTransaction(database: DB, id: number): boolean {
+export function deleteTransaction(
+  database: DB,
+  id: number,
+  workspaceId?: number,
+): boolean {
+  const where = workspaceId === undefined
+    ? eq(schema.transactions.id, id)
+    : and(eq(schema.transactions.id, id), eq(schema.transactions.workspaceId, workspaceId));
+
   const existing = database
     .select()
     .from(schema.transactions)
-    .where(eq(schema.transactions.id, id))
+    .where(where)
     .get();
 
   if (!existing) return false;
@@ -332,7 +392,7 @@ export function deleteTransaction(database: DB, id: number): boolean {
   // Delete the transaction
   database
     .delete(schema.transactions)
-    .where(eq(schema.transactions.id, id))
+    .where(where)
     .run();
 
   return true;
@@ -343,8 +403,13 @@ export function deleteTransaction(database: DB, id: number): boolean {
  */
 export function getTransactionById(
   database: DB,
-  id: number
+  id: number,
+  workspaceId?: number,
 ): TransactionWithAccount | null {
+  const where = workspaceId === undefined
+    ? eq(schema.transactions.id, id)
+    : and(eq(schema.transactions.id, id), eq(schema.transactions.workspaceId, workspaceId));
+
   const row = database
     .select({
       id: schema.transactions.id,
@@ -368,7 +433,7 @@ export function getTransactionById(
       schema.accounts,
       eq(schema.transactions.accountId, schema.accounts.id)
     )
-    .where(eq(schema.transactions.id, id))
+    .where(where)
     .get();
 
   return row ?? null;

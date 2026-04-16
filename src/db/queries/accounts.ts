@@ -1,4 +1,4 @@
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import type { drizzle } from "drizzle-orm/better-sqlite3";
 import * as schema from "../schema";
 
@@ -42,7 +42,11 @@ export interface AccountSection {
  * Get all accounts grouped by type section with subtotals.
  * Sections: "Checking & Savings", "Credit Cards", "Investments & Retirement"
  */
-export function getAllAccountsGrouped(database: DB): AccountSection[] {
+export function getAllAccountsGrouped(database: DB, workspaceId?: number): AccountSection[] {
+  const where = workspaceId === undefined
+    ? undefined
+    : eq(schema.accounts.workspaceId, workspaceId);
+
   const rows = database
     .select({
       id: schema.accounts.id,
@@ -60,6 +64,7 @@ export function getAllAccountsGrouped(database: DB): AccountSection[] {
       schema.institutions,
       eq(schema.accounts.institutionId, schema.institutions.id)
     )
+    .where(where)
     .all();
 
   // Group by section
@@ -96,9 +101,9 @@ export interface CreateAccountInput {
 /**
  * Create a new account. Creates or reuses institution by name.
  */
-export function createAccount(database: DB, input: CreateAccountInput) {
+export function createAccount(database: DB, input: CreateAccountInput, workspaceId?: number) {
   // Find or create institution
-  const institutionId = findOrCreateInstitution(database, input.institution);
+  const institutionId = findOrCreateInstitution(database, input.institution, workspaceId);
 
   const isAsset = input.type !== "credit";
 
@@ -106,6 +111,7 @@ export function createAccount(database: DB, input: CreateAccountInput) {
     .insert(schema.accounts)
     .values({
       institutionId,
+      workspaceId: workspaceId ?? null,
       name: input.name,
       type: input.type,
       balanceCurrent: input.balance,
@@ -133,13 +139,18 @@ export interface UpdateAccountInput {
 export function updateAccount(
   database: DB,
   id: number,
-  input: UpdateAccountInput
+  input: UpdateAccountInput,
+  workspaceId?: number,
 ) {
   // Check if account exists
+  const existingWhere = workspaceId === undefined
+    ? eq(schema.accounts.id, id)
+    : and(eq(schema.accounts.id, id), eq(schema.accounts.workspaceId, workspaceId));
+
   const existing = database
     .select()
     .from(schema.accounts)
-    .where(eq(schema.accounts.id, id))
+    .where(existingWhere)
     .get();
 
   if (!existing) return null;
@@ -163,7 +174,8 @@ export function updateAccount(
   if (input.institution !== undefined) {
     updates.institutionId = findOrCreateInstitution(
       database,
-      input.institution
+      input.institution,
+      workspaceId,
     );
   }
 
@@ -171,14 +183,14 @@ export function updateAccount(
     database
       .update(schema.accounts)
       .set(updates)
-      .where(eq(schema.accounts.id, id))
+      .where(existingWhere)
       .run();
   }
 
   return database
     .select()
     .from(schema.accounts)
-    .where(eq(schema.accounts.id, id))
+    .where(existingWhere)
     .get()!;
 }
 
@@ -188,12 +200,17 @@ export function updateAccount(
  */
 export function deleteAccountWithTransactions(
   database: DB,
-  id: number
+  id: number,
+  workspaceId?: number,
 ): boolean {
+  const existingWhere = workspaceId === undefined
+    ? eq(schema.accounts.id, id)
+    : and(eq(schema.accounts.id, id), eq(schema.accounts.workspaceId, workspaceId));
+
   const existing = database
     .select()
     .from(schema.accounts)
-    .where(eq(schema.accounts.id, id))
+    .where(existingWhere)
     .get();
 
   if (!existing) return false;
@@ -246,8 +263,13 @@ export function deleteAccountWithTransactions(
  */
 export function getAccountById(
   database: DB,
-  id: number
+  id: number,
+  workspaceId?: number,
 ): AccountWithInstitution | null {
+  const where = workspaceId === undefined
+    ? eq(schema.accounts.id, id)
+    : and(eq(schema.accounts.id, id), eq(schema.accounts.workspaceId, workspaceId));
+
   const row = database
     .select({
       id: schema.accounts.id,
@@ -265,7 +287,7 @@ export function getAccountById(
       schema.institutions,
       eq(schema.accounts.institutionId, schema.institutions.id)
     )
-    .where(eq(schema.accounts.id, id))
+    .where(where)
     .get();
 
   return row ?? null;
@@ -274,18 +296,30 @@ export function getAccountById(
 /**
  * Find an institution by name or create one if it doesn't exist.
  */
-function findOrCreateInstitution(database: DB, name: string): number {
+function findOrCreateInstitution(database: DB, name: string, workspaceId?: number): number {
+  const where = workspaceId === undefined
+    ? eq(schema.institutions.name, name)
+    : and(
+        eq(schema.institutions.name, name),
+        eq(schema.institutions.workspaceId, workspaceId),
+      );
+
   const existing = database
     .select()
     .from(schema.institutions)
-    .where(eq(schema.institutions.name, name))
+    .where(where)
     .get();
 
   if (existing) return existing.id;
 
   const result = database
     .insert(schema.institutions)
-    .values({ name, provider: "manual", status: "active" })
+    .values({
+      workspaceId: workspaceId ?? null,
+      name,
+      provider: "manual",
+      status: "active",
+    })
     .returning()
     .get();
 

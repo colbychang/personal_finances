@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db/index";
 import { copyBudgetsFromMonth } from "@/db/queries/budgets";
+import { requireCurrentWorkspace } from "@/lib/auth/current-workspace";
 
 /**
  * POST /api/budgets/copy-next
@@ -9,6 +10,7 @@ import { copyBudgetsFromMonth } from "@/db/queries/budgets";
  */
 export async function POST(request: NextRequest) {
   try {
+    const { workspace } = await requireCurrentWorkspace();
     const body = await request.json();
     const { month } = body;
 
@@ -25,7 +27,7 @@ export async function POST(request: NextRequest) {
         ? `${year + 1}-01`
         : `${year}-${String(monthNum + 1).padStart(2, "0")}`;
 
-    const count = copyBudgetsFromMonth(db, nextMonth, month);
+    const count = copyBudgetsFromMonth(db, nextMonth, month, workspace.workspaceId);
 
     if (count === -1) {
       return NextResponse.json(

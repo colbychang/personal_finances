@@ -5,6 +5,7 @@ import {
   deleteAccountWithTransactions,
   getAccountById,
 } from "@/db/queries/accounts";
+import { requireCurrentWorkspace } from "@/lib/auth/current-workspace";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -13,6 +14,7 @@ type RouteContext = { params: Promise<{ id: string }> };
  */
 export async function GET(request: Request, context: RouteContext) {
   try {
+    const { workspace } = await requireCurrentWorkspace();
     const { id } = await context.params;
     const accountId = parseInt(id, 10);
 
@@ -20,7 +22,7 @@ export async function GET(request: Request, context: RouteContext) {
       return NextResponse.json({ error: "Invalid account ID" }, { status: 400 });
     }
 
-    const account = getAccountById(db, accountId);
+    const account = getAccountById(db, accountId, workspace.workspaceId);
 
     if (!account) {
       return NextResponse.json({ error: "Account not found" }, { status: 404 });
@@ -43,6 +45,7 @@ export async function GET(request: Request, context: RouteContext) {
  */
 export async function PUT(request: Request, context: RouteContext) {
   try {
+    const { workspace } = await requireCurrentWorkspace();
     const { id } = await context.params;
     const accountId = parseInt(id, 10);
 
@@ -95,7 +98,7 @@ export async function PUT(request: Request, context: RouteContext) {
     if (type !== undefined) updates.type = type;
     if (balance !== undefined) updates.balance = Math.round(balance * 100);
 
-    const updated = updateAccount(db, accountId, updates);
+    const updated = updateAccount(db, accountId, updates, workspace.workspaceId);
 
     if (!updated) {
       return NextResponse.json({ error: "Account not found" }, { status: 404 });
@@ -116,6 +119,7 @@ export async function PUT(request: Request, context: RouteContext) {
  */
 export async function DELETE(request: Request, context: RouteContext) {
   try {
+    const { workspace } = await requireCurrentWorkspace();
     const { id } = await context.params;
     const accountId = parseInt(id, 10);
 
@@ -123,7 +127,7 @@ export async function DELETE(request: Request, context: RouteContext) {
       return NextResponse.json({ error: "Invalid account ID" }, { status: 400 });
     }
 
-    const deleted = deleteAccountWithTransactions(db, accountId);
+    const deleted = deleteAccountWithTransactions(db, accountId, workspace.workspaceId);
 
     if (!deleted) {
       return NextResponse.json({ error: "Account not found" }, { status: 404 });

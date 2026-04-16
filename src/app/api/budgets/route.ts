@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db/index";
-import { getBudgetsForMonth, upsertBudget } from "@/db/queries/budgets";
+import { getBudgetsForMonth, upsertBudgetForWorkspace } from "@/db/queries/budgets";
+import { requireCurrentWorkspace } from "@/lib/auth/current-workspace";
 
 /**
  * GET /api/budgets?month=YYYY-MM
@@ -8,6 +9,7 @@ import { getBudgetsForMonth, upsertBudget } from "@/db/queries/budgets";
  */
 export async function GET(request: NextRequest) {
   try {
+    const { workspace } = await requireCurrentWorkspace();
     const { searchParams } = request.nextUrl;
     const month = searchParams.get("month");
 
@@ -25,7 +27,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const result = getBudgetsForMonth(db, month);
+    const result = getBudgetsForMonth(db, month, workspace.workspaceId);
     return NextResponse.json(result);
   } catch (error) {
     console.error("GET /api/budgets error:", error);
@@ -43,6 +45,7 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
+    const { workspace } = await requireCurrentWorkspace();
     const body = await request.json();
     const { month, category, amount } = body;
 
@@ -72,11 +75,11 @@ export async function POST(request: NextRequest) {
     // Convert dollars to cents
     const amountCents = Math.round(amount * 100);
 
-    const budget = upsertBudget(db, {
+    const budget = upsertBudgetForWorkspace(db, {
       month,
       category: category.trim(),
       amount: amountCents,
-    });
+    }, workspace.workspaceId);
 
     return NextResponse.json({ budget }, { status: 200 });
   } catch (error) {

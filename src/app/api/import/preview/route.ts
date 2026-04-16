@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db/index";
 import { getExistingTransactionsForDuplicateCheck } from "@/db/queries/imports";
+import { getAccountById } from "@/db/queries/accounts";
+import { requireCurrentWorkspace } from "@/lib/auth/current-workspace";
 import { parseCSV, mapCSVRows, findDuplicates } from "@/lib/csv";
 import type { ColumnMapping } from "@/lib/csv";
 
@@ -21,6 +23,7 @@ import type { ColumnMapping } from "@/lib/csv";
  */
 export async function POST(request: NextRequest) {
   try {
+    const { workspace } = await requireCurrentWorkspace();
     const body = await request.json();
     const { csvText, accountId, mapping } = body;
 
@@ -82,7 +85,12 @@ export async function POST(request: NextRequest) {
 
     // ── Duplicate Detection ────────────────────────────────────────
 
-    const existing = getExistingTransactionsForDuplicateCheck(db, accountId);
+    const account = getAccountById(db, accountId, workspace.workspaceId);
+    if (!account) {
+      return NextResponse.json({ error: "Account not found" }, { status: 404 });
+    }
+
+    const existing = getExistingTransactionsForDuplicateCheck(db, accountId, workspace.workspaceId);
     const duplicates = findDuplicates(mapResult.transactions, existing);
     const duplicateMap = new Map(duplicates.map((d) => [d.index, d]));
 

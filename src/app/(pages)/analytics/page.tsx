@@ -2,14 +2,16 @@ import { BarChart3 } from "lucide-react";
 import { db } from "@/db/index";
 import { getSpendingByCategory, getMonthlySpendingTrends } from "@/db/queries/analytics";
 import { PublicProfileNotice } from "@/components/public/PublicProfileNotice";
+import { requireCurrentWorkspace } from "@/lib/auth/current-workspace";
 import { isPublicProfileMode } from "@/lib/deployment";
 import { AnalyticsClient } from "./AnalyticsClient";
 
-export default function AnalyticsPage() {
+export default async function AnalyticsPage() {
   if (isPublicProfileMode()) {
     return <PublicProfileNotice />;
   }
 
+  const { workspace } = await requireCurrentWorkspace();
   // Default period: current month
   const now = new Date();
   const currentYear = now.getFullYear();
@@ -19,8 +21,13 @@ export default function AnalyticsPage() {
   const endMonthDate = new Date(currentYear, currentMonth + 1, 1);
   const endDate = `${endMonthDate.getFullYear()}-${String(endMonthDate.getMonth() + 1).padStart(2, "0")}-01`;
 
-  const spendingByCategory = getSpendingByCategory(db, startDate, endDate);
-  const monthlyTrends = getMonthlySpendingTrends(db, 6);
+  const spendingByCategory = getSpendingByCategory(
+    db,
+    startDate,
+    endDate,
+    workspace.workspaceId,
+  );
+  const monthlyTrends = getMonthlySpendingTrends(db, 6, workspace.workspaceId);
   const totalSpending = spendingByCategory.reduce((sum, c) => sum + c.amount, 0);
 
   const initialData = {

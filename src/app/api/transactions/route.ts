@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db/index";
 import { getTransactions, createTransaction } from "@/db/queries/transactions";
+import { requireCurrentWorkspace } from "@/lib/auth/current-workspace";
 
 /**
  * GET /api/transactions — returns paginated, filtered transactions.
@@ -16,6 +17,7 @@ import { getTransactions, createTransaction } from "@/db/queries/transactions";
  */
 export async function GET(request: NextRequest) {
   try {
+    const { workspace } = await requireCurrentWorkspace();
     const { searchParams } = request.nextUrl;
 
     const dateFrom = searchParams.get("dateFrom") ?? undefined;
@@ -75,6 +77,7 @@ export async function GET(request: NextRequest) {
       needsReviewParam === "1" || needsReviewParam === "true";
 
     const result = getTransactions(db, {
+      workspaceId: workspace.workspaceId,
       dateFrom,
       dateTo,
       effectiveMonth,
@@ -103,6 +106,7 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
+    const { workspace } = await requireCurrentWorkspace();
     const body = await request.json();
     const {
       date,
@@ -176,7 +180,7 @@ export async function POST(request: NextRequest) {
       category: category || undefined,
       notes: notes?.trim() || undefined,
       isTransfer: isTransfer ?? false,
-    });
+    }, workspace.workspaceId);
 
     return NextResponse.json({ transaction }, { status: 201 });
   } catch (error) {

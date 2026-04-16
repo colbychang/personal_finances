@@ -29,7 +29,8 @@ interface TransactionForCategorization {
  */
 export function applyMerchantRules(
   database: DB,
-  transactionIds: number[]
+  transactionIds: number[],
+  workspaceId?: number,
 ): { ruleApplied: number[]; remaining: number[] } {
   if (transactionIds.length === 0) {
     return { ruleApplied: [], remaining: [] };
@@ -52,6 +53,9 @@ export function applyMerchantRules(
     .where(
       and(
         inArray(schema.transactions.id, transactionIds),
+        workspaceId === undefined
+          ? undefined
+          : eq(schema.transactions.workspaceId, workspaceId),
         eq(schema.transactions.isExcluded, false),
         notInArray(schema.accounts.type, [...INVESTMENT_LIKE_ACCOUNT_TYPES])
       )
@@ -59,7 +63,7 @@ export function applyMerchantRules(
     .all();
 
   // Get all merchant rules
-  const rules = getAllMerchantRules(database);
+  const rules = getAllMerchantRules(database, workspaceId);
   const ruleMap = new Map(rules.map((r) => [r.merchantKey, r]));
 
   const ruleApplied: number[] = [];
@@ -114,7 +118,8 @@ export function applyMerchantRules(
  */
 export function getUncategorizedTransactions(
   database: DB,
-  transactionIds: number[]
+  transactionIds: number[],
+  workspaceId?: number,
 ): TransactionForCategorization[] {
   if (transactionIds.length === 0) return [];
 
@@ -134,6 +139,9 @@ export function getUncategorizedTransactions(
     .where(
       and(
         inArray(schema.transactions.id, transactionIds),
+        workspaceId === undefined
+          ? undefined
+          : eq(schema.transactions.workspaceId, workspaceId),
         eq(schema.transactions.isExcluded, false),
         notInArray(schema.accounts.type, [...INVESTMENT_LIKE_ACCOUNT_TYPES])
       )
@@ -197,6 +205,13 @@ export function applyCategorizationResults(
  * Get all transaction IDs that are uncategorized (category is null).
  */
 export function getAllUncategorizedTransactionIds(database: DB): number[] {
+  return getAllUncategorizedTransactionIdsForWorkspace(database, undefined);
+}
+
+export function getAllUncategorizedTransactionIdsForWorkspace(
+  database: DB,
+  workspaceId?: number,
+): number[] {
   const rows = database
     .select({ id: schema.transactions.id })
     .from(schema.transactions)
@@ -207,6 +222,9 @@ export function getAllUncategorizedTransactionIds(database: DB): number[] {
     .where(
       and(
         isNull(schema.transactions.category),
+        workspaceId === undefined
+          ? undefined
+          : eq(schema.transactions.workspaceId, workspaceId),
         eq(schema.transactions.isExcluded, false),
         notInArray(schema.accounts.type, [...INVESTMENT_LIKE_ACCOUNT_TYPES])
       )

@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db/index";
 import { createSnapshot, getAllSnapshots } from "@/db/queries/snapshots";
+import { requireCurrentWorkspace } from "@/lib/auth/current-workspace";
 
 /**
  * GET /api/snapshots — Return all snapshots sorted by month.
  */
 export async function GET() {
   try {
-    const snapshots = getAllSnapshots(db);
+    const { workspace } = await requireCurrentWorkspace();
+    const snapshots = getAllSnapshots(db, workspace.workspaceId);
     return NextResponse.json({ snapshots });
   } catch (error) {
     console.error("Failed to fetch snapshots:", error);
@@ -24,6 +26,7 @@ export async function GET() {
  */
 export async function POST(request: NextRequest) {
   try {
+    const { workspace } = await requireCurrentWorkspace();
     const body = await request.json().catch(() => ({}));
 
     // Default to current month if not provided
@@ -43,7 +46,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const snapshot = createSnapshot(db, month);
+    const snapshot = createSnapshot(db, month, workspace.workspaceId);
     return NextResponse.json({ snapshot }, { status: 201 });
   } catch (error) {
     console.error("Failed to create snapshot:", error);

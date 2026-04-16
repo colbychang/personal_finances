@@ -3,15 +3,17 @@ import { db } from "@/db/index";
 import { getAllAccountsGrouped } from "@/db/queries/accounts";
 import { PlaidSetupNotice } from "@/components/plaid/PlaidSetupNotice";
 import { PublicProfileNotice } from "@/components/public/PublicProfileNotice";
+import { requireCurrentWorkspace } from "@/lib/auth/current-workspace";
 import { isPublicProfileMode } from "@/lib/deployment";
 import { AccountsClient } from "./AccountsClient";
 
-export default function AccountsPage() {
+export default async function AccountsPage() {
   if (isPublicProfileMode()) {
     return <PublicProfileNotice />;
   }
 
-  const sections = getAllAccountsGrouped(db);
+  const { workspace } = await requireCurrentWorkspace();
+  const sections = getAllAccountsGrouped(db, workspace.workspaceId);
 
   return (
     <div className="p-4 md:p-8 max-w-4xl mx-auto">

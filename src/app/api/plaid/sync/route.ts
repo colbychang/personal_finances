@@ -3,6 +3,7 @@ import { getPlaidClient } from "@/lib/plaid";
 import { decrypt } from "@/lib/encryption";
 import { db } from "@/db/index";
 import { getConnectionById } from "@/db/queries/connections";
+import { requireCurrentWorkspace } from "@/lib/auth/current-workspace";
 import {
   syncTransactionsFromPlaid,
   updateConnectionSyncStatus,
@@ -40,6 +41,7 @@ function getUserFriendlyError(errorCode: string): string {
  */
 export async function POST(request: NextRequest) {
   try {
+    const { workspace } = await requireCurrentWorkspace();
     const body = await request.json();
     const connectionId = body.connectionId;
 
@@ -51,7 +53,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get connection
-    const connection = getConnectionById(db, connectionId);
+    const connection = getConnectionById(db, connectionId, workspace.workspaceId);
     if (!connection) {
       return NextResponse.json(
         { error: "Connection not found" },
@@ -154,7 +156,8 @@ export async function POST(request: NextRequest) {
                 current: acct.balances.current,
                 available: acct.balances.available,
               },
-            }))
+            })),
+            workspace.workspaceId,
           );
         }
       }

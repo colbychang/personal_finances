@@ -7,6 +7,7 @@ import {
   findOrCreatePlaidInstitution,
   createPlaidAccount,
 } from "@/db/queries/connections";
+import { requireCurrentWorkspace } from "@/lib/auth/current-workspace";
 
 interface ExchangeTokenBody {
   public_token: string;
@@ -62,6 +63,7 @@ function mapPlaidSubtype(type: string, subtype: string): string {
  */
 export async function POST(request: NextRequest) {
   try {
+    const { workspace } = await requireCurrentWorkspace();
     const body = (await request.json()) as ExchangeTokenBody;
 
     if (!body.public_token) {
@@ -93,13 +95,14 @@ export async function POST(request: NextRequest) {
       accessToken: encryptedToken,
       itemId,
       isEncrypted: true,
-    });
+    }, workspace.workspaceId);
 
     // Create or find institution
     const institutionId = findOrCreatePlaidInstitution(
       db,
       institutionName,
-      body.institution_id
+      body.institution_id,
+      workspace.workspaceId,
     );
 
     // Fetch accounts from Plaid to get balances
@@ -148,7 +151,8 @@ export async function POST(request: NextRequest) {
           isAsset,
         },
         connection.id,
-        institutionName
+        institutionName,
+        workspace.workspaceId,
       );
 
       storedAccounts.push({

@@ -142,6 +142,7 @@ The auth foundation is now in the repo, but the finance data itself is still sto
 
 - Password protection can be enabled now with Supabase.
 - Access can be limited to a small tester allowlist through `AUTHORIZED_EMAILS`.
+- Each signed-in user now gets an internal personal workspace record on first login.
 - The full multi-user hosted beta still requires migrating app data from local SQLite to a hosted Postgres database and then scoping every finance query to a user/workspace.
 
 The current recommended rollout path is:

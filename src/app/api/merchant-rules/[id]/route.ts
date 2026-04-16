@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db/index";
 import {
   updateMerchantRule,
-  deleteMerchantRule,
+  deleteMerchantRuleForWorkspace,
 } from "@/db/queries/merchant-rules";
+import { requireCurrentWorkspace } from "@/lib/auth/current-workspace";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -13,6 +14,7 @@ type RouteContext = { params: Promise<{ id: string }> };
  */
 export async function PUT(request: NextRequest, context: RouteContext) {
   try {
+    const { workspace } = await requireCurrentWorkspace();
     const { id } = await context.params;
     const ruleId = parseInt(id, 10);
 
@@ -42,7 +44,7 @@ export async function PUT(request: NextRequest, context: RouteContext) {
       category: category?.trim(),
       label: label?.trim(),
       isTransfer,
-    });
+    }, workspace.workspaceId);
 
     if (!updated) {
       return NextResponse.json({ error: "Merchant rule not found" }, { status: 404 });
@@ -63,6 +65,7 @@ export async function PUT(request: NextRequest, context: RouteContext) {
  */
 export async function DELETE(request: NextRequest, context: RouteContext) {
   try {
+    const { workspace } = await requireCurrentWorkspace();
     const { id } = await context.params;
     const ruleId = parseInt(id, 10);
 
@@ -70,7 +73,7 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: "Invalid rule ID" }, { status: 400 });
     }
 
-    const deleted = deleteMerchantRule(db, ruleId);
+    const deleted = deleteMerchantRuleForWorkspace(db, ruleId, workspace.workspaceId);
 
     if (!deleted) {
       return NextResponse.json({ error: "Merchant rule not found" }, { status: 404 });

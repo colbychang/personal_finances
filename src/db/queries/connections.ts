@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { drizzle } from "drizzle-orm/better-sqlite3";
 import * as schema from "../schema";
 
@@ -26,10 +26,15 @@ export interface ConnectionWithAccounts {
 /**
  * Get all connections with their linked accounts.
  */
-export function getAllConnections(database: DB): ConnectionWithAccounts[] {
+export function getAllConnections(database: DB, workspaceId?: number): ConnectionWithAccounts[] {
   const conns = database
     .select()
     .from(schema.connections)
+    .where(
+      workspaceId === undefined
+        ? undefined
+        : eq(schema.connections.workspaceId, workspaceId),
+    )
     .all();
 
   return conns.map((conn) => {
@@ -81,13 +86,21 @@ export function getAllConnections(database: DB): ConnectionWithAccounts[] {
  */
 export function getConnectionById(
   database: DB,
-  id: number
+  id: number,
+  workspaceId?: number,
 ): typeof schema.connections.$inferSelect | null {
   return (
     database
       .select()
       .from(schema.connections)
-      .where(eq(schema.connections.id, id))
+      .where(
+        workspaceId === undefined
+          ? eq(schema.connections.id, id)
+          : and(
+              eq(schema.connections.id, id),
+              eq(schema.connections.workspaceId, workspaceId),
+            ),
+      )
       .get() ?? null
   );
 }
@@ -105,11 +118,13 @@ export interface CreateConnectionInput {
  */
 export function createConnection(
   database: DB,
-  input: CreateConnectionInput
+  input: CreateConnectionInput,
+  workspaceId?: number,
 ): typeof schema.connections.$inferSelect {
   return database
     .insert(schema.connections)
     .values({
+      workspaceId: workspaceId ?? null,
       institutionName: input.institutionName,
       provider: input.provider,
       accessToken: input.accessToken,
@@ -125,11 +140,15 @@ export function createConnection(
  * Also removes associated accounts (Plaid-sourced) and their transactions.
  * Returns true if found and deleted, false if not found.
  */
-export function deleteConnection(database: DB, id: number): boolean {
+export function deleteConnection(database: DB, id: number, workspaceId?: number): boolean {
   const conn = database
     .select()
     .from(schema.connections)
-    .where(eq(schema.connections.id, id))
+    .where(
+      workspaceId === undefined
+        ? eq(schema.connections.id, id)
+        : and(eq(schema.connections.id, id), eq(schema.connections.workspaceId, workspaceId)),
+    )
     .get();
 
   if (!conn) return false;
@@ -197,20 +216,35 @@ export function deleteConnection(database: DB, id: number): boolean {
 export function findOrCreatePlaidInstitution(
   database: DB,
   name: string,
-  plaidInstitutionId?: string
+  plaidInstitutionId?: string,
+  workspaceId?: number,
 ): number {
   const existing =
     (plaidInstitutionId
       ? database
           .select()
           .from(schema.institutions)
-          .where(eq(schema.institutions.plaidInstitutionId, plaidInstitutionId))
+          .where(
+            and(
+              eq(schema.institutions.plaidInstitutionId, plaidInstitutionId),
+              workspaceId === undefined
+                ? undefined
+                : eq(schema.institutions.workspaceId, workspaceId),
+            ),
+          )
           .get()
       : null) ??
     database
       .select()
       .from(schema.institutions)
-      .where(eq(schema.institutions.name, name))
+      .where(
+        and(
+          eq(schema.institutions.name, name),
+          workspaceId === undefined
+            ? undefined
+            : eq(schema.institutions.workspaceId, workspaceId),
+        ),
+      )
       .get();
 
   if (existing) {
@@ -233,6 +267,7 @@ export function findOrCreatePlaidInstitution(
   const result = database
     .insert(schema.institutions)
     .values({
+      workspaceId: workspaceId ?? null,
       name,
       provider: "plaid",
       status: "active",
@@ -263,13 +298,21 @@ export function createPlaidAccount(
   database: DB,
   input: CreatePlaidAccountInput,
   connectionId: number,
-  institutionName: string
+  institutionName: string,
+  workspaceId?: number,
 ): typeof schema.accounts.$inferSelect {
   // Check if account with this external ref already exists
+  const existingWhere = workspaceId === undefined
+    ? eq(schema.accounts.externalRef, input.externalRef)
+    : and(
+        eq(schema.accounts.externalRef, input.externalRef),
+        eq(schema.accounts.workspaceId, workspaceId),
+      );
+
   const existing = database
     .select()
     .from(schema.accounts)
-    .where(eq(schema.accounts.externalRef, input.externalRef))
+    .where(existingWhere)
     .get();
 
   if (existing) {
@@ -277,6 +320,7 @@ export function createPlaidAccount(
     database
       .update(schema.accounts)
       .set({
+        workspaceId: workspaceId ?? existing.workspaceId,
         institutionId: input.institutionId,
         name: input.name,
         mask: input.mask,
@@ -299,6 +343,7 @@ export function createPlaidAccount(
     : database
         .insert(schema.accounts)
         .values({
+          workspaceId: workspaceId ?? null,
           institutionId: input.institutionId,
           externalRef: input.externalRef,
           name: input.name,
@@ -317,11 +362,19 @@ export function createPlaidAccount(
   const existingLink = database
     .select({ id: schema.accountLinks.id })
     .from(schema.accountLinks)
-    .where(eq(schema.accountLinks.externalKey, input.externalRef))
+    .where(
+      workspaceId === undefined
+        ? eq(schema.accountLinks.externalKey, input.externalRef)
+        : and(
+            eq(schema.accountLinks.externalKey, input.externalRef),
+            eq(schema.accountLinks.workspaceId, workspaceId),
+          ),
+    )
     .get();
 
   const linkValues = {
     provider: "plaid" as const,
+    workspaceId: workspaceId ?? null,
     externalKey: input.externalRef,
     connectionId,
     accountId: account.id,

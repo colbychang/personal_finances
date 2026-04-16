@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { drizzle } from "drizzle-orm/better-sqlite3";
 import * as schema from "../schema";
 import { shouldExcludePassiveIncomeTransaction } from "@/lib/transaction-exclusions";
@@ -23,7 +23,8 @@ export interface ImportTransactionInput {
  */
 export function importTransactions(
   database: DB,
-  transactions: ImportTransactionInput[]
+  transactions: ImportTransactionInput[],
+  workspaceId?: number,
 ): number {
   if (transactions.length === 0) return 0;
 
@@ -31,6 +32,7 @@ export function importTransactions(
     .insert(schema.transactions)
     .values(
       transactions.map((txn) => ({
+        workspaceId: workspaceId ?? null,
         accountId: txn.accountId,
         postedAt: txn.postedAt,
         name: txn.name,
@@ -57,7 +59,8 @@ export function importTransactions(
  */
 export function getExistingTransactionsForDuplicateCheck(
   database: DB,
-  accountId: number
+  accountId: number,
+  workspaceId?: number,
 ): Array<{ id: number; postedAt: string; name: string; amount: number }> {
   return database
     .select({
@@ -67,6 +70,13 @@ export function getExistingTransactionsForDuplicateCheck(
       amount: schema.transactions.amount,
     })
     .from(schema.transactions)
-    .where(eq(schema.transactions.accountId, accountId))
+    .where(
+      and(
+        eq(schema.transactions.accountId, accountId),
+        workspaceId === undefined
+          ? undefined
+          : eq(schema.transactions.workspaceId, workspaceId),
+      ),
+    )
     .all();
 }

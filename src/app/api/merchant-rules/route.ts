@@ -5,13 +5,15 @@ import {
   createOrUpdateMerchantRule,
   normalizeMerchantKey,
 } from "@/db/queries/merchant-rules";
+import { requireCurrentWorkspace } from "@/lib/auth/current-workspace";
 
 /**
  * GET /api/merchant-rules — get all merchant rules
  */
 export async function GET() {
   try {
-    const rules = getAllMerchantRules(db);
+    const { workspace } = await requireCurrentWorkspace();
+    const rules = getAllMerchantRules(db, workspace.workspaceId);
     return NextResponse.json({ rules });
   } catch (error) {
     console.error("GET /api/merchant-rules error:", error);
@@ -28,6 +30,7 @@ export async function GET() {
  */
 export async function POST(request: NextRequest) {
   try {
+    const { workspace } = await requireCurrentWorkspace();
     const body = await request.json();
     const { merchant, category, isTransfer } = body;
 
@@ -54,7 +57,7 @@ export async function POST(request: NextRequest) {
       label: trimmedMerchant,
       category: category.trim(),
       isTransfer: isTransfer ?? false,
-    });
+    }, workspace.workspaceId);
 
     return NextResponse.json({ rule }, { status: 201 });
   } catch (error) {

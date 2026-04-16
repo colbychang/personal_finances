@@ -5,6 +5,7 @@ import {
   getMonthlySpendingTrends,
   getCategoryTransactions,
 } from "@/db/queries/analytics";
+import { requireCurrentWorkspace } from "@/lib/auth/current-workspace";
 
 /**
  * GET /api/analytics?period=month|3months|6months|year&category=X&startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
@@ -15,6 +16,7 @@ import {
  */
 export async function GET(request: NextRequest) {
   try {
+    const { workspace } = await requireCurrentWorkspace();
     const { searchParams } = request.nextUrl;
     const period = searchParams.get("period") ?? "month";
     const category = searchParams.get("category");
@@ -24,14 +26,25 @@ export async function GET(request: NextRequest) {
 
     // If category is specified, return drill-down transactions
     if (category) {
-      const transactions = getCategoryTransactions(db, category, startDate, endDate);
+      const transactions = getCategoryTransactions(
+        db,
+        category,
+        startDate,
+        endDate,
+        workspace.workspaceId,
+      );
       return NextResponse.json({ transactions });
     }
 
     // Return spending by category + monthly trends
-    const spendingByCategory = getSpendingByCategory(db, startDate, endDate);
+    const spendingByCategory = getSpendingByCategory(
+      db,
+      startDate,
+      endDate,
+      workspace.workspaceId,
+    );
     const trendMonths = getTrendMonths(period);
-    const monthlyTrends = getMonthlySpendingTrends(db, trendMonths);
+    const monthlyTrends = getMonthlySpendingTrends(db, trendMonths, workspace.workspaceId);
 
     const totalSpending = spendingByCategory.reduce((sum, c) => sum + c.amount, 0);
 

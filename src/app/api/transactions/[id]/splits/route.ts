@@ -5,6 +5,7 @@ import {
   createOrUpdateSplits,
   getTransactionSplits,
 } from "@/db/queries/transactions";
+import { requireCurrentWorkspace } from "@/lib/auth/current-workspace";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -13,11 +14,17 @@ type RouteContext = { params: Promise<{ id: string }> };
  */
 export async function GET(request: Request, context: RouteContext) {
   try {
+    const { workspace } = await requireCurrentWorkspace();
     const { id } = await context.params;
     const txnId = parseInt(id, 10);
 
     if (isNaN(txnId)) {
       return NextResponse.json({ error: "Invalid transaction ID" }, { status: 400 });
+    }
+
+    const transaction = getTransactionById(db, txnId, workspace.workspaceId);
+    if (!transaction) {
+      return NextResponse.json({ error: "Transaction not found" }, { status: 404 });
     }
 
     const splits = getTransactionSplits(db, txnId);
@@ -39,6 +46,7 @@ export async function GET(request: Request, context: RouteContext) {
  */
 export async function POST(request: Request, context: RouteContext) {
   try {
+    const { workspace } = await requireCurrentWorkspace();
     const { id } = await context.params;
     const txnId = parseInt(id, 10);
 
@@ -47,7 +55,7 @@ export async function POST(request: Request, context: RouteContext) {
     }
 
     // Verify transaction exists
-    const transaction = getTransactionById(db, txnId);
+    const transaction = getTransactionById(db, txnId, workspace.workspaceId);
     if (!transaction) {
       return NextResponse.json({ error: "Transaction not found" }, { status: 404 });
     }

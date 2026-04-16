@@ -4,6 +4,7 @@ import { getBudgetsForMonth, getBudgetTemplates } from "@/db/queries/budgets";
 import { getAllCategories } from "@/db/queries/categories";
 import { getAccountsForFilter } from "@/db/queries/transactions";
 import { PublicProfileNotice } from "@/components/public/PublicProfileNotice";
+import { requireCurrentWorkspace } from "@/lib/auth/current-workspace";
 import { isPublicProfileMode } from "@/lib/deployment";
 import { BudgetsClient } from "./BudgetsClient";
 
@@ -18,6 +19,7 @@ export default async function BudgetsPage({ searchParams }: BudgetsPageProps) {
     return <PublicProfileNotice />;
   }
 
+  const { workspace } = await requireCurrentWorkspace();
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const monthParam = resolvedSearchParams?.month;
   const monthValue = Array.isArray(monthParam) ? monthParam[0] : monthParam;
@@ -28,10 +30,10 @@ export default async function BudgetsPage({ searchParams }: BudgetsPageProps) {
     monthValue && /^\d{4}-\d{2}$/.test(monthValue) ? monthValue : currentMonth;
 
   // Fetch initial data server-side
-  const initialData = getBudgetsForMonth(db, activeMonth);
-  const initialBudgetTemplates = getBudgetTemplates(db);
+  const initialData = getBudgetsForMonth(db, activeMonth, workspace.workspaceId);
+  const initialBudgetTemplates = getBudgetTemplates(db, workspace.workspaceId);
   const categories = getAllCategories(db);
-  const accounts = getAccountsForFilter(db);
+  const accounts = getAccountsForFilter(db, workspace.workspaceId);
 
   return (
     <div className="p-4 md:p-8 max-w-6xl mx-auto">

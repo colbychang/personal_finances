@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { drizzle } from "drizzle-orm/better-sqlite3";
 import * as schema from "../schema";
 import { excludesTransactionsForAccountType } from "@/lib/account-types";
@@ -56,12 +56,13 @@ interface TransactionForMatching {
 function buildAccountIdMap(
   database: DB,
   connectionId: number
-): Map<string, { accountId: number; accountType: string }> {
+): Map<string, { accountId: number; accountType: string; workspaceId: number | null }> {
   const linkedAccounts = database
     .select({
       accountId: schema.accountLinks.accountId,
       externalKey: schema.accountLinks.externalKey,
       accountType: schema.accounts.type,
+      workspaceId: schema.accounts.workspaceId,
     })
     .from(schema.accountLinks)
     .innerJoin(
@@ -71,12 +72,13 @@ function buildAccountIdMap(
     .where(eq(schema.accountLinks.connectionId, connectionId))
     .all();
 
-  const map = new Map<string, { accountId: number; accountType: string }>();
+  const map = new Map<string, { accountId: number; accountType: string; workspaceId: number | null }>();
   for (const acct of linkedAccounts) {
     if (acct.externalKey) {
       map.set(acct.externalKey, {
         accountId: acct.accountId,
         accountType: acct.accountType,
+        workspaceId: acct.workspaceId,
       });
     }
   }
@@ -245,7 +247,7 @@ function isVenmoLedgerExpense(transaction: TransactionForMatching) {
   return !isStandardTransferName(transaction.name);
 }
 
-function reconcileVenmoStandardTransfers(database: DB) {
+function reconcileVenmoStandardTransfers(database: DB, workspaceId?: number) {
   const transactions = database
     .select({
       id: schema.transactions.id,
@@ -267,6 +269,11 @@ function reconcileVenmoStandardTransfers(database: DB) {
     .innerJoin(
       schema.institutions,
       eq(schema.accounts.institutionId, schema.institutions.id)
+    )
+    .where(
+      workspaceId === undefined
+        ? undefined
+        : eq(schema.transactions.workspaceId, workspaceId),
     )
     .all();
 
@@ -361,7 +368,7 @@ function reconcileVenmoStandardTransfers(database: DB) {
   }
 }
 
-function reconcileVenmoFundingDuplicates(database: DB) {
+function reconcileVenmoFundingDuplicates(database: DB, workspaceId?: number) {
   const transactions = database
     .select({
       id: schema.transactions.id,
@@ -383,6 +390,11 @@ function reconcileVenmoFundingDuplicates(database: DB) {
     .innerJoin(
       schema.institutions,
       eq(schema.accounts.institutionId, schema.institutions.id)
+    )
+    .where(
+      workspaceId === undefined
+        ? undefined
+        : eq(schema.transactions.workspaceId, workspaceId),
     )
     .all();
 
@@ -447,7 +459,7 @@ function reconcileVenmoFundingDuplicates(database: DB) {
   }
 }
 
-function reconcileExcludedPassiveIncomeTransactions(database: DB) {
+function reconcileExcludedPassiveIncomeTransactions(database: DB, workspaceId?: number) {
   const transactions = database
     .select({
       id: schema.transactions.id,
@@ -458,6 +470,11 @@ function reconcileExcludedPassiveIncomeTransactions(database: DB) {
       isExcluded: schema.transactions.isExcluded,
     })
     .from(schema.transactions)
+    .where(
+      workspaceId === undefined
+        ? undefined
+        : eq(schema.transactions.workspaceId, workspaceId),
+    )
     .all();
 
   for (const transaction of transactions) {
@@ -477,7 +494,7 @@ function reconcileExcludedPassiveIncomeTransactions(database: DB) {
   }
 }
 
-function reconcileInternalAccountTransfers(database: DB) {
+function reconcileInternalAccountTransfers(database: DB, workspaceId?: number) {
   const transactions = database
     .select({
       id: schema.transactions.id,
@@ -499,6 +516,11 @@ function reconcileInternalAccountTransfers(database: DB) {
     .innerJoin(
       schema.institutions,
       eq(schema.accounts.institutionId, schema.institutions.id)
+    )
+    .where(
+      workspaceId === undefined
+        ? undefined
+        : eq(schema.transactions.workspaceId, workspaceId),
     )
     .all();
 
@@ -601,6 +623,7 @@ export function syncTransactionsFromPlaid(
       continue;
     }
     const accountId = mappedAccount.accountId;
+    const workspaceId = mappedAccount.workspaceId;
 
     // Check if transaction already exists (deduplication)
     const existing = database
@@ -620,6 +643,7 @@ export function syncTransactionsFromPlaid(
     database
       .insert(schema.transactions)
       .values({
+        workspaceId,
         accountId,
         externalId: txn.transaction_id,
         postedAt: txn.date,
@@ -654,6 +678,7 @@ export function syncTransactionsFromPlaid(
     }
 
     const accountId = mappedAccount.accountId;
+    const workspaceId = mappedAccount.workspaceId;
 
     const amountCents = Math.round(txn.amount * 100);
 
@@ -668,6 +693,7 @@ export function syncTransactionsFromPlaid(
       database
         .insert(schema.transactions)
         .values({
+          workspaceId,
           accountId,
           externalId: txn.transaction_id,
           postedAt: txn.date,
@@ -740,10 +766,25 @@ export function syncTransactionsFromPlaid(
     removedCount++;
   }
 
-  reconcileVenmoStandardTransfers(database);
-  reconcileVenmoFundingDuplicates(database);
-  reconcileInternalAccountTransfers(database);
-  reconcileExcludedPassiveIncomeTransactions(database);
+  const workspaceIds = new Set(
+    [...accountMap.values()]
+      .map((value) => value.workspaceId)
+      .filter((value): value is number => value !== null),
+  );
+
+  if (workspaceIds.size === 0) {
+    reconcileVenmoStandardTransfers(database);
+    reconcileVenmoFundingDuplicates(database);
+    reconcileInternalAccountTransfers(database);
+    reconcileExcludedPassiveIncomeTransactions(database);
+  } else {
+    for (const workspaceId of workspaceIds) {
+      reconcileVenmoStandardTransfers(database, workspaceId);
+      reconcileVenmoFundingDuplicates(database, workspaceId);
+      reconcileInternalAccountTransfers(database, workspaceId);
+      reconcileExcludedPassiveIncomeTransactions(database, workspaceId);
+    }
+  }
 
   return { added: addedCount, modified: modifiedCount, removed: removedCount };
 }
@@ -797,14 +838,22 @@ export interface PlaidAccountBalance {
  */
 export function updateAccountBalances(
   database: DB,
-  plaidAccounts: PlaidAccountBalance[]
+  plaidAccounts: PlaidAccountBalance[],
+  workspaceId?: number,
 ): void {
   for (const plaidAcct of plaidAccounts) {
     // Find our account by external ref
     const account = database
       .select({ id: schema.accounts.id })
       .from(schema.accounts)
-      .where(eq(schema.accounts.externalRef, plaidAcct.account_id))
+      .where(
+        and(
+          eq(schema.accounts.externalRef, plaidAcct.account_id),
+          workspaceId === undefined
+            ? undefined
+            : eq(schema.accounts.workspaceId, workspaceId),
+        ),
+      )
       .get();
 
     if (!account) continue;

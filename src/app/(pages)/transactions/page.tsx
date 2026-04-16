@@ -3,6 +3,7 @@ import { db } from "@/db/index";
 import { getTransactions, getAccountsForFilter } from "@/db/queries/transactions";
 import { getAllCategories } from "@/db/queries/categories";
 import { PublicProfileNotice } from "@/components/public/PublicProfileNotice";
+import { requireCurrentWorkspace } from "@/lib/auth/current-workspace";
 import { isPublicProfileMode } from "@/lib/deployment";
 import { TransactionsClient } from "./TransactionsClient";
 
@@ -24,6 +25,7 @@ export default async function TransactionsPage({
     return <PublicProfileNotice />;
   }
 
+  const { workspace } = await requireCurrentWorkspace();
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const dateFromParam = resolvedSearchParams?.dateFrom;
   const dateToParam = resolvedSearchParams?.dateTo;
@@ -68,6 +70,7 @@ export default async function TransactionsPage({
 
   // Fetch initial data server-side
   const initialData = getTransactions(db, {
+    workspaceId: workspace.workspaceId,
     dateFrom: initialDateFrom || undefined,
     dateTo: initialDateTo || undefined,
     effectiveMonth: initialEffectiveMonth || undefined,
@@ -84,7 +87,7 @@ export default async function TransactionsPage({
     limit: 20,
     needsReview: initialNeedsReview,
   });
-  const accounts = getAccountsForFilter(db);
+  const accounts = getAccountsForFilter(db, workspace.workspaceId);
   const categories = getAllCategories(db);
 
   // Build category color map for the client

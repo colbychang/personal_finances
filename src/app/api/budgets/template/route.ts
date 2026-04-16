@@ -5,6 +5,7 @@ import {
   replaceBudgetTemplates,
   replaceBudgetTemplatesFromMonth,
 } from "@/db/queries/budgets";
+import { requireCurrentWorkspace } from "@/lib/auth/current-workspace";
 
 /**
  * GET /api/budgets/template
@@ -12,7 +13,8 @@ import {
  */
 export async function GET() {
   try {
-    const templates = getBudgetTemplates(db);
+    const { workspace } = await requireCurrentWorkspace();
+    const templates = getBudgetTemplates(db, workspace.workspaceId);
     return NextResponse.json({ templates });
   } catch (error) {
     console.error("GET /api/budgets/template error:", error);
@@ -30,6 +32,7 @@ export async function GET() {
  */
 export async function POST(request: NextRequest) {
   try {
+    const { workspace } = await requireCurrentWorkspace();
     const body = await request.json();
     const { month } = body;
 
@@ -40,7 +43,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const count = replaceBudgetTemplatesFromMonth(db, month);
+    const count = replaceBudgetTemplatesFromMonth(db, month, workspace.workspaceId);
 
     if (count === -1) {
       return NextResponse.json(
@@ -72,6 +75,7 @@ export async function POST(request: NextRequest) {
  */
 export async function PUT(request: NextRequest) {
   try {
+    const { workspace } = await requireCurrentWorkspace();
     const body = await request.json();
     const { templates } = body;
 
@@ -127,7 +131,7 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ errors }, { status: 400 });
     }
 
-    const saved = replaceBudgetTemplates(db, parsedTemplates);
+    const saved = replaceBudgetTemplates(db, parsedTemplates, workspace.workspaceId);
 
     return NextResponse.json(
       {

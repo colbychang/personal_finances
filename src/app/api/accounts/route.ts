@@ -1,13 +1,15 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db/index";
 import { getAllAccountsGrouped, createAccount } from "@/db/queries/accounts";
+import { requireCurrentWorkspace } from "@/lib/auth/current-workspace";
 
 /**
  * GET /api/accounts — returns all accounts grouped by type
  */
 export async function GET() {
   try {
-    const grouped = getAllAccountsGrouped(db);
+    const { workspace } = await requireCurrentWorkspace();
+    const grouped = getAllAccountsGrouped(db, workspace.workspaceId);
     return NextResponse.json({ sections: grouped });
   } catch (error) {
     console.error("GET /api/accounts error:", error);
@@ -25,6 +27,7 @@ export async function GET() {
  */
 export async function POST(request: Request) {
   try {
+    const { workspace } = await requireCurrentWorkspace();
     const body = await request.json();
     const { name, institution, type, balance } = body;
 
@@ -72,7 +75,7 @@ export async function POST(request: Request) {
       institution: institution.trim(),
       type,
       balance: balanceCents,
-    });
+    }, workspace.workspaceId);
 
     return NextResponse.json({ account }, { status: 201 });
   } catch (error) {

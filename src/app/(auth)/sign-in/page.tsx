@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AppBrand } from "@/components/navigation/AppBrand";
+import { db } from "@/db/index";
+import { ensurePersonalWorkspaceForAuthUser } from "@/db/queries/workspaces";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 async function signIn(formData: FormData) {
@@ -15,6 +17,14 @@ async function signIn(formData: FormData) {
 
   if (error) {
     redirect(`/sign-in?error=${encodeURIComponent(error.message)}&next=${encodeURIComponent(next)}`);
+  }
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (user?.email) {
+    ensurePersonalWorkspaceForAuthUser(db, user.id, user.email);
   }
 
   redirect(next || "/");

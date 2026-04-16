@@ -18,6 +18,7 @@ type DB = ReturnType<typeof drizzle>;
 
 export interface BudgetRow {
   id: number;
+  workspaceId?: number | null;
   month: string;
   category: string;
   amount: number; // cents
@@ -25,6 +26,7 @@ export interface BudgetRow {
 
 export interface BudgetTemplateRow {
   id: number;
+  workspaceId?: number | null;
   category: string;
   amount: number; // cents
   updatedAt: string;
@@ -92,7 +94,11 @@ export interface CategoryTransaction {
  * Spending = net sum of categorized non-transfer transactions + split amounts
  * for the given month and category.
  */
-export function getBudgetsForMonth(database: DB, month: string): BudgetSummary {
+export function getBudgetsForMonth(
+  database: DB,
+  month: string,
+  workspaceId?: number,
+): BudgetSummary {
   // Validate month format YYYY-MM
   if (!/^\d{4}-\d{2}$/.test(month)) {
     return {
@@ -113,11 +119,26 @@ export function getBudgetsForMonth(database: DB, month: string): BudgetSummary {
   const monthBudgetRows = database
     .select()
     .from(schema.budgets)
-    .where(eq(schema.budgets.month, month))
+    .where(
+      and(
+        eq(schema.budgets.month, month),
+        workspaceId === undefined
+          ? undefined
+          : eq(schema.budgets.workspaceId, workspaceId),
+      ),
+    )
     .all();
 
   // Pull in default/template budgets for categories without a month override.
-  const templateRows = database.select().from(schema.budgetTemplates).all();
+  const templateRows = database
+    .select()
+    .from(schema.budgetTemplates)
+    .where(
+      workspaceId === undefined
+        ? undefined
+        : eq(schema.budgetTemplates.workspaceId, workspaceId),
+    )
+    .all();
   const budgetedCategoriesFromMonth = new Set(
     monthBudgetRows.map((budget) => budget.category)
   );
@@ -127,6 +148,7 @@ export function getBudgetsForMonth(database: DB, month: string): BudgetSummary {
       .filter((template) => !budgetedCategoriesFromMonth.has(template.category))
       .map((template) => ({
         id: -template.id,
+        workspaceId: template.workspaceId,
         month,
         category: template.category,
         amount: template.amount,
@@ -145,7 +167,7 @@ export function getBudgetsForMonth(database: DB, month: string): BudgetSummary {
   const categoryColorMap = new Map(allCategories.map((c) => [c.name, c.color]));
 
   const { spendingByCategory, transactionsByCategory } =
-    getCategorySpendingDetails(database, month);
+    getCategorySpendingDetails(database, month, workspaceId);
 
   // Build budget rows with spending
   const budgetedCategories = new Set<string>();
@@ -194,6 +216,9 @@ export function getBudgetsForMonth(database: DB, month: string): BudgetSummary {
     .where(
       and(
         sql`${effectiveTransactionMonth} = ${month}`,
+        workspaceId === undefined
+          ? undefined
+          : eq(schema.transactions.workspaceId, workspaceId),
         eq(schema.transactions.isTransfer, false),
         eq(schema.transactions.isExcluded, false),
         isNull(schema.transactions.category),
@@ -219,6 +244,9 @@ export function getBudgetsForMonth(database: DB, month: string): BudgetSummary {
     .where(
       and(
         sql`${effectiveTransactionMonth} = ${month}`,
+        workspaceId === undefined
+          ? undefined
+          : eq(schema.transactions.workspaceId, workspaceId),
         eq(schema.transactions.isTransfer, false),
         eq(schema.transactions.isExcluded, false),
         isNull(schema.transactions.category),
@@ -251,7 +279,8 @@ export function getBudgetsForMonth(database: DB, month: string): BudgetSummary {
  */
 function getCategorySpendingDetails(
   database: DB,
-  month: string
+  month: string,
+  workspaceId?: number,
 ): {
   spendingByCategory: Map<string, number>;
   transactionsByCategory: Map<string, CategoryTransaction[]>;
@@ -278,6 +307,9 @@ function getCategorySpendingDetails(
     .where(
       and(
         sql`${effectiveTransactionMonth} = ${month}`,
+        workspaceId === undefined
+          ? undefined
+          : eq(schema.transactions.workspaceId, workspaceId),
         eq(schema.transactions.isTransfer, false),
         eq(schema.transactions.isExcluded, false),
         notInArray(schema.accounts.type, [...INVESTMENT_LIKE_ACCOUNT_TYPES])
@@ -380,12 +412,23 @@ export interface UpsertBudgetInput {
  * Upsert a budget (insert or update by month+category).
  */
 export function upsertBudget(database: DB, input: UpsertBudgetInput): BudgetRow {
+  return upsertBudgetForWorkspace(database, input, undefined);
+}
+
+export function upsertBudgetForWorkspace(
+  database: DB,
+  input: UpsertBudgetInput,
+  workspaceId?: number,
+): BudgetRow {
   // Check if exists
   const existing = database
     .select()
     .from(schema.budgets)
     .where(
       and(
+        workspaceId === undefined
+          ? undefined
+          : eq(schema.budgets.workspaceId, workspaceId),
         eq(schema.budgets.month, input.month),
         eq(schema.budgets.category, input.category)
       )
@@ -405,6 +448,7 @@ export function upsertBudget(database: DB, input: UpsertBudgetInput): BudgetRow 
   return database
     .insert(schema.budgets)
     .values({
+      workspaceId: workspaceId ?? null,
       month: input.month,
       category: input.category,
       amount: input.amount,
@@ -420,12 +464,20 @@ export function upsertBudget(database: DB, input: UpsertBudgetInput): BudgetRow 
 export function copyBudgetsFromMonth(
   database: DB,
   sourceMonth: string,
-  targetMonth: string
+  targetMonth: string,
+  workspaceId?: number,
 ): number {
   const sourceBudgets = database
     .select()
     .from(schema.budgets)
-    .where(eq(schema.budgets.month, sourceMonth))
+    .where(
+      and(
+        eq(schema.budgets.month, sourceMonth),
+        workspaceId === undefined
+          ? undefined
+          : eq(schema.budgets.workspaceId, workspaceId),
+      ),
+    )
     .all();
 
   if (sourceBudgets.length === 0) {
@@ -434,11 +486,11 @@ export function copyBudgetsFromMonth(
 
   // Upsert each budget into target month
   for (const budget of sourceBudgets) {
-    upsertBudget(database, {
+    upsertBudgetForWorkspace(database, {
       month: targetMonth,
       category: budget.category,
       amount: budget.amount,
-    });
+    }, workspaceId);
   }
 
   return sourceBudgets.length;
@@ -451,9 +503,10 @@ export function copyBudgetsFromMonth(
  */
 export function replaceBudgetTemplatesFromMonth(
   database: DB,
-  sourceMonth: string
+  sourceMonth: string,
+  workspaceId?: number,
 ): number {
-  const sourceBudgets = getBudgetsForMonth(database, sourceMonth).budgets.map(
+  const sourceBudgets = getBudgetsForMonth(database, sourceMonth, workspaceId).budgets.map(
     (budget) => ({
       category: budget.category,
       amount: budget.budgeted,
@@ -464,10 +517,20 @@ export function replaceBudgetTemplatesFromMonth(
     return -1;
   }
 
-  database.delete(schema.budgetTemplates).run();
+  database
+    .delete(schema.budgetTemplates)
+    .where(
+      workspaceId === undefined
+        ? undefined
+        : eq(schema.budgetTemplates.workspaceId, workspaceId),
+    )
+    .run();
   database
     .insert(schema.budgetTemplates)
-    .values(sourceBudgets)
+    .values(sourceBudgets.map((template) => ({
+      workspaceId: workspaceId ?? null,
+      ...template,
+    })))
     .run();
 
   return sourceBudgets.length;
@@ -475,9 +538,17 @@ export function replaceBudgetTemplatesFromMonth(
 
 export function replaceBudgetTemplates(
   database: DB,
-  templates: BudgetTemplateInput[]
+  templates: BudgetTemplateInput[],
+  workspaceId?: number,
 ): number {
-  database.delete(schema.budgetTemplates).run();
+  database
+    .delete(schema.budgetTemplates)
+    .where(
+      workspaceId === undefined
+        ? undefined
+        : eq(schema.budgetTemplates.workspaceId, workspaceId),
+    )
+    .run();
 
   if (templates.length === 0) {
     return 0;
@@ -487,6 +558,7 @@ export function replaceBudgetTemplates(
     .insert(schema.budgetTemplates)
     .values(
       templates.map((template) => ({
+        workspaceId: workspaceId ?? null,
         category: template.category,
         amount: template.amount,
       }))
@@ -498,34 +570,41 @@ export function replaceBudgetTemplates(
 
 export function applyBudgetTemplatesToMonth(
   database: DB,
-  month: string
+  month: string,
+  workspaceId?: number,
 ): number {
-  const templates = getBudgetTemplates(database);
+  const templates = getBudgetTemplates(database, workspaceId);
 
   if (templates.length === 0) {
     return -1;
   }
 
   for (const template of templates) {
-    upsertBudget(database, {
+    upsertBudgetForWorkspace(database, {
       month,
       category: template.category,
       amount: template.amount,
-    });
+    }, workspaceId);
   }
 
   return templates.length;
 }
 
-export function getBudgetTemplates(database: DB): BudgetTemplateRow[] {
+export function getBudgetTemplates(database: DB, workspaceId?: number): BudgetTemplateRow[] {
   return database
     .select({
       id: schema.budgetTemplates.id,
+      workspaceId: schema.budgetTemplates.workspaceId,
       category: schema.budgetTemplates.category,
       amount: schema.budgetTemplates.amount,
       updatedAt: schema.budgetTemplates.updatedAt,
     })
     .from(schema.budgetTemplates)
+    .where(
+      workspaceId === undefined
+        ? undefined
+        : eq(schema.budgetTemplates.workspaceId, workspaceId),
+    )
     .orderBy(schema.budgetTemplates.category)
     .all();
 }
@@ -533,12 +612,20 @@ export function getBudgetTemplates(database: DB): BudgetTemplateRow[] {
 /**
  * Delete a budget by month and category.
  */
-export function deleteBudget(database: DB, month: string, category: string): boolean {
+export function deleteBudget(
+  database: DB,
+  month: string,
+  category: string,
+  workspaceId?: number,
+): boolean {
   const existing = database
     .select()
     .from(schema.budgets)
     .where(
       and(
+        workspaceId === undefined
+          ? undefined
+          : eq(schema.budgets.workspaceId, workspaceId),
         eq(schema.budgets.month, month),
         eq(schema.budgets.category, category)
       )

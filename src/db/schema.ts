@@ -1,9 +1,36 @@
 import { sqliteTable, text, integer, uniqueIndex } from "drizzle-orm/sqlite-core";
 import { sql } from "drizzle-orm";
 
+// ─── Workspaces ────────────────────────────────────────────────────────
+export const workspaces = sqliteTable("workspaces", {
+  id: integer().primaryKey({ autoIncrement: true }),
+  name: text().notNull(),
+  slug: text().notNull().unique(),
+  createdAt: text("created_at").notNull().default(sql`(CURRENT_TIMESTAMP)`),
+  updatedAt: text("updated_at").notNull().default(sql`(CURRENT_TIMESTAMP)`),
+});
+
+export const workspaceMembers = sqliteTable("workspace_members", {
+  id: integer().primaryKey({ autoIncrement: true }),
+  workspaceId: integer("workspace_id")
+    .notNull()
+    .references(() => workspaces.id),
+  authUserId: text("auth_user_id").notNull(),
+  email: text().notNull(),
+  role: text().notNull().default("owner"),
+  createdAt: text("created_at").notNull().default(sql`(CURRENT_TIMESTAMP)`),
+}, (table) => [
+  uniqueIndex("workspace_members_workspace_auth_user_unique").on(
+    table.workspaceId,
+    table.authUserId,
+  ),
+  uniqueIndex("workspace_members_auth_user_unique").on(table.authUserId),
+]);
+
 // ─── Institutions ──────────────────────────────────────────────────────
 export const institutions = sqliteTable("institutions", {
   id: integer().primaryKey({ autoIncrement: true }),
+  workspaceId: integer("workspace_id"),
   name: text().notNull(),
   provider: text().notNull(), // "plaid" | "csv" | "manual"
   status: text().notNull().default("active"), // "active" | "inactive" | "error"
@@ -14,6 +41,7 @@ export const institutions = sqliteTable("institutions", {
 // ─── Accounts ──────────────────────────────────────────────────────────
 export const accounts = sqliteTable("accounts", {
   id: integer().primaryKey({ autoIncrement: true }),
+  workspaceId: integer("workspace_id"),
   institutionId: integer("institution_id")
     .notNull()
     .references(() => institutions.id),
@@ -28,12 +56,13 @@ export const accounts = sqliteTable("accounts", {
   currency: text().notNull().default("USD"),
   source: text().notNull().default("manual"), // "manual" | "plaid" | "csv"
 }, (table) => [
-  uniqueIndex("accounts_external_ref_unique").on(table.externalRef),
+  uniqueIndex("accounts_workspace_external_ref_unique").on(table.workspaceId, table.externalRef),
 ]);
 
 // ─── Transactions ──────────────────────────────────────────────────────
 export const transactions = sqliteTable("transactions", {
   id: integer().primaryKey({ autoIncrement: true }),
+  workspaceId: integer("workspace_id"),
   accountId: integer("account_id")
     .notNull()
     .references(() => accounts.id),
@@ -55,33 +84,48 @@ export const transactions = sqliteTable("transactions", {
 // ─── Budgets ───────────────────────────────────────────────────────────
 export const budgets = sqliteTable("budgets", {
   id: integer().primaryKey({ autoIncrement: true }),
+  workspaceId: integer("workspace_id"),
   month: text().notNull(), // YYYY-MM
   category: text().notNull(),
   amount: integer().notNull(), // cents
 }, (table) => [
-  uniqueIndex("budgets_month_category_unique").on(table.month, table.category),
+  uniqueIndex("budgets_workspace_month_category_unique").on(
+    table.workspaceId,
+    table.month,
+    table.category,
+  ),
 ]);
 
 // ─── Budget Templates ──────────────────────────────────────────────────
 export const budgetTemplates = sqliteTable("budget_templates", {
   id: integer().primaryKey({ autoIncrement: true }),
-  category: text().notNull().unique(),
+  workspaceId: integer("workspace_id"),
+  category: text().notNull(),
   amount: integer().notNull(), // cents
   updatedAt: text("updated_at").notNull().default(sql`(CURRENT_TIMESTAMP)`),
-});
+}, (table) => [
+  uniqueIndex("budget_templates_workspace_category_unique").on(
+    table.workspaceId,
+    table.category,
+  ),
+]);
 
 // ─── Snapshots ─────────────────────────────────────────────────────────
 export const snapshots = sqliteTable("snapshots", {
   id: integer().primaryKey({ autoIncrement: true }),
-  month: text().notNull().unique(), // YYYY-MM
+  workspaceId: integer("workspace_id"),
+  month: text().notNull(), // YYYY-MM
   assets: integer().notNull(), // cents
   liabilities: integer().notNull(), // cents
   netWorth: integer("net_worth").notNull(), // cents
-});
+}, (table) => [
+  uniqueIndex("snapshots_workspace_month_unique").on(table.workspaceId, table.month),
+]);
 
 // ─── Connections ───────────────────────────────────────────────────────
 export const connections = sqliteTable("connections", {
   id: integer().primaryKey({ autoIncrement: true }),
+  workspaceId: integer("workspace_id"),
   institutionName: text("institution_name").notNull(),
   provider: text().notNull(), // "plaid" | "csv"
   accessToken: text("access_token"),
@@ -97,12 +141,18 @@ export const connections = sqliteTable("connections", {
 // ─── Merchant Rules ────────────────────────────────────────────────────
 export const merchantRules = sqliteTable("merchant_rules", {
   id: integer().primaryKey({ autoIncrement: true }),
-  merchantKey: text("merchant_key").notNull().unique(),
+  workspaceId: integer("workspace_id"),
+  merchantKey: text("merchant_key").notNull(),
   label: text().notNull(),
   category: text().notNull(),
   isTransfer: integer("is_transfer", { mode: "boolean" }).notNull().default(false),
   updatedAt: text("updated_at").notNull().default(sql`(CURRENT_TIMESTAMP)`),
-});
+}, (table) => [
+  uniqueIndex("merchant_rules_workspace_merchant_key_unique").on(
+    table.workspaceId,
+    table.merchantKey,
+  ),
+]);
 
 // ─── Account Snapshots ─────────────────────────────────────────────────
 export const accountSnapshots = sqliteTable("account_snapshots", {
@@ -121,8 +171,9 @@ export const accountSnapshots = sqliteTable("account_snapshots", {
 // ─── Account Links ─────────────────────────────────────────────────────
 export const accountLinks = sqliteTable("account_links", {
   id: integer().primaryKey({ autoIncrement: true }),
+  workspaceId: integer("workspace_id"),
   provider: text().notNull(), // "plaid" | "csv"
-  externalKey: text("external_key").notNull().unique(),
+  externalKey: text("external_key").notNull(),
   connectionId: integer("connection_id")
     .notNull()
     .references(() => connections.id),
@@ -132,7 +183,12 @@ export const accountLinks = sqliteTable("account_links", {
   institutionName: text("institution_name").notNull(),
   displayName: text("display_name").notNull(),
   updatedAt: text("updated_at").notNull().default(sql`(CURRENT_TIMESTAMP)`),
-});
+}, (table) => [
+  uniqueIndex("account_links_workspace_external_key_unique").on(
+    table.workspaceId,
+    table.externalKey,
+  ),
+]);
 
 // ─── Transaction Splits ────────────────────────────────────────────────
 export const transactionSplits = sqliteTable("transaction_splits", {

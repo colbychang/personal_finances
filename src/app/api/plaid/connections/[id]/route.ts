@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db/index";
 import { getConnectionById, deleteConnection } from "@/db/queries/connections";
 import { decrypt } from "@/lib/encryption";
+import { requireCurrentWorkspace } from "@/lib/auth/current-workspace";
 import { getPlaidClient } from "@/lib/plaid";
 
 /**
@@ -14,6 +15,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { workspace } = await requireCurrentWorkspace();
     const { id: idStr } = await params;
     const id = parseInt(idStr, 10);
 
@@ -25,7 +27,7 @@ export async function DELETE(
     }
 
     // Get connection to attempt Plaid item removal
-    const connection = getConnectionById(db, id);
+    const connection = getConnectionById(db, id, workspace.workspaceId);
     if (!connection) {
       return NextResponse.json(
         { error: "Connection not found" },
@@ -46,7 +48,7 @@ export async function DELETE(
     }
 
     // Delete connection and all associated data from database
-    const deleted = deleteConnection(db, id);
+    const deleted = deleteConnection(db, id, workspace.workspaceId);
     if (!deleted) {
       return NextResponse.json(
         { error: "Failed to delete connection" },

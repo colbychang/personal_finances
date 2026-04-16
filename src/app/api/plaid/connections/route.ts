@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db/index";
 import { getAllConnections } from "@/db/queries/connections";
+import { requireCurrentWorkspace } from "@/lib/auth/current-workspace";
 
 /**
  * GET /api/plaid/connections
@@ -8,7 +9,8 @@ import { getAllConnections } from "@/db/queries/connections";
  */
 export async function GET() {
   try {
-    const connections = getAllConnections(db);
+    const { workspace } = await requireCurrentWorkspace();
+    const connections = getAllConnections(db, workspace.workspaceId);
 
     // Never expose access_token or sensitive data to the client
     const sanitized = connections.map((conn) => ({

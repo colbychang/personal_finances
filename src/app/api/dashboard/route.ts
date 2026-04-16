@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db/index";
 import { getDashboardData } from "@/db/queries/dashboard";
+import { requireCurrentWorkspace } from "@/lib/auth/current-workspace";
 
 /**
  * GET /api/dashboard?month=YYYY-MM
@@ -9,6 +10,7 @@ import { getDashboardData } from "@/db/queries/dashboard";
  */
 export async function GET(request: NextRequest) {
   try {
+    const { workspace } = await requireCurrentWorkspace();
     const { searchParams } = request.nextUrl;
     let month = searchParams.get("month");
 
@@ -23,7 +25,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const data = getDashboardData(db, month);
+    const data = getDashboardData(db, month, workspace.workspaceId);
     return NextResponse.json(data);
   } catch (error) {
     console.error("GET /api/dashboard error:", error);

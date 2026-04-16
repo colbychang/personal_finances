@@ -6,13 +6,15 @@ import { ConnectionsList } from "@/components/plaid/ConnectionsList";
 import { PlaidSetupNotice } from "@/components/plaid/PlaidSetupNotice";
 import { MerchantRulesManager } from "@/components/merchant-rules/MerchantRulesManager";
 import { PublicProfileNotice } from "@/components/public/PublicProfileNotice";
+import { requireCurrentWorkspace } from "@/lib/auth/current-workspace";
 import { isPublicProfileMode } from "@/lib/deployment";
 
-export default function SettingsPage() {
+export default async function SettingsPage() {
   if (isPublicProfileMode()) {
     return <PublicProfileNotice />;
   }
 
+  await requireCurrentWorkspace();
   const categories = getAllCategories(db);
 
   return (

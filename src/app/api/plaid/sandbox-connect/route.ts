@@ -7,6 +7,7 @@ import {
   findOrCreatePlaidInstitution,
   createPlaidAccount,
 } from "@/db/queries/connections";
+import { requireCurrentWorkspace } from "@/lib/auth/current-workspace";
 import { Products } from "plaid";
 
 /**
@@ -23,6 +24,7 @@ export async function POST() {
   }
 
   try {
+    const { workspace } = await requireCurrentWorkspace();
     const plaidClient = getPlaidClient();
 
     // Create a sandbox public token directly (no Link UI needed)
@@ -51,12 +53,13 @@ export async function POST() {
       accessToken: encryptedToken,
       itemId,
       isEncrypted: true,
-    });
+    }, workspace.workspaceId);
 
     const institutionId = findOrCreatePlaidInstitution(
       db,
       institutionName,
-      "ins_109508"
+      "ins_109508",
+      workspace.workspaceId,
     );
 
     // Fetch accounts
@@ -89,7 +92,8 @@ export async function POST() {
           isAsset,
         },
         connection.id,
-        institutionName
+        institutionName,
+        workspace.workspaceId,
       );
 
       storedAccounts.push({

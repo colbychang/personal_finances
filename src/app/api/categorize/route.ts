@@ -6,8 +6,9 @@ import {
   getUncategorizedTransactions,
   buildCategorizationPrompt,
   applyCategorizationResults,
-  getAllUncategorizedTransactionIds,
+  getAllUncategorizedTransactionIdsForWorkspace,
 } from "@/lib/categorize";
+import { requireCurrentWorkspace } from "@/lib/auth/current-workspace";
 import { classifyTransactionsWithAI } from "@/lib/openai";
 
 const AI_BATCH_SIZE = 40;
@@ -31,13 +32,17 @@ function chunkArray<T>(items: T[], size: number): T[][] {
  */
 export async function POST(request: NextRequest) {
   try {
+    const { workspace } = await requireCurrentWorkspace();
     const body = await request.json();
     const { transactionIds, all } = body;
 
     let idsToProcess: number[];
 
     if (all === true) {
-      idsToProcess = getAllUncategorizedTransactionIds(db);
+      idsToProcess = getAllUncategorizedTransactionIdsForWorkspace(
+        db,
+        workspace.workspaceId,
+      );
     } else if (Array.isArray(transactionIds) && transactionIds.length > 0) {
       idsToProcess = transactionIds.map((id: unknown) => Number(id)).filter((id) => !isNaN(id));
     } else {
@@ -57,7 +62,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Step 1: Apply merchant rules
-    const { ruleApplied, remaining } = applyMerchantRules(db, idsToProcess);
+    const { ruleApplied, remaining } = applyMerchantRules(
+      db,
+      idsToProcess,
+      workspace.workspaceId,
+    );
 
     // Step 2: If there are remaining transactions, use AI
     let aiCategorized = 0;
@@ -65,7 +74,11 @@ export async function POST(request: NextRequest) {
 
     if (remaining.length > 0) {
       // Get transaction details for AI
-      const uncategorizedTxns = getUncategorizedTransactions(db, remaining);
+      const uncategorizedTxns = getUncategorizedTransactions(
+        db,
+        remaining,
+        workspace.workspaceId,
+      );
 
       if (uncategorizedTxns.length > 0) {
         // Get full category list

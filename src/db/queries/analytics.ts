@@ -41,7 +41,8 @@ export interface CategoryTransaction {
 export function getSpendingByCategory(
   database: DB,
   startDate: string,
-  endDate: string
+  endDate: string,
+  workspaceId?: number,
 ): CategorySpendingItem[] {
   const startMonth = startDate.slice(0, 7);
   const endMonthExclusive = endDate.slice(0, 7);
@@ -68,6 +69,9 @@ export function getSpendingByCategory(
       and(
         sql`${effectiveTransactionMonth} >= ${startMonth}`,
         sql`${effectiveTransactionMonth} < ${endMonthExclusive}`,
+        workspaceId === undefined
+          ? undefined
+          : eq(schema.transactions.workspaceId, workspaceId),
         eq(schema.transactions.isTransfer, false),
         eq(schema.transactions.isExcluded, false),
         notInArray(schema.accounts.type, [...INVESTMENT_LIKE_ACCOUNT_TYPES])
@@ -135,7 +139,8 @@ export function getSpendingByCategory(
  */
 export function getMonthlySpendingTrends(
   database: DB,
-  months: number
+  months: number,
+  workspaceId?: number,
 ): MonthlySpendingItem[] {
   // Calculate the date range
   const now = new Date();
@@ -170,6 +175,9 @@ export function getMonthlySpendingTrends(
       and(
         sql`${effectiveTransactionMonth} >= ${monthList[0]}`,
         sql`${effectiveTransactionMonth} < ${endMonthExclusive}`,
+        workspaceId === undefined
+          ? undefined
+          : eq(schema.transactions.workspaceId, workspaceId),
         eq(schema.transactions.isTransfer, false),
         eq(schema.transactions.isExcluded, false),
         notInArray(schema.accounts.type, [...INVESTMENT_LIKE_ACCOUNT_TYPES])
@@ -211,7 +219,8 @@ export function getCategoryTransactions(
   database: DB,
   category: string,
   startDate: string,
-  endDate: string
+  endDate: string,
+  workspaceId?: number,
 ): CategoryTransaction[] {
   const startMonth = startDate.slice(0, 7);
   const endMonthExclusive = endDate.slice(0, 7);
@@ -236,6 +245,9 @@ export function getCategoryTransactions(
         eq(schema.transactions.category, category),
         sql`${effectiveTransactionMonth} >= ${startMonth}`,
         sql`${effectiveTransactionMonth} < ${endMonthExclusive}`,
+        workspaceId === undefined
+          ? undefined
+          : eq(schema.transactions.workspaceId, workspaceId),
         eq(schema.transactions.isTransfer, false),
         eq(schema.transactions.isExcluded, false),
         notInArray(schema.accounts.type, [...INVESTMENT_LIKE_ACCOUNT_TYPES])
@@ -297,6 +309,9 @@ export function getCategoryTransactions(
           inArray(schema.transactions.id, splitTxnIds),
           sql`${effectiveTransactionMonth} >= ${startMonth}`,
           sql`${effectiveTransactionMonth} < ${endMonthExclusive}`,
+          workspaceId === undefined
+            ? undefined
+            : eq(schema.transactions.workspaceId, workspaceId),
           eq(schema.transactions.isTransfer, false),
           eq(schema.transactions.isExcluded, false),
           notInArray(schema.accounts.type, [...INVESTMENT_LIKE_ACCOUNT_TYPES])
