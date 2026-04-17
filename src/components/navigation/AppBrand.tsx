@@ -18,6 +18,7 @@ export function AppBrand({
   return (
     <Link
       href="/"
+      prefetch={false}
       className={cn("flex items-center gap-3", className)}
       aria-label="Glacier Finance Tracker"
     >

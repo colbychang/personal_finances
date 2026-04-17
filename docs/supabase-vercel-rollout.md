@@ -49,18 +49,40 @@ NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 NEXT_PUBLIC_SITE_URL=https://your-app.vercel.app
 AUTHORIZED_EMAILS=colby.chang@gmail.com
+DATABASE_POOL_MAX=1
 ```
 
 For the database runtime, also set:
 
 ```env
-DATABASE_URL=postgres://postgres:password@db.your-project.supabase.co:5432/postgres
+DATABASE_URL=postgresql://postgres.your-project-ref:password@aws-1-your-region.pooler.supabase.com:6543/postgres
 ```
+
+Use Supabase's transaction pooler connection string for `DATABASE_URL` on Vercel. For the current hosted beta, `DATABASE_POOL_MAX=1` is the safest default while we continue performance-tuning the heaviest pages.
+
+For local debugging, the direct Supabase database host can be more stable than the pooler. A practical split is:
+
+- local: direct `db.<project-ref>.supabase.co:5432`
+- Vercel: transaction pooler `aws-...pooler.supabase.com:6543`
 
 Keep your Supabase Site URL / redirect configuration aligned with:
 
 - `http://localhost:3000` for local development
 - your Vercel preview/production URL for hosted sign-in
+
+For the first hosted rollout, configure these exact auth URLs in Supabase:
+
+- Site URL:
+  - `https://your-project.vercel.app`
+- Redirect URLs:
+  - `http://localhost:3000/auth/confirm`
+  - `https://your-project.vercel.app/auth/confirm`
+  - your custom domain equivalent later, if you add one
+
+For Plaid in production, also configure:
+
+- `PLAID_REDIRECT_URI=https://your-project.vercel.app/plaid/oauth`
+- the same URL allowlisted in the Plaid Dashboard
 
 ## Suggested next implementation slice
 

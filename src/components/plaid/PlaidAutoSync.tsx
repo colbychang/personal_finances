@@ -16,6 +16,9 @@ interface ConnectionSummary {
 const STALE_SYNC_MS = 12 * 60 * 60 * 1000;
 const SESSION_SYNC_COOLDOWN_MS = 60 * 1000;
 const AUTO_SYNC_SESSION_KEY = "plaid:auto-sync:last-run";
+const AUTO_SYNC_ALLOWED_PATHS = new Set(["/"]);
+const AUTO_SYNC_START_DELAY_MS = 4000;
+const CONNECTION_FETCH_TIMEOUT_MS = 4000;
 
 function getLastAutoSyncRun() {
   if (typeof window === "undefined") return 0;
@@ -47,20 +50,37 @@ export function PlaidAutoSync() {
   const { showToast } = useToast();
 
   useEffect(() => {
-    if (startedRef.current) return;
-    startedRef.current = true;
+    if (!AUTO_SYNC_ALLOWED_PATHS.has(pathname)) {
+      return;
+    }
+
+    if (typeof document !== "undefined" && document.visibilityState !== "visible") {
+      return;
+    }
 
     const lastRun = getLastAutoSyncRun();
     if (Date.now() - lastRun < SESSION_SYNC_COOLDOWN_MS) {
       return;
     }
 
+    if (startedRef.current) return;
+    startedRef.current = true;
+
     let cancelled = false;
+    let timeoutId: number | undefined;
 
     async function runAutoSync() {
       try {
+        const controller = new AbortController();
+        const abortTimeout = window.setTimeout(() => {
+          controller.abort();
+        }, CONNECTION_FETCH_TIMEOUT_MS);
+
         const response = await fetch("/api/plaid/connections", {
           cache: "no-store",
+          signal: controller.signal,
+        }).finally(() => {
+          window.clearTimeout(abortTimeout);
         });
 
         if (!response.ok) {
@@ -122,14 +142,24 @@ export function PlaidAutoSync() {
           );
         }
       } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          console.warn("Automatic Plaid sync skipped because connection lookup timed out.");
+          return;
+        }
         console.error("Automatic Plaid sync failed:", error);
       }
     }
 
-    void runAutoSync();
+    timeoutId = window.setTimeout(() => {
+      if (cancelled) return;
+      void runAutoSync();
+    }, AUTO_SYNC_START_DELAY_MS);
 
     return () => {
       cancelled = true;
+      if (timeoutId) {
+        window.clearTimeout(timeoutId);
+      }
     };
   }, [pathname, router, showToast]);
 

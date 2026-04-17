@@ -4,6 +4,8 @@ import * as schema from "../schema";
 
 type DB = AppDatabase;
 
+const WORKSPACE_MEMBERSHIP_CACHE_TTL_MS = 5 * 60 * 1000;
+
 export interface WorkspaceMembership {
   workspaceId: number;
   workspaceName: string;
@@ -11,6 +13,34 @@ export interface WorkspaceMembership {
   authUserId: string;
   email: string;
   role: string;
+}
+
+type WorkspaceMembershipCacheEntry = {
+  membership: WorkspaceMembership;
+  expiresAt: number;
+};
+
+const workspaceMembershipCache = new Map<string, WorkspaceMembershipCacheEntry>();
+
+function getCachedWorkspaceMembership(authUserId: string) {
+  const cached = workspaceMembershipCache.get(authUserId);
+  if (!cached) {
+    return null;
+  }
+
+  if (cached.expiresAt <= Date.now()) {
+    workspaceMembershipCache.delete(authUserId);
+    return null;
+  }
+
+  return cached.membership;
+}
+
+function setCachedWorkspaceMembership(membership: WorkspaceMembership) {
+  workspaceMembershipCache.set(membership.authUserId, {
+    membership,
+    expiresAt: Date.now() + WORKSPACE_MEMBERSHIP_CACHE_TTL_MS,
+  });
 }
 
 function slugifyWorkspaceName(name: string) {
@@ -61,6 +91,11 @@ export function getWorkspaceMembershipByAuthUserId(
   database: DB,
   authUserId: string,
 ): Promise<WorkspaceMembership | null> {
+  const cached = getCachedWorkspaceMembership(authUserId);
+  if (cached) {
+    return Promise.resolve(cached);
+  }
+
   return database
     .select({
       workspaceId: schema.workspaceMembers.workspaceId,
@@ -77,7 +112,13 @@ export function getWorkspaceMembershipByAuthUserId(
     )
     .where(eq(schema.workspaceMembers.authUserId, authUserId))
     .limit(1)
-    .then((rows) => rows[0] ?? null);
+    .then((rows) => {
+      const membership = rows[0] ?? null;
+      if (membership) {
+        setCachedWorkspaceMembership(membership);
+      }
+      return membership;
+    });
 }
 
 export async function ensurePersonalWorkspaceForAuthUser(
@@ -93,9 +134,16 @@ export async function ensurePersonalWorkspaceForAuthUser(
         .update(schema.workspaceMembers)
         .set({ email })
         .where(eq(schema.workspaceMembers.authUserId, authUserId));
+
+      const updatedMembership = {
+        ...existing,
+        email,
+      };
+      setCachedWorkspaceMembership(updatedMembership);
+      return updatedMembership;
     }
 
-    return (await getWorkspaceMembershipByAuthUserId(database, authUserId))!;
+    return existing;
   }
 
   const workspaceName = buildDefaultWorkspaceName(email);
@@ -118,7 +166,18 @@ export async function ensurePersonalWorkspaceForAuthUser(
     role: "owner",
   });
 
-  return (await getWorkspaceMembershipByAuthUserId(database, authUserId))!;
+  const membership = {
+    workspaceId: insertedWorkspace.id,
+    workspaceName,
+    workspaceSlug: slug,
+    authUserId,
+    email,
+    role: "owner",
+  } satisfies WorkspaceMembership;
+
+  setCachedWorkspaceMembership(membership);
+
+  return membership;
 }
 
 export async function claimUnownedFinanceDataForWorkspace(database: DB, workspaceId: number) {

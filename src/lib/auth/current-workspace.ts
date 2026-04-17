@@ -45,7 +45,8 @@ async function getSupabaseAuthIdentity(): Promise<AuthIdentity | null> {
 }
 
 export async function getCurrentAuthContext() {
-  const user = (await getRequestAuthIdentity()) ?? (await getSupabaseAuthIdentity());
+  const headerIdentity = await getRequestAuthIdentity();
+  const user = headerIdentity ?? (await getSupabaseAuthIdentity());
 
   if (!user) {
     return null;

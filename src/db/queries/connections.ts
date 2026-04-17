@@ -34,43 +34,65 @@ export async function getAllConnections(
       workspaceId === undefined ? undefined : eq(schema.connections.workspaceId, workspaceId),
     );
 
-  const results: ConnectionWithAccounts[] = [];
+  if (conns.length === 0) {
+    return [];
+  }
 
-  for (const conn of conns) {
-    const links = await database
-      .select({
-        accountId: schema.accountLinks.accountId,
-        displayName: schema.accountLinks.displayName,
-      })
-      .from(schema.accountLinks)
-      .where(eq(schema.accountLinks.connectionId, conn.id));
+  const connectionIds = conns.map((conn) => conn.id);
+  const links = await database
+    .select({
+      connectionId: schema.accountLinks.connectionId,
+      accountId: schema.accountLinks.accountId,
+    })
+    .from(schema.accountLinks)
+    .where(
+      connectionIds.length === 1
+        ? eq(schema.accountLinks.connectionId, connectionIds[0]!)
+        : inArray(schema.accountLinks.connectionId, connectionIds),
+    );
 
-    const accountIds = links.map((link) => link.accountId);
-    const accounts =
-      accountIds.length === 0
-        ? []
-        : await database
-            .select({
-              id: schema.accounts.id,
-              name: schema.accounts.name,
-              mask: schema.accounts.mask,
-              type: schema.accounts.type,
-              subtype: schema.accounts.subtype,
-              balanceCurrent: schema.accounts.balanceCurrent,
-            })
-            .from(schema.accounts)
-            .where(
-              and(
-                workspaceId === undefined
-                  ? undefined
-                  : eq(schema.accounts.workspaceId, workspaceId),
-                accountIds.length === 1
-                  ? eq(schema.accounts.id, accountIds[0]!)
-                  : inArray(schema.accounts.id, accountIds),
-              ),
-            );
+  const accountIds = Array.from(new Set(links.map((link) => link.accountId)));
+  const accounts =
+    accountIds.length === 0
+      ? []
+      : await database
+          .select({
+            id: schema.accounts.id,
+            name: schema.accounts.name,
+            mask: schema.accounts.mask,
+            type: schema.accounts.type,
+            subtype: schema.accounts.subtype,
+            balanceCurrent: schema.accounts.balanceCurrent,
+          })
+          .from(schema.accounts)
+          .where(
+            and(
+              workspaceId === undefined
+                ? undefined
+                : eq(schema.accounts.workspaceId, workspaceId),
+              accountIds.length === 1
+                ? eq(schema.accounts.id, accountIds[0]!)
+                : inArray(schema.accounts.id, accountIds),
+            ),
+          );
 
-    results.push({
+  const accountsById = new Map(accounts.map((account) => [account.id, account]));
+  const accountIdsByConnection = new Map<number, number[]>();
+
+  for (const link of links) {
+    if (!accountIdsByConnection.has(link.connectionId)) {
+      accountIdsByConnection.set(link.connectionId, []);
+    }
+    accountIdsByConnection.get(link.connectionId)!.push(link.accountId);
+  }
+
+  return conns.map((conn) => {
+    const linkedAccountIds = accountIdsByConnection.get(conn.id) ?? [];
+    const linkedAccounts = linkedAccountIds
+      .map((accountId) => accountsById.get(accountId))
+      .filter((account): account is NonNullable<typeof account> => Boolean(account));
+
+    return {
       id: conn.id,
       institutionName: conn.institutionName,
       provider: conn.provider,
@@ -79,11 +101,9 @@ export async function getAllConnections(
       lastSyncAt: conn.lastSyncAt,
       lastSyncStatus: conn.lastSyncStatus,
       lastSyncError: conn.lastSyncError,
-      accounts,
-    });
-  }
-
-  return results;
+      accounts: linkedAccounts,
+    };
+  });
 }
 
 export async function getConnectionById(

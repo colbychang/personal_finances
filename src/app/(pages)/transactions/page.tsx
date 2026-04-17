@@ -69,26 +69,28 @@ export default async function TransactionsPage({
     : needsReviewParam === "1" || needsReviewParam === "true";
 
   // Fetch initial data server-side
-  const initialData = await getTransactions(db, {
-    workspaceId: workspace.workspaceId,
-    dateFrom: initialDateFrom || undefined,
-    dateTo: initialDateTo || undefined,
-    effectiveMonth: initialEffectiveMonth || undefined,
-    category:
-      initialSelectedCategories.length === 0
-        ? undefined
-        : initialSelectedCategories.length === 1
-          ? initialSelectedCategories[0]
-          : initialSelectedCategories,
-    accountId: initialSelectedAccountId
-      ? Number(initialSelectedAccountId)
-      : undefined,
-    page: 1,
-    limit: 20,
-    needsReview: initialNeedsReview,
-  });
-  const accounts = await getAccountsForFilter(db, workspace.workspaceId);
-  const categories = await getAllCategories(db);
+  const [initialData, accounts, categories] = await Promise.all([
+    getTransactions(db, {
+      workspaceId: workspace.workspaceId,
+      dateFrom: initialDateFrom || undefined,
+      dateTo: initialDateTo || undefined,
+      effectiveMonth: initialEffectiveMonth || undefined,
+      category:
+        initialSelectedCategories.length === 0
+          ? undefined
+          : initialSelectedCategories.length === 1
+            ? initialSelectedCategories[0]
+            : initialSelectedCategories,
+      accountId: initialSelectedAccountId
+        ? Number(initialSelectedAccountId)
+        : undefined,
+      page: 1,
+      limit: 20,
+      needsReview: initialNeedsReview,
+    }),
+    getAccountsForFilter(db, workspace.workspaceId),
+    getAllCategories(db),
+  ]);
 
   // Build category color map for the client
   const categoryColors = categories.map((c) => ({

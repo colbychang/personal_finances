@@ -151,15 +151,102 @@ export async function getDashboardData(
   month: string,
   workspaceId?: number,
 ): Promise<DashboardData> {
-  const allCategories = await database
+  const prevMonth = getPreviousMonth(month);
+
+  const allCategoriesPromise = database
     .select({ name: schema.categories.name, color: schema.categories.color })
     .from(schema.categories);
+  const currentSpendingPromise = getSpendingByCategory(database, month, workspaceId);
+  const budgetRowsPromise = database
+    .select()
+    .from(schema.budgets)
+    .where(
+      and(
+        eq(schema.budgets.month, month),
+        workspaceId === undefined ? undefined : eq(schema.budgets.workspaceId, workspaceId),
+      ),
+    );
+  const recentTransactionsPromise = database
+    .select({
+      id: schema.transactions.id,
+      postedAt: schema.transactions.postedAt,
+      name: schema.transactions.name,
+      amount: schema.transactions.amount,
+      category: schema.transactions.category,
+      isTransfer: schema.transactions.isTransfer,
+      accountName: schema.accounts.name,
+    })
+    .from(schema.transactions)
+    .innerJoin(
+      schema.accounts,
+      eq(schema.transactions.accountId, schema.accounts.id),
+    )
+    .where(
+      and(
+        workspaceId === undefined
+          ? undefined
+          : eq(schema.transactions.workspaceId, workspaceId),
+        eq(schema.transactions.isExcluded, false),
+        sql`lower(coalesce(${schema.transactions.category}, '')) <> 'income'`,
+        notInArray(schema.accounts.type, [...INVESTMENT_LIKE_ACCOUNT_TYPES]),
+      ),
+    )
+    .orderBy(desc(schema.transactions.postedAt), desc(schema.transactions.id))
+    .limit(10);
+  const accountsPromise = database
+    .select({
+      balanceCurrent: schema.accounts.balanceCurrent,
+      isAsset: schema.accounts.isAsset,
+    })
+    .from(schema.accounts)
+    .where(
+      workspaceId === undefined ? undefined : eq(schema.accounts.workspaceId, workspaceId),
+    );
+  const prevSnapshotPromise = database
+    .select()
+    .from(schema.snapshots)
+    .where(
+      and(
+        eq(schema.snapshots.month, prevMonth),
+        workspaceId === undefined ? undefined : eq(schema.snapshots.workspaceId, workspaceId),
+      ),
+    )
+    .limit(1);
+  const prevSpendingPromise = getSpendingByCategory(database, prevMonth, workspaceId);
+  const netWorthHistoryPromise = database
+    .select({
+      month: schema.snapshots.month,
+      netWorth: schema.snapshots.netWorth,
+    })
+    .from(schema.snapshots)
+    .where(
+      workspaceId === undefined ? undefined : eq(schema.snapshots.workspaceId, workspaceId),
+    )
+    .orderBy(asc(schema.snapshots.month));
+
+  const [
+    allCategories,
+    currentSpending,
+    budgetRows,
+    recentTransactions,
+    accounts,
+    prevSnapshotRows,
+    prevSpending,
+    netWorthHistory,
+  ] = await Promise.all([
+    allCategoriesPromise,
+    currentSpendingPromise,
+    budgetRowsPromise,
+    recentTransactionsPromise,
+    accountsPromise,
+    prevSnapshotPromise,
+    prevSpendingPromise,
+    netWorthHistoryPromise,
+  ]);
+
   const categoryColorMap = new Map<string, string | null>(
     allCategories.map((c) => [c.name, c.color]),
   );
-
-  const prevMonth = getPreviousMonth(month);
-  const currentSpending = await getSpendingByCategory(database, month, workspaceId);
 
   const spendingByCategory: CategorySpending[] = Array.from(currentSpending.entries())
     .map(([category, amount]) => ({
@@ -170,16 +257,6 @@ export async function getDashboardData(
     .sort((a, b) => b.amount - a.amount);
 
   const totalSpending = spendingByCategory.reduce((sum, c) => sum + c.amount, 0);
-
-  const budgetRows = await database
-    .select()
-    .from(schema.budgets)
-    .where(
-      and(
-        eq(schema.budgets.month, month),
-        workspaceId === undefined ? undefined : eq(schema.budgets.workspaceId, workspaceId),
-      ),
-    );
 
   const budgetItems: BudgetStatusItem[] = budgetRows.map((b) => {
     const spent = currentSpending.get(b.category) ?? 0;
@@ -208,44 +285,6 @@ export async function getDashboardData(
     items: budgetItems,
   };
 
-  const recentTransactions = await database
-    .select({
-      id: schema.transactions.id,
-      postedAt: schema.transactions.postedAt,
-      name: schema.transactions.name,
-      amount: schema.transactions.amount,
-      category: schema.transactions.category,
-      isTransfer: schema.transactions.isTransfer,
-      accountName: schema.accounts.name,
-    })
-    .from(schema.transactions)
-    .innerJoin(
-      schema.accounts,
-      eq(schema.transactions.accountId, schema.accounts.id),
-    )
-    .where(
-      and(
-        workspaceId === undefined
-          ? undefined
-          : eq(schema.transactions.workspaceId, workspaceId),
-        eq(schema.transactions.isExcluded, false),
-        sql`lower(coalesce(${schema.transactions.category}, '')) <> 'income'`,
-        notInArray(schema.accounts.type, [...INVESTMENT_LIKE_ACCOUNT_TYPES]),
-      ),
-    )
-    .orderBy(desc(schema.transactions.postedAt), desc(schema.transactions.id))
-    .limit(10);
-
-  const accounts = await database
-    .select({
-      balanceCurrent: schema.accounts.balanceCurrent,
-      isAsset: schema.accounts.isAsset,
-    })
-    .from(schema.accounts)
-    .where(
-      workspaceId === undefined ? undefined : eq(schema.accounts.workspaceId, workspaceId),
-    );
-
   let totalAssets = 0;
   let totalLiabilities = 0;
   for (const acct of accounts) {
@@ -256,17 +295,7 @@ export async function getDashboardData(
     }
   }
   const currentNetWorth = totalAssets - totalLiabilities;
-
-  const [prevSnapshot] = await database
-    .select()
-    .from(schema.snapshots)
-    .where(
-      and(
-        eq(schema.snapshots.month, prevMonth),
-        workspaceId === undefined ? undefined : eq(schema.snapshots.workspaceId, workspaceId),
-      ),
-    )
-    .limit(1);
+  const [prevSnapshot] = prevSnapshotRows;
 
   const netWorth: NetWorthTrend = {
     current: currentNetWorth,
@@ -274,7 +303,6 @@ export async function getDashboardData(
     change: prevSnapshot ? currentNetWorth - prevSnapshot.netWorth : null,
   };
 
-  const prevSpending = await getSpendingByCategory(database, prevMonth, workspaceId);
   const allCategoryNames = new Set<string>([
     ...currentSpending.keys(),
     ...prevSpending.keys(),
@@ -293,17 +321,6 @@ export async function getDashboardData(
       };
     })
     .sort((a, b) => b.currentMonth - a.currentMonth);
-
-  const netWorthHistory = await database
-    .select({
-      month: schema.snapshots.month,
-      netWorth: schema.snapshots.netWorth,
-    })
-    .from(schema.snapshots)
-    .where(
-      workspaceId === undefined ? undefined : eq(schema.snapshots.workspaceId, workspaceId),
-    )
-    .orderBy(asc(schema.snapshots.month));
 
   return {
     totalSpending,

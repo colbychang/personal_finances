@@ -54,7 +54,8 @@ PLAID_ENV=production
 PLAID_REDIRECT_URI=https://your-public-app-url/plaid/oauth
 OPENAI_API_KEY=your_openai_api_key
 PLAID_TOKEN_ENCRYPTION_KEY=a_random_32_byte_hex_string
-DATABASE_URL=your_supabase_postgres_connection_string
+DATABASE_URL=your_supabase_transaction_pooler_connection_string
+DATABASE_POOL_MAX=1
 NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 NEXT_PUBLIC_SITE_URL=http://localhost:3000
@@ -64,6 +65,10 @@ AUTHORIZED_EMAILS=colby.chang@gmail.com
 Plaid credentials are required for bank linking. The OpenAI key is required for AI categorization. The encryption key secures stored Plaid access tokens.
 If you are using Plaid production with OAuth-enabled institutions, set `PLAID_REDIRECT_URI` to the exact `https://` redirect URL configured in Plaid Dashboard. A plain `http://localhost` redirect will be rejected by Plaid production.
 Supabase powers the hosted Postgres database and password-protected sign-in flow. `AUTHORIZED_EMAILS` is optional in code, but recommended while the first hosted beta is still tightly staged.
+Use Supabase's transaction pooler connection string for `DATABASE_URL` rather than the direct `db....supabase.co:5432` connection. For the current Supabase setup, `DATABASE_POOL_MAX=1` is the safer default to avoid exhausting or stalling the backing database while we finish tuning the heavier pages.
+For local debugging specifically, the direct Supabase database host can be more stable than the pooler. A practical split is:
+- local development: direct `db.<project-ref>.supabase.co:5432`
+- Vercel / hosted runtime: transaction pooler `aws-...pooler.supabase.com:6543`
 On Vercel, the build now auto-switches into full app mode when `DATABASE_URL`, `NEXT_PUBLIC_SUPABASE_URL`, and `NEXT_PUBLIC_SUPABASE_ANON_KEY` are present. If those are missing, it falls back to `PUBLIC_PROFILE_ONLY=1` unless you explicitly override it.
 
 ### Run database migrations
@@ -166,8 +171,11 @@ The hosted rollout is now centered around Supabase Postgres plus workspace-scope
 
 1. Create the Supabase project.
 2. Add the auth URLs in Supabase:
-   - Site URL: `http://localhost:3000` for local development
-   - Redirect URLs: `http://localhost:3000/auth/confirm` and your Vercel domain equivalents
+   - Site URL: `http://localhost:3000` for local development, then your Vercel production URL once deployed
+   - Redirect URLs:
+     - `http://localhost:3000/auth/confirm`
+     - `https://your-project.vercel.app/auth/confirm`
+     - add your custom domain equivalent later if you attach one
 3. Add these env vars locally and in Vercel:
    - `DATABASE_URL`
    - `NEXT_PUBLIC_SUPABASE_URL`
@@ -177,3 +185,34 @@ The hosted rollout is now centered around Supabase Postgres plus workspace-scope
 4. Run `npm run db:migrate` against Supabase Postgres.
 5. Sign in once so your personal workspace record exists.
 6. Import your existing SQLite data with `npm run db:import-legacy`.
+
+### Vercel production env checklist
+
+For the first real hosted deployment, set these in Vercel:
+
+- `DATABASE_URL`
+  Use the Supabase transaction pooler connection string.
+- `DATABASE_POOL_MAX`
+  Start with `1`.
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `NEXT_PUBLIC_SITE_URL`
+  Example: `https://your-project.vercel.app`
+- `AUTHORIZED_EMAILS`
+  Keep this limited to you until the hosted app is verified.
+- `PLAID_CLIENT_ID`
+- `PLAID_SECRET`
+- `PLAID_ENV`
+  `production`
+- `PLAID_REDIRECT_URI`
+  Example: `https://your-project.vercel.app/plaid/oauth`
+- `PLAID_TOKEN_ENCRYPTION_KEY`
+- `OPENAI_API_KEY`
+
+After those are in place:
+
+1. Redeploy on Vercel.
+2. Sign in once on the hosted app.
+3. Run `npm run db:migrate` against Supabase if needed.
+4. Import your local SQLite data into your hosted workspace.
+5. Smoke-test `Dashboard`, `Budgets`, `Transactions`, and Plaid reconnect flows.

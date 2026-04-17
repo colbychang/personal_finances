@@ -14,7 +14,7 @@ export default async function SettingsPage() {
     return <PublicProfileNotice />;
   }
 
-  await requireCurrentWorkspace();
+  const { workspace } = await requireCurrentWorkspace();
   const categories = await getAllCategories(db);
 
   return (

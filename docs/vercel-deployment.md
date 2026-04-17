@@ -1,14 +1,25 @@
 # Vercel Deployment Guide
 
-Last updated: April 16, 2026
+Last updated: April 17, 2026
 
 ## Recommendation
 
-Use Vercel now for the public-facing Glacier pages and OAuth registration URL.
+Use Vercel now for the full hosted app, not just the public-facing Glacier pages.
 
-The app is now wired for hosted Postgres plus Supabase Auth, but the real
-hosted rollout still depends on adding your actual Supabase environment
-variables and importing your current local finance data.
+The app is now wired for:
+
+- Supabase Auth
+- Supabase/Postgres runtime access
+- workspace-scoped finance data
+- one-time SQLite import into hosted Postgres
+
+The remaining work is mainly operational:
+
+- add the real environment variables in Vercel
+- configure Supabase auth URLs
+- deploy once
+- import your current local finance data
+- verify the hosted app end to end
 
 ## Why
 
@@ -27,25 +38,14 @@ Relevant files:
 That means the app can now run fully on Vercel, but only after the Supabase
 database/auth env vars are present.
 
-## Safe Path Right Now
+## Why Vercel Is The Right Next Step
 
-Deploy the app to Vercel primarily so you can use a stable public HTTPS URL
-such as:
+It gives you:
 
-- `https://your-project.vercel.app/glacier`
-
-This gives you:
-
-- a public website URL for Plaid OAuth institution registration
-- a public Privacy Policy page at `/privacy`
-- a public Data Policy page at `/data-policy`
-- a public icon at `/glacier-icon.svg`
-
-## Current Public Routes Worth Sharing
-
-- `/glacier`
-- `/privacy`
-- `/data-policy`
+- a stable public HTTPS URL for Supabase auth callbacks
+- a stable public HTTPS URL for Plaid OAuth registration and redirects
+- a clean place to run the actual multi-user beta
+- an easy path from `your-project.vercel.app` to a custom domain later
 
 ## Vercel Setup Steps
 
@@ -64,46 +64,44 @@ In Vercel:
 
 ### 3. Add environment variables
 
-At minimum, set the environment variables you need for the routes you intend to
-use. For the public Glacier landing page alone, none are strictly required.
-
-For a public-profile-only Vercel deployment, set:
-
-- `PUBLIC_PROFILE_ONLY=1`
-
-This disables the DB-backed finance pages during prerender so Vercel can build
-the public profile, privacy, and policy pages without requiring the local
-SQLite database.
-
-The repo also includes a `vercel-build` script with smarter defaults:
-
-- if `DATABASE_URL`, `NEXT_PUBLIC_SUPABASE_URL`, and `NEXT_PUBLIC_SUPABASE_ANON_KEY` are present, it defaults to the full hosted app
-- otherwise it falls back to `PUBLIC_PROFILE_ONLY=1`
-
-You can still override that manually by setting `PUBLIC_PROFILE_ONLY`.
-
-If you later expose Plaid flows through the deployed site, configure:
+For the real hosted app, set these in Vercel:
 
 - `DATABASE_URL`
+  Use the Supabase transaction pooler connection string.
+- `DATABASE_POOL_MAX`
+  Start with `1`
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `NEXT_PUBLIC_SITE_URL`
+  Example: `https://your-project.vercel.app`
 - `AUTHORIZED_EMAILS`
+  Keep this limited to you until you finish hosted verification.
 - `PLAID_CLIENT_ID`
 - `PLAID_SECRET`
 - `PLAID_ENV`
+  `production`
 - `PLAID_REDIRECT_URI`
+  Example: `https://your-project.vercel.app/plaid/oauth`
 - `PLAID_TOKEN_ENCRYPTION_KEY`
-- `OPENAI_API_KEY` if AI categorization is enabled
+- `OPENAI_API_KEY`
+
+The repo includes a `vercel-build` script with these defaults:
+
+- if `DATABASE_URL`, `NEXT_PUBLIC_SUPABASE_URL`, and `NEXT_PUBLIC_SUPABASE_ANON_KEY` are present, it builds the full app
+- otherwise it falls back to `PUBLIC_PROFILE_ONLY=1`
+
+So for the real hosted rollout, you do not need to set `PUBLIC_PROFILE_ONLY`.
 
 ### 4. Deploy
 
 After deployment, use the stable Vercel URL:
 
-- `https://your-project.vercel.app/glacier`
-
-for the website field in Plaid OAuth registration until you have a custom
-domain.
+- website URL for Plaid registration:
+  `https://your-project.vercel.app/glacier`
+- auth callback base:
+  `https://your-project.vercel.app`
+- Plaid OAuth redirect:
+  `https://your-project.vercel.app/plaid/oauth`
 
 ### 5. Add a custom domain later
 
@@ -112,6 +110,17 @@ Once you have a better permanent URL, update Plaid and use:
 - `https://your-domain.example/glacier`
 
 instead.
+
+## Supabase Auth Setup
+
+In Supabase Auth settings, set:
+
+- Site URL:
+  - `https://your-project.vercel.app`
+- Redirect URLs:
+  - `http://localhost:3000/auth/confirm`
+  - `https://your-project.vercel.app/auth/confirm`
+  - your custom domain equivalent later if needed
 
 ## Important Plaid Notes
 
@@ -127,13 +136,14 @@ instead.
 
 Once Supabase is configured, the recommended production/staging path is:
 
-1. add the Supabase env vars in Vercel
+1. add the Supabase + Plaid env vars in Vercel
 2. set Supabase Site URL and redirect URLs to match your Vercel domain
 3. deploy once so auth pages and middleware are live
-4. run `npm run db:migrate` against the hosted Postgres database
-5. sign in once to create your personal workspace
+4. sign in once to create your personal workspace
+5. run `npm run db:migrate` against the hosted Postgres database if needed
 6. run `npm run db:import-legacy -- --sqlite=./finance.db --auth-user-id=<your supabase user id> --email=<your email>`
 7. verify accounts, budgets, transactions, and Plaid flows
+8. only then expand `AUTHORIZED_EMAILS` to your first testers
 
 ## What Not To Rely On Yet
 
@@ -153,8 +163,9 @@ data storage for:
 
 Short term:
 
-- finish creating the Supabase project
-- add the Supabase env vars locally and in Vercel
+- add the Vercel env vars
+- configure Supabase auth URLs for the Vercel domain
 - deploy once with the full hosted stack enabled
+- sign in on the hosted app
 - import your existing finance data
-- keep `AUTHORIZED_EMAILS` limited to just you until you validate the flow end to end
+- keep `AUTHORIZED_EMAILS` limited to just you until you validate the hosted flow end to end

@@ -7,3 +7,4 @@ finance.db-shm
 finance.db-wal
 tsconfig.tsbuildinfo
 *.tsbuildinfo
+.vercel

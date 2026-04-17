@@ -21,13 +21,15 @@ export default async function AnalyticsPage() {
   const endMonthDate = new Date(currentYear, currentMonth + 1, 1);
   const endDate = `${endMonthDate.getFullYear()}-${String(endMonthDate.getMonth() + 1).padStart(2, "0")}-01`;
 
-  const spendingByCategory = await getSpendingByCategory(
-    db,
-    startDate,
-    endDate,
-    workspace.workspaceId,
-  );
-  const monthlyTrends = await getMonthlySpendingTrends(db, 6, workspace.workspaceId);
+  const [spendingByCategory, monthlyTrends] = await Promise.all([
+    getSpendingByCategory(
+      db,
+      startDate,
+      endDate,
+      workspace.workspaceId,
+    ),
+    getMonthlySpendingTrends(db, 6, workspace.workspaceId),
+  ]);
   const totalSpending = spendingByCategory.reduce((sum, c) => sum + c.amount, 0);
 
   const initialData = {

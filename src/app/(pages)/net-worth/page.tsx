@@ -12,9 +12,11 @@ export default async function NetWorthPage() {
   }
 
   const { workspace } = await requireCurrentWorkspace();
-  const snapshots = await getAllSnapshots(db, workspace.workspaceId);
-  const accountHistory = await getAccountBalanceHistory(db, workspace.workspaceId);
-  const liveNetWorth = await getLiveNetWorth(db, workspace.workspaceId);
+  const [snapshots, accountHistory, liveNetWorth] = await Promise.all([
+    getAllSnapshots(db, workspace.workspaceId),
+    getAccountBalanceHistory(db, workspace.workspaceId),
+    getLiveNetWorth(db, workspace.workspaceId),
+  ]);
 
   return (
     <div className="p-4 md:p-8 max-w-4xl mx-auto">
