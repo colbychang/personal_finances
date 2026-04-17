@@ -6,12 +6,31 @@ export function ServiceWorkerRegistration() {
   useEffect(() => {
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker
-        .register("/sw.js")
-        .then((registration) => {
-          console.log("Service Worker registered with scope:", registration.scope);
-        })
+        .getRegistrations()
+        .then((registrations) =>
+          Promise.all(
+            registrations.map(async (registration) => {
+              try {
+                await registration.unregister();
+              } catch (error) {
+                console.error("Service Worker unregister failed:", error);
+              }
+            })
+          )
+        )
         .catch((error) => {
-          console.error("Service Worker registration failed:", error);
+          console.error("Service Worker cleanup failed:", error);
+        });
+    }
+
+    if ("caches" in window) {
+      caches
+        .keys()
+        .then((cacheNames) =>
+          Promise.all(cacheNames.map((cacheName) => caches.delete(cacheName)))
+        )
+        .catch((error) => {
+          console.error("Browser cache cleanup failed:", error);
         });
     }
   }, []);
