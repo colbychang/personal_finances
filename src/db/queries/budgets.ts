@@ -52,6 +52,7 @@ export interface BudgetWithSpending {
   remaining: number;
   isInheritedDefault: boolean;
   categoryColor: string | null;
+  transactionCount: number;
   transactions: CategoryTransaction[];
 }
 
@@ -59,6 +60,7 @@ export interface UnbudgetedSpending {
   category: string;
   spent: number;
   categoryColor: string | null;
+  transactionCount: number;
   transactions: CategoryTransaction[];
 }
 
@@ -89,11 +91,17 @@ async function getCategorySpendingDetails(
   database: DB,
   month: string,
   workspaceId?: number,
+  options?: {
+    includeTransactions?: boolean;
+  },
 ): Promise<{
   spendingByCategory: Map<string, number>;
+  transactionCountByCategory: Map<string, number>;
   transactionsByCategory: Map<string, CategoryTransaction[]>;
 }> {
+  const includeTransactions = options?.includeTransactions ?? true;
   const spendingMap = new Map<string, number>();
+  const transactionCountByCategory = new Map<string, number>();
   const transactionsByCategory = new Map<string, CategoryTransaction[]>();
 
   const txns = await database
@@ -149,18 +157,24 @@ async function getCategorySpendingDetails(
       for (const split of splits) {
         const current = spendingMap.get(split.category) ?? 0;
         spendingMap.set(split.category, current + split.amount);
-        if (!transactionsByCategory.has(split.category)) {
-          transactionsByCategory.set(split.category, []);
+        transactionCountByCategory.set(
+          split.category,
+          (transactionCountByCategory.get(split.category) ?? 0) + 1,
+        );
+        if (includeTransactions) {
+          if (!transactionsByCategory.has(split.category)) {
+            transactionsByCategory.set(split.category, []);
+          }
+          transactionsByCategory.get(split.category)!.push({
+            id: txn.id,
+            postedAt: txn.postedAt,
+            name: txn.name,
+            amount: split.amount,
+            originalAmount: txn.amount,
+            accountName: txn.accountName,
+            isSplit: true,
+          });
         }
-        transactionsByCategory.get(split.category)!.push({
-          id: txn.id,
-          postedAt: txn.postedAt,
-          name: txn.name,
-          amount: split.amount,
-          originalAmount: txn.amount,
-          accountName: txn.accountName,
-          isSplit: true,
-        });
       }
       continue;
     }
@@ -170,31 +184,40 @@ async function getCategorySpendingDetails(
     const category = txn.category;
     const current = spendingMap.get(category) ?? 0;
     spendingMap.set(category, current + txn.amount);
-    if (!transactionsByCategory.has(category)) {
-      transactionsByCategory.set(category, []);
+    transactionCountByCategory.set(
+      category,
+      (transactionCountByCategory.get(category) ?? 0) + 1,
+    );
+    if (includeTransactions) {
+      if (!transactionsByCategory.has(category)) {
+        transactionsByCategory.set(category, []);
+      }
+      transactionsByCategory.get(category)!.push({
+        id: txn.id,
+        postedAt: txn.postedAt,
+        name: txn.name,
+        amount: txn.amount,
+        originalAmount: txn.amount,
+        accountName: txn.accountName,
+        isSplit: false,
+      });
     }
-    transactionsByCategory.get(category)!.push({
-      id: txn.id,
-      postedAt: txn.postedAt,
-      name: txn.name,
-      amount: txn.amount,
-      originalAmount: txn.amount,
-      accountName: txn.accountName,
-      isSplit: false,
-    });
   }
 
-  for (const transactions of transactionsByCategory.values()) {
-    transactions.sort((left, right) => {
-      if (left.postedAt !== right.postedAt) {
-        return left.postedAt < right.postedAt ? 1 : -1;
-      }
-      return right.id - left.id;
-    });
+  if (includeTransactions) {
+    for (const transactions of transactionsByCategory.values()) {
+      transactions.sort((left, right) => {
+        if (left.postedAt !== right.postedAt) {
+          return left.postedAt < right.postedAt ? 1 : -1;
+        }
+        return right.id - left.id;
+      });
+    }
   }
 
   return {
     spendingByCategory: spendingMap,
+    transactionCountByCategory,
     transactionsByCategory,
   };
 }
@@ -203,6 +226,9 @@ export async function getBudgetsForMonth(
   database: DB,
   month: string,
   workspaceId?: number,
+  options?: {
+    includeTransactions?: boolean;
+  },
 ): Promise<BudgetSummary> {
   if (!/^\d{4}-\d{2}$/.test(month)) {
     return {
@@ -219,24 +245,90 @@ export async function getBudgetsForMonth(
     };
   }
 
-  const monthBudgetRows = await database
-    .select()
-    .from(schema.budgets)
-    .where(
-      and(
-        eq(schema.budgets.month, month),
-        workspaceId === undefined ? undefined : eq(schema.budgets.workspaceId, workspaceId),
-      ),
-    );
+  const includeTransactions = options?.includeTransactions ?? true;
+  const monthFilter = and(
+    sql`${effectiveTransactionMonth} = ${month}`,
+    workspaceId === undefined ? undefined : eq(schema.transactions.workspaceId, workspaceId),
+    eq(schema.transactions.isTransfer, false),
+    eq(schema.transactions.isExcluded, false),
+    notInArray(schema.accounts.type, [...INVESTMENT_LIKE_ACCOUNT_TYPES]),
+  );
 
-  const templateRows = await database
-    .select()
-    .from(schema.budgetTemplates)
-    .where(
-      workspaceId === undefined
-        ? undefined
-        : eq(schema.budgetTemplates.workspaceId, workspaceId),
-    );
+  const [
+    monthBudgetRows,
+    templateRows,
+    allCategories,
+    { spendingByCategory, transactionCountByCategory, transactionsByCategory },
+    uncategorizedSummaryRows,
+    reviewTransactions,
+  ] = await Promise.all([
+    database
+      .select()
+      .from(schema.budgets)
+      .where(
+        and(
+          eq(schema.budgets.month, month),
+          workspaceId === undefined ? undefined : eq(schema.budgets.workspaceId, workspaceId),
+        ),
+      ),
+    database
+      .select()
+      .from(schema.budgetTemplates)
+      .where(
+        workspaceId === undefined
+          ? undefined
+          : eq(schema.budgetTemplates.workspaceId, workspaceId),
+      ),
+    database
+      .select({
+        name: schema.categories.name,
+        color: schema.categories.color,
+      })
+      .from(schema.categories),
+    getCategorySpendingDetails(database, month, workspaceId, {
+      includeTransactions,
+    }),
+    database
+      .select({
+        count: sql<number>`count(*)`,
+        amount: sql<number>`coalesce(sum(${schema.transactions.amount}), 0)`,
+      })
+      .from(schema.transactions)
+      .innerJoin(
+        schema.accounts,
+        eq(schema.transactions.accountId, schema.accounts.id),
+      )
+      .where(
+        and(
+          monthFilter,
+          isNull(schema.transactions.category),
+          sql`${schema.transactions.amount} > 0`,
+        ),
+      )
+      .limit(1),
+    database
+      .select({
+        id: schema.transactions.id,
+        postedAt: schema.transactions.postedAt,
+        name: schema.transactions.name,
+        amount: schema.transactions.amount,
+        accountName: schema.accounts.name,
+      })
+      .from(schema.transactions)
+      .innerJoin(
+        schema.accounts,
+        eq(schema.transactions.accountId, schema.accounts.id),
+      )
+      .where(
+        and(
+          monthFilter,
+          isNull(schema.transactions.category),
+          sql`${schema.transactions.amount} > 0`,
+        ),
+      )
+      .orderBy(desc(schema.transactions.postedAt), desc(schema.transactions.id))
+      .limit(5),
+  ]);
 
   const budgetedCategoriesFromMonth = new Set(monthBudgetRows.map((budget) => budget.category));
   const budgetRows: BudgetRow[] = [
@@ -252,18 +344,9 @@ export async function getBudgetsForMonth(
       })),
   ];
 
-  const allCategories = await database
-    .select({
-      name: schema.categories.name,
-      color: schema.categories.color,
-    })
-    .from(schema.categories);
   const categoryColorMap = new Map<string, string | null>(
     allCategories.map((c) => [c.name, c.color]),
   );
-
-  const { spendingByCategory, transactionsByCategory } =
-    await getCategorySpendingDetails(database, month, workspaceId);
 
   const budgetedCategories = new Set<string>();
   const budgets: BudgetWithSpending[] = budgetRows.map((budget) => {
@@ -276,7 +359,10 @@ export async function getBudgetsForMonth(
       remaining: budget.amount - spent,
       isInheritedDefault: budget.id < 0,
       categoryColor: categoryColorMap.get(budget.category) ?? null,
-      transactions: transactionsByCategory.get(budget.category) ?? [],
+      transactionCount: transactionCountByCategory.get(budget.category) ?? 0,
+      transactions: includeTransactions
+        ? transactionsByCategory.get(budget.category) ?? []
+        : [],
     };
   });
 
@@ -287,7 +373,10 @@ export async function getBudgetsForMonth(
         category,
         spent,
         categoryColor: categoryColorMap.get(category) ?? null,
-        transactions: transactionsByCategory.get(category) ?? [],
+        transactionCount: transactionCountByCategory.get(category) ?? 0,
+        transactions: includeTransactions
+          ? transactionsByCategory.get(category) ?? []
+          : [],
       });
     }
   }
@@ -298,55 +387,7 @@ export async function getBudgetsForMonth(
     unbudgeted.reduce((sum, item) => sum + item.spent, 0);
   const totalRemaining = totalBudgeted - budgets.reduce((sum, budget) => sum + budget.spent, 0);
 
-  const [uncategorizedSummary] = await database
-    .select({
-      count: sql<number>`count(*)`,
-      amount: sql<number>`coalesce(sum(${schema.transactions.amount}), 0)`,
-    })
-    .from(schema.transactions)
-    .innerJoin(
-      schema.accounts,
-      eq(schema.transactions.accountId, schema.accounts.id),
-    )
-    .where(
-      and(
-        sql`${effectiveTransactionMonth} = ${month}`,
-        workspaceId === undefined ? undefined : eq(schema.transactions.workspaceId, workspaceId),
-        eq(schema.transactions.isTransfer, false),
-        eq(schema.transactions.isExcluded, false),
-        isNull(schema.transactions.category),
-        sql`${schema.transactions.amount} > 0`,
-        notInArray(schema.accounts.type, [...INVESTMENT_LIKE_ACCOUNT_TYPES]),
-      ),
-    )
-    .limit(1);
-
-  const reviewTransactions = await database
-    .select({
-      id: schema.transactions.id,
-      postedAt: schema.transactions.postedAt,
-      name: schema.transactions.name,
-      amount: schema.transactions.amount,
-      accountName: schema.accounts.name,
-    })
-    .from(schema.transactions)
-    .innerJoin(
-      schema.accounts,
-      eq(schema.transactions.accountId, schema.accounts.id),
-    )
-    .where(
-      and(
-        sql`${effectiveTransactionMonth} = ${month}`,
-        workspaceId === undefined ? undefined : eq(schema.transactions.workspaceId, workspaceId),
-        eq(schema.transactions.isTransfer, false),
-        eq(schema.transactions.isExcluded, false),
-        isNull(schema.transactions.category),
-        sql`${schema.transactions.amount} > 0`,
-        notInArray(schema.accounts.type, [...INVESTMENT_LIKE_ACCOUNT_TYPES]),
-      ),
-    )
-    .orderBy(desc(schema.transactions.postedAt), desc(schema.transactions.id))
-    .limit(5);
+  const uncategorizedSummary = uncategorizedSummaryRows[0];
 
   return {
     budgets,
@@ -360,6 +401,22 @@ export async function getBudgetsForMonth(
       transactions: reviewTransactions,
     },
   };
+}
+
+export async function getBudgetCategoryTransactions(
+  database: DB,
+  month: string,
+  category: string,
+  workspaceId?: number,
+): Promise<CategoryTransaction[]> {
+  const { transactionsByCategory } = await getCategorySpendingDetails(
+    database,
+    month,
+    workspaceId,
+    { includeTransactions: true },
+  );
+
+  return transactionsByCategory.get(category) ?? [];
 }
 
 export interface UpsertBudgetInput {

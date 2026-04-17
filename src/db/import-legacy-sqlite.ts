@@ -1,3 +1,4 @@
+import dotenv from "dotenv";
 import Database from "better-sqlite3";
 import { drizzle as drizzleSqlite } from "drizzle-orm/better-sqlite3";
 import { count, eq, sql } from "drizzle-orm";
@@ -5,6 +6,9 @@ import { db, closeDatabaseConnection } from "@/db/index";
 import * as schema from "@/db/schema";
 import * as legacySchema from "@/db/legacy-sqlite-schema";
 import { ensurePersonalWorkspaceForAuthUser } from "@/db/queries/workspaces";
+
+dotenv.config({ path: ".env.local" });
+dotenv.config();
 
 type Args = {
   sqlitePath: string;

@@ -8,6 +8,9 @@ import {
   updateSupabaseSession,
 } from "@/lib/supabase/proxy";
 
+const AUTH_USER_ID_HEADER = "x-glacier-auth-user-id";
+const AUTH_EMAIL_HEADER = "x-glacier-auth-email";
+
 const PUBLIC_PATH_PREFIXES = [
   "/sign-in",
   "/sign-up",
@@ -26,6 +29,30 @@ function isPublicPath(pathname: string) {
 
 function isApiPath(pathname: string) {
   return pathname.startsWith("/api/");
+}
+
+function withAuthHeaders(
+  request: NextRequest,
+  response: NextResponse,
+  user: { id: string; email?: string | null },
+) {
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set(AUTH_USER_ID_HEADER, user.id);
+  if (user.email) {
+    requestHeaders.set(AUTH_EMAIL_HEADER, user.email);
+  }
+
+  const nextResponse = NextResponse.next({
+    request: {
+      headers: requestHeaders,
+    },
+  });
+
+  for (const cookie of response.cookies.getAll()) {
+    nextResponse.cookies.set(cookie);
+  }
+
+  return nextResponse;
 }
 
 export async function proxy(request: NextRequest) {
@@ -66,7 +93,7 @@ export async function proxy(request: NextRequest) {
     return redirectToAccessPending(request, user);
   }
 
-  return response;
+  return withAuthHeaders(request, response, user);
 }
 
 export const config = {

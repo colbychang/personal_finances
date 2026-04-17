@@ -32,6 +32,7 @@ interface BudgetWithSpending {
   remaining: number;
   isInheritedDefault: boolean;
   categoryColor: string | null;
+  transactionCount: number;
   transactions: CategoryTransaction[];
 }
 
@@ -39,6 +40,7 @@ interface UnbudgetedSpending {
   category: string;
   spent: number;
   categoryColor: string | null;
+  transactionCount: number;
   transactions: CategoryTransaction[];
 }
 
@@ -219,6 +221,12 @@ export function BudgetsClient({
   const [expandedCategoryKey, setExpandedCategoryKey] = useState<string | null>(
     null
   );
+  const [categoryTransactions, setCategoryTransactions] = useState<
+    Record<string, CategoryTransaction[]>
+  >({});
+  const [loadingCategoryKey, setLoadingCategoryKey] = useState<string | null>(
+    null
+  );
 
   // Budget editing state
   const [editingCategory, setEditingCategory] = useState<string | null>(null);
@@ -268,6 +276,7 @@ export function BudgetsClient({
       if (res.ok) {
         const result: BudgetSummary = await res.json();
         setData(result);
+        setCategoryTransactions({});
       }
     } catch (error) {
       console.error("Failed to fetch budgets:", error);
@@ -296,6 +305,7 @@ export function BudgetsClient({
   useEffect(() => {
     if (month === initialMonth) {
       setData(initialData);
+      setCategoryTransactions({});
     }
   }, [initialData, initialMonth, month]);
 
@@ -633,6 +643,75 @@ export function BudgetsClient({
   const hasUnbudgeted = data.unbudgeted.length > 0;
   const hasNeedsReview = data.reviewSummary.uncategorizedCount > 0;
 
+  function getCategoryDetails(categoryKey: string): {
+    category: string;
+    transactionCount: number;
+  } | null {
+    if (categoryKey.startsWith("budget:")) {
+      const category = categoryKey.slice("budget:".length);
+      const budget = data.budgets.find((item) => item.category === category);
+      return budget
+        ? { category: budget.category, transactionCount: budget.transactionCount }
+        : null;
+    }
+
+    if (categoryKey.startsWith("unbudgeted:")) {
+      const category = categoryKey.slice("unbudgeted:".length);
+      const item = data.unbudgeted.find((entry) => entry.category === category);
+      return item
+        ? { category: item.category, transactionCount: item.transactionCount }
+        : null;
+    }
+
+    return null;
+  }
+
+  const fetchCategoryTransactions = useCallback(
+    async (categoryKey: string, category: string) => {
+      setLoadingCategoryKey(categoryKey);
+      try {
+        const params = new URLSearchParams({ month, category });
+        const res = await fetch(
+          `/api/budgets/category-transactions?${params.toString()}`
+        );
+
+        if (!res.ok) {
+          throw new Error("Failed to fetch category transactions");
+        }
+
+        const result = await res.json();
+        setCategoryTransactions((current) => ({
+          ...current,
+          [categoryKey]: (result.transactions ?? []) as CategoryTransaction[],
+        }));
+      } catch (error) {
+        console.error("Failed to fetch category transactions:", error);
+        showToast("Failed to load category transactions");
+      } finally {
+        setLoadingCategoryKey((current) =>
+          current === categoryKey ? null : current
+        );
+      }
+    },
+    [month, showToast]
+  );
+
+  useEffect(() => {
+    if (!expandedCategoryKey) return;
+
+    const details = getCategoryDetails(expandedCategoryKey);
+    if (!details || details.transactionCount === 0) return;
+    if (categoryTransactions[expandedCategoryKey]) return;
+
+    void fetchCategoryTransactions(expandedCategoryKey, details.category);
+  }, [
+    categoryTransactions,
+    data.budgets,
+    data.unbudgeted,
+    expandedCategoryKey,
+    fetchCategoryTransactions,
+  ]);
+
   function toggleCategoryDetails(categoryKey: string) {
     setExpandedCategoryKey((current) =>
       current === categoryKey ? null : categoryKey
@@ -727,13 +806,16 @@ export function BudgetsClient({
   function renderCategoryTransactions(
     categoryKey: string,
     category: string,
-    transactions: CategoryTransaction[]
+    transactionCount: number
   ) {
-    if (transactions.length === 0) {
+    if (transactionCount === 0) {
       return null;
     }
 
     const isExpanded = expandedCategoryKey === categoryKey;
+    const transactions = categoryTransactions[categoryKey] ?? [];
+    const isLoadingCategoryTransactions =
+      loadingCategoryKey === categoryKey && transactions.length === 0;
 
     if (!isExpanded) {
       return null;
@@ -743,8 +825,8 @@ export function BudgetsClient({
       <div className="mt-4 border-t border-neutral-200 pt-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm text-neutral-600">
-            {transactions.length} transaction
-            {transactions.length === 1 ? "" : "s"} in this category for{" "}
+            {transactionCount} transaction
+            {transactionCount === 1 ? "" : "s"} in this category for{" "}
             {formatMonth(month)}.
           </p>
 
@@ -768,42 +850,59 @@ export function BudgetsClient({
             }}
             className="mt-3 max-h-72 overflow-y-auto rounded-[var(--radius-card)] border border-neutral-200 bg-neutral-50/70"
           >
-            <div className="divide-y divide-neutral-200">
-              {transactions.map((transaction) => (
-                <button
-                  type="button"
-                  key={`${categoryKey}-${transaction.id}-${transaction.postedAt}-${transaction.amount}`}
-                  onClick={() => void handleTransactionClick(transaction.id)}
-                  className="flex w-full items-start justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-white focus:bg-white focus:outline-none disabled:opacity-60"
-                  disabled={isLoadingTransaction}
-                >
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="truncate text-sm font-medium text-neutral-900">
-                        {transaction.name}
+            {isLoadingCategoryTransactions ? (
+              <div className="divide-y divide-neutral-200">
+                {[1, 2, 3].map((row) => (
+                  <div
+                    key={`${categoryKey}-loading-${row}`}
+                    className="flex items-start justify-between gap-3 px-4 py-3"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="h-4 w-40 animate-pulse rounded bg-neutral-200" />
+                      <div className="mt-2 h-3 w-28 animate-pulse rounded bg-neutral-100" />
+                    </div>
+                    <div className="h-4 w-16 animate-pulse rounded bg-neutral-200" />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="divide-y divide-neutral-200">
+                {transactions.map((transaction) => (
+                  <button
+                    type="button"
+                    key={`${categoryKey}-${transaction.id}-${transaction.postedAt}-${transaction.amount}`}
+                    onClick={() => void handleTransactionClick(transaction.id)}
+                    className="flex w-full items-start justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-white focus:bg-white focus:outline-none disabled:opacity-60"
+                    disabled={isLoadingTransaction}
+                  >
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="truncate text-sm font-medium text-neutral-900">
+                          {transaction.name}
+                        </p>
+                        {transaction.isSplit && (
+                          <span className="rounded-full bg-neutral-200 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-600">
+                            Split
+                          </span>
+                        )}
+                      </div>
+                      <p className="mt-1 text-xs text-neutral-500">
+                        {transaction.postedAt} · {transaction.accountName}
                       </p>
                       {transaction.isSplit && (
-                        <span className="rounded-full bg-neutral-200 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-600">
-                          Split
-                        </span>
+                        <p className="mt-1 text-xs text-neutral-500">
+                          {formatCurrency(transaction.amount)} of{" "}
+                          {formatCurrency(transaction.originalAmount)}
+                        </p>
                       )}
                     </div>
-                    <p className="mt-1 text-xs text-neutral-500">
-                      {transaction.postedAt} · {transaction.accountName}
-                    </p>
-                    {transaction.isSplit && (
-                      <p className="mt-1 text-xs text-neutral-500">
-                        {formatCurrency(transaction.amount)} of{" "}
-                        {formatCurrency(transaction.originalAmount)}
-                      </p>
-                    )}
-                  </div>
-                  <span className="flex-shrink-0 text-sm font-semibold text-neutral-900 currency">
-                    {formatCurrency(transaction.amount)}
-                  </span>
-                </button>
-              ))}
-            </div>
+                    <span className="flex-shrink-0 text-sm font-semibold text-neutral-900 currency">
+                      {formatCurrency(transaction.amount)}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -1327,7 +1426,7 @@ export function BudgetsClient({
         <div className="space-y-2 mb-6">
           {data.budgets.map((budget) => {
             const isEditing = editingCategory === budget.category;
-            const canExpand = budget.transactions.length > 0;
+            const canExpand = budget.transactionCount > 0;
             const percentSpent =
               budget.budgeted > 0
                 ? Math.min((budget.spent / budget.budgeted) * 100, 100)
@@ -1515,7 +1614,7 @@ export function BudgetsClient({
                 {renderCategoryTransactions(
                   `budget:${budget.category}`,
                   budget.category,
-                  budget.transactions
+                  budget.transactionCount
                 )}
               </div>
             );
@@ -1537,28 +1636,28 @@ export function BudgetsClient({
                 className="bg-white rounded-[var(--radius-card)] border border-warning/20 p-4"
               >
                 <div
-                  role={item.transactions.length > 0 ? "button" : undefined}
-                  tabIndex={item.transactions.length > 0 ? 0 : undefined}
+                  role={item.transactionCount > 0 ? "button" : undefined}
+                  tabIndex={item.transactionCount > 0 ? 0 : undefined}
                   onClick={() => {
-                    if (item.transactions.length > 0) {
+                    if (item.transactionCount > 0) {
                       toggleCategoryDetails(`unbudgeted:${item.category}`);
                     }
                   }}
                   onKeyDown={(e) => {
-                    if (item.transactions.length === 0) return;
+                    if (item.transactionCount === 0) return;
                     if (e.key === "Enter" || e.key === " ") {
                       e.preventDefault();
                       toggleCategoryDetails(`unbudgeted:${item.category}`);
                     }
                   }}
                   aria-expanded={
-                    item.transactions.length > 0
+                    item.transactionCount > 0
                       ? expandedCategoryKey === `unbudgeted:${item.category}`
                       : undefined
                   }
                   className={cn(
                     "-m-4 rounded-[var(--radius-card)] p-4",
-                    item.transactions.length > 0
+                    item.transactionCount > 0
                       ? "cursor-pointer transition-colors hover:bg-warning/5"
                       : ""
                   )}
@@ -1592,7 +1691,7 @@ export function BudgetsClient({
                 {renderCategoryTransactions(
                   `unbudgeted:${item.category}`,
                   item.category,
-                  item.transactions
+                  item.transactionCount
                 )}
               </div>
             ))}

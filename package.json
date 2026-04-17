@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev -p 3000",
     "build": "next build",
-    "vercel-build": "sh -c 'PUBLIC_PROFILE_ONLY=${PUBLIC_PROFILE_ONLY:-1} next build'",
+    "vercel-build": "sh -c 'if [ -n \"$PUBLIC_PROFILE_ONLY\" ]; then export PUBLIC_PROFILE_ONLY; elif [ -n \"$DATABASE_URL\" ] && [ -n \"$NEXT_PUBLIC_SUPABASE_URL\" ] && [ -n \"$NEXT_PUBLIC_SUPABASE_ANON_KEY\" ]; then export PUBLIC_PROFILE_ONLY=0; else export PUBLIC_PROFILE_ONLY=1; fi; next build'",
     "start": "next start -p 3000",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",

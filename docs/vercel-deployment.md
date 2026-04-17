@@ -1,29 +1,31 @@
 # Vercel Deployment Guide
 
-Last updated: April 14, 2026
+Last updated: April 16, 2026
 
 ## Recommendation
 
 Use Vercel now for the public-facing Glacier pages and OAuth registration URL.
 
-Do **not** treat the current app as production-ready on Vercel for full finance
-functionality until the database layer is moved off local SQLite.
+The app is now wired for hosted Postgres plus Supabase Auth, but the real
+hosted rollout still depends on adding your actual Supabase environment
+variables and importing your current local finance data.
 
 ## Why
 
 The current application uses:
 
-- `better-sqlite3`
-- a local SQLite file at `./finance.db`
-- Drizzle configured for SQLite
+- Supabase Auth for password-based sign-in
+- Postgres via `postgres` + Drizzle at runtime
+- a one-time SQLite importer for moving your local `finance.db` into hosted Postgres
 
 Relevant files:
 
 - `src/db/index.ts`
 - `drizzle.config.ts`
+- `src/db/import-legacy-sqlite.ts`
 
-This is fine for local development, but it is not a durable production storage
-model for a serverless deployment platform like Vercel.
+That means the app can now run fully on Vercel, but only after the Supabase
+database/auth env vars are present.
 
 ## Safe Path Right Now
 
@@ -73,12 +75,20 @@ This disables the DB-backed finance pages during prerender so Vercel can build
 the public profile, privacy, and policy pages without requiring the local
 SQLite database.
 
-The repo also includes a `vercel-build` script that defaults
-`PUBLIC_PROFILE_ONLY` to `1` during Vercel builds unless you explicitly set a
-different value.
+The repo also includes a `vercel-build` script with smarter defaults:
+
+- if `DATABASE_URL`, `NEXT_PUBLIC_SUPABASE_URL`, and `NEXT_PUBLIC_SUPABASE_ANON_KEY` are present, it defaults to the full hosted app
+- otherwise it falls back to `PUBLIC_PROFILE_ONLY=1`
+
+You can still override that manually by setting `PUBLIC_PROFILE_ONLY`.
 
 If you later expose Plaid flows through the deployed site, configure:
 
+- `DATABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `NEXT_PUBLIC_SITE_URL`
+- `AUTHORIZED_EMAILS`
 - `PLAID_CLIENT_ID`
 - `PLAID_SECRET`
 - `PLAID_ENV`
@@ -113,10 +123,25 @@ instead.
   `https://your-project.vercel.app/plaid/oauth`
   or your custom domain equivalent.
 
+## Real Hosted Rollout
+
+Once Supabase is configured, the recommended production/staging path is:
+
+1. add the Supabase env vars in Vercel
+2. set Supabase Site URL and redirect URLs to match your Vercel domain
+3. deploy once so auth pages and middleware are live
+4. run `npm run db:migrate` against the hosted Postgres database
+5. sign in once to create your personal workspace
+6. run `npm run db:import-legacy -- --sqlite=./finance.db --auth-user-id=<your supabase user id> --email=<your email>`
+7. verify accounts, budgets, transactions, and Plaid flows
+
 ## What Not To Rely On Yet
 
-Do not rely on the current Vercel deployment for persistent production data
-storage for:
+Do not invite external testers until you have completed the real hosted rollout
+above and validated the imported data against your own account first.
+
+Before that verification, do not rely on the deployment for persistent finance
+data storage for:
 
 - connected bank data
 - transactions
@@ -124,32 +149,12 @@ storage for:
 - snapshots
 - app state stored in SQLite
 
-## Full Production Path Later
-
-Before treating the app as fully production-ready on Vercel, migrate the
-database away from local SQLite to a managed database.
-
-Reasonable options include:
-
-- Vercel Postgres / Postgres-compatible hosting
-- Neon
-- Supabase Postgres
-- Turso / LibSQL
-
-After that migration, the following should be revisited:
-
-- Drizzle config
-- runtime/database connection strategy
-- migrations and seed flow
-- secrets management
-- production backups
-- encryption-at-rest story
-
 ## Suggested Immediate Goal
 
 Short term:
 
-- deploy to Vercel
-- use `/glacier` as the public website URL for Plaid registration
-- keep the deployed project focused on public-facing pages until the data layer
-  is upgraded
+- finish creating the Supabase project
+- add the Supabase env vars locally and in Vercel
+- deploy once with the full hosted stack enabled
+- import your existing finance data
+- keep `AUTHORIZED_EMAILS` limited to just you until you validate the flow end to end

@@ -41,12 +41,16 @@ npm install
 
 ### Environment variables
 
-Create a `.env.local` file in the project root:
+Copy `.env.example` to `.env.local` and fill in the real values:
 
+```sh
+cp .env.example .env.local
 ```
+
+```env
 PLAID_CLIENT_ID=your_plaid_client_id
 PLAID_SECRET=your_plaid_secret
-PLAID_ENV=sandbox
+PLAID_ENV=production
 PLAID_REDIRECT_URI=https://your-public-app-url/plaid/oauth
 OPENAI_API_KEY=your_openai_api_key
 PLAID_TOKEN_ENCRYPTION_KEY=a_random_32_byte_hex_string
@@ -60,6 +64,7 @@ AUTHORIZED_EMAILS=colby.chang@gmail.com
 Plaid credentials are required for bank linking. The OpenAI key is required for AI categorization. The encryption key secures stored Plaid access tokens.
 If you are using Plaid production with OAuth-enabled institutions, set `PLAID_REDIRECT_URI` to the exact `https://` redirect URL configured in Plaid Dashboard. A plain `http://localhost` redirect will be rejected by Plaid production.
 Supabase powers the hosted Postgres database and password-protected sign-in flow. `AUTHORIZED_EMAILS` is optional in code, but recommended while the first hosted beta is still tightly staged.
+On Vercel, the build now auto-switches into full app mode when `DATABASE_URL`, `NEXT_PUBLIC_SUPABASE_URL`, and `NEXT_PUBLIC_SUPABASE_ANON_KEY` are present. If those are missing, it falls back to `PUBLIC_PROFILE_ONLY=1` unless you explicitly override it.
 
 ### Run database migrations
 
@@ -156,3 +161,19 @@ The app is a Progressive Web App and can be installed on mobile devices:
 ## Supabase + Vercel rollout notes
 
 The hosted rollout is now centered around Supabase Postgres plus workspace-scoped finance data. The remaining work is mostly migration tooling, test harness conversion, and final hosted verification.
+
+### Immediate hosted wiring checklist
+
+1. Create the Supabase project.
+2. Add the auth URLs in Supabase:
+   - Site URL: `http://localhost:3000` for local development
+   - Redirect URLs: `http://localhost:3000/auth/confirm` and your Vercel domain equivalents
+3. Add these env vars locally and in Vercel:
+   - `DATABASE_URL`
+   - `NEXT_PUBLIC_SUPABASE_URL`
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+   - `NEXT_PUBLIC_SITE_URL`
+   - `AUTHORIZED_EMAILS`
+4. Run `npm run db:migrate` against Supabase Postgres.
+5. Sign in once so your personal workspace record exists.
+6. Import your existing SQLite data with `npm run db:import-legacy`.

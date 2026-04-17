@@ -1,7 +1,11 @@
+import dotenv from "dotenv";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import type { PgDatabase } from "drizzle-orm/pg-core";
 import * as schema from "./schema";
+
+dotenv.config({ path: ".env.local" });
+dotenv.config();
 
 export type AppDatabase = PgDatabase<any, typeof schema>;
 

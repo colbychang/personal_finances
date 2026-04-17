@@ -8,6 +8,48 @@
       "when": 1776369379821,
       "tag": "0000_shocking_argent",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1776479800000,
+      "tag": "0001_budget_performance_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1776479801000,
+      "tag": "0002_budget_effective_month_visible_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1776479802000,
+      "tag": "0003_budget_effective_month_review_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1776479803000,
+      "tag": "0004_accounts_workspace_type_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1776479804000,
+      "tag": "0005_connections_workspace_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1776479805000,
+      "tag": "0006_account_links_connection_index",
+      "breakpoints": true
     }
   ]
 }

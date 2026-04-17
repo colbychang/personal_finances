@@ -29,11 +29,15 @@ export default async function BudgetsPage({ searchParams }: BudgetsPageProps) {
   const activeMonth =
     monthValue && /^\d{4}-\d{2}$/.test(monthValue) ? monthValue : currentMonth;
 
-  // Fetch initial data server-side
-  const initialData = await getBudgetsForMonth(db, activeMonth, workspace.workspaceId);
-  const initialBudgetTemplates = await getBudgetTemplates(db, workspace.workspaceId);
-  const categories = await getAllCategories(db);
-  const accounts = await getAccountsForFilter(db, workspace.workspaceId);
+  // Fetch initial data server-side in parallel to reduce remote round trips.
+  const [initialData, initialBudgetTemplates, categories, accounts] = await Promise.all([
+    getBudgetsForMonth(db, activeMonth, workspace.workspaceId, {
+      includeTransactions: false,
+    }),
+    getBudgetTemplates(db, workspace.workspaceId),
+    getAllCategories(db),
+    getAccountsForFilter(db, workspace.workspaceId),
+  ]);
 
   return (
     <div className="p-4 md:p-8 max-w-6xl mx-auto">
