@@ -18,7 +18,7 @@ A full-featured personal finance management app built as a Progressive Web App w
 ## Tech Stack
 
 - **Framework**: Next.js 16 (App Router, React 19)
-- **Database**: SQLite via better-sqlite3 with Drizzle ORM
+- **Database**: Postgres via Supabase/Postgres.js with Drizzle ORM
 - **Authentication**: Supabase Auth (email/password with cookie-backed SSR sessions)
 - **Styling**: Tailwind CSS 4
 - **Charts**: Recharts
@@ -50,6 +50,7 @@ PLAID_ENV=sandbox
 PLAID_REDIRECT_URI=https://your-public-app-url/plaid/oauth
 OPENAI_API_KEY=your_openai_api_key
 PLAID_TOKEN_ENCRYPTION_KEY=a_random_32_byte_hex_string
+DATABASE_URL=your_supabase_postgres_connection_string
 NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 NEXT_PUBLIC_SITE_URL=http://localhost:3000
@@ -58,12 +59,12 @@ AUTHORIZED_EMAILS=colby.chang@gmail.com
 
 Plaid credentials are required for bank linking. The OpenAI key is required for AI categorization. The encryption key secures stored Plaid access tokens.
 If you are using Plaid production with OAuth-enabled institutions, set `PLAID_REDIRECT_URI` to the exact `https://` redirect URL configured in Plaid Dashboard. A plain `http://localhost` redirect will be rejected by Plaid production.
-Supabase powers the new password-protected sign-in flow. `AUTHORIZED_EMAILS` is optional in code, but recommended while the app still uses the current single-tenant finance schema.
+Supabase powers the hosted Postgres database and password-protected sign-in flow. `AUTHORIZED_EMAILS` is optional in code, but recommended while the first hosted beta is still tightly staged.
 
 ### Run database migrations
 
 ```sh
-npx drizzle-kit migrate
+npm run db:migrate
 ```
 
 ### Seed sample data
@@ -73,6 +74,22 @@ npx tsx src/db/seed.ts
 ```
 
 This inserts predefined categories and optional sample accounts, transactions, and budgets for testing.
+
+### Import an existing local `finance.db`
+
+Once you have a hosted Postgres database and a target workspace, you can import your existing SQLite data:
+
+```sh
+npm run db:import-legacy -- --sqlite=./finance.db --workspace-id=1
+```
+
+You can also let the importer create/find your personal workspace if you already know your Supabase auth user id:
+
+```sh
+npm run db:import-legacy -- --sqlite=./finance.db --auth-user-id=your_supabase_user_id --email=you@example.com
+```
+
+Use `--force` only if you intentionally want to import into a workspace that already has finance data.
 
 ### Start the dev server
 
@@ -138,17 +155,4 @@ The app is a Progressive Web App and can be installed on mobile devices:
 
 ## Supabase + Vercel rollout notes
 
-The auth foundation is now in the repo, but the finance data itself is still stored in the original SQLite schema. That means:
-
-- Password protection can be enabled now with Supabase.
-- Access can be limited to a small tester allowlist through `AUTHORIZED_EMAILS`.
-- Each signed-in user now gets an internal personal workspace record on first login.
-- The full multi-user hosted beta still requires migrating app data from local SQLite to a hosted Postgres database and then scoping every finance query to a user/workspace.
-
-The current recommended rollout path is:
-
-1. Keep the public Glacier pages on your existing Vercel deployment.
-2. Create a Supabase project and wire in the auth environment variables.
-3. Use `AUTHORIZED_EMAILS` to keep access restricted to you while we finish the data migration.
-4. Migrate the finance database to Supabase Postgres.
-5. Add workspace ownership to accounts, transactions, budgets, Plaid connections, and snapshots before inviting friends.
+The hosted rollout is now centered around Supabase Postgres plus workspace-scoped finance data. The remaining work is mostly migration tooling, test harness conversion, and final hosted verification.

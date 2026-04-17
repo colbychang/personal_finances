@@ -69,7 +69,7 @@ export default async function TransactionsPage({
     : needsReviewParam === "1" || needsReviewParam === "true";
 
   // Fetch initial data server-side
-  const initialData = getTransactions(db, {
+  const initialData = await getTransactions(db, {
     workspaceId: workspace.workspaceId,
     dateFrom: initialDateFrom || undefined,
     dateTo: initialDateTo || undefined,
@@ -87,8 +87,8 @@ export default async function TransactionsPage({
     limit: 20,
     needsReview: initialNeedsReview,
   });
-  const accounts = getAccountsForFilter(db, workspace.workspaceId);
-  const categories = getAllCategories(db);
+  const accounts = await getAccountsForFilter(db, workspace.workspaceId);
+  const categories = await getAllCategories(db);
 
   // Build category color map for the client
   const categoryColors = categories.map((c) => ({

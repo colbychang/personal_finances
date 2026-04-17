@@ -1,45 +1,52 @@
-import { sql, eq } from "drizzle-orm";
-import type { drizzle } from "drizzle-orm/better-sqlite3";
+import { eq } from "drizzle-orm";
+import type { AppDatabase } from "@/db/index";
 import { PREDEFINED_CATEGORIES } from "@/lib/categories";
 import { createSnapshot } from "./queries/snapshots";
 import * as schema from "./schema";
 
-type DB = ReturnType<typeof drizzle>;
+type DB = AppDatabase;
 
 /**
  * Seed the 11 predefined categories.
  * Idempotent: uses INSERT OR IGNORE to skip existing rows.
  */
-export function seedCategories(db: DB): void {
-  PREDEFINED_CATEGORIES.forEach((cat, index) => {
-    db.run(
-      sql`INSERT OR IGNORE INTO categories (name, color, icon, is_predefined, sort_order)
-          VALUES (${cat.name}, ${cat.color}, ${cat.icon}, 1, ${index + 1})`
-    );
-  });
+export async function seedCategories(db: DB): Promise<void> {
+  for (const [index, cat] of PREDEFINED_CATEGORIES.entries()) {
+    await db
+      .insert(schema.categories)
+      .values({
+        name: cat.name,
+        color: cat.color,
+        icon: cat.icon,
+        isPredefined: true,
+        sortOrder: index + 1,
+      })
+      .onConflictDoNothing({
+        target: schema.categories.name,
+      });
+  }
 }
 
 /**
  * Seed sample data for development: institutions, accounts, transactions, and budgets.
  * Expects categories to already be seeded.
  */
-export function seedSampleData(db: DB): void {
+export async function seedSampleData(db: DB): Promise<void> {
   // ─── Institutions ──────────────────────────────────────────────────
-  db.insert(schema.institutions)
+  await db.insert(schema.institutions)
     .values([
       { name: "Alliant Credit Union", provider: "manual", status: "active" },
       { name: "Capital One", provider: "manual", status: "active" },
       { name: "Wealthfront", provider: "manual", status: "active" },
-    ])
-    .run();
+    ]);
 
-  const institutions = db.select().from(schema.institutions).all();
+  const institutions = await db.select().from(schema.institutions);
   const alliant = institutions.find((i) => i.name === "Alliant Credit Union")!;
   const capitalOne = institutions.find((i) => i.name === "Capital One")!;
   const wealthfront = institutions.find((i) => i.name === "Wealthfront")!;
 
   // ─── Accounts ──────────────────────────────────────────────────────
-  db.insert(schema.accounts)
+  await db.insert(schema.accounts)
     .values([
       {
         institutionId: alliant.id,
@@ -79,10 +86,9 @@ export function seedSampleData(db: DB): void {
         currency: "USD",
         source: "manual",
       },
-    ])
-    .run();
+    ]);
 
-  const accounts = db.select().from(schema.accounts).all();
+  const accounts = await db.select().from(schema.accounts);
   const checking = accounts.find((a) => a.type === "checking")!;
   const credit = accounts.find((a) => a.type === "credit")!;
 
@@ -225,7 +231,7 @@ export function seedSampleData(db: DB): void {
     },
   ];
 
-  db.insert(schema.transactions).values(transactionData).run();
+  await db.insert(schema.transactions).values(transactionData);
 
   // ─── Budgets ───────────────────────────────────────────────────────
   const budgetData: (typeof schema.budgets.$inferInsert)[] = [
@@ -239,7 +245,7 @@ export function seedSampleData(db: DB): void {
     { month: currentMonth, category: "Home Goods", amount: 10000 },
   ];
 
-  db.insert(schema.budgets).values(budgetData).run();
+  await db.insert(schema.budgets).values(budgetData);
 
   // ─── Snapshots ─────────────────────────────────────────────────────
   // Create 6 months of historical snapshots with realistic balance progression.
@@ -247,7 +253,7 @@ export function seedSampleData(db: DB): void {
   // then restore the current balances at the end.
 
   // Current balances (final state)
-  const currentBalances = db.select().from(schema.accounts).all();
+  const currentBalances = await db.select().from(schema.accounts);
 
   // Define historical balance multipliers relative to current balances.
   // Simulates gradual growth over 6 months (oldest → newest).
@@ -277,22 +283,20 @@ export function seedSampleData(db: DB): void {
     for (const acct of currentBalances) {
       const factor = acct.isAsset ? hm.multipliers.asset : hm.multipliers.liability;
       const historicalBalance = Math.round(acct.balanceCurrent * factor);
-      db.update(schema.accounts)
+      await db.update(schema.accounts)
         .set({ balanceCurrent: historicalBalance })
-        .where(eq(schema.accounts.id, acct.id))
-        .run();
+        .where(eq(schema.accounts.id, acct.id));
     }
 
     // Create snapshot using the proper function
-    createSnapshot(db, hm.month);
+    await createSnapshot(db, hm.month);
   }
 
   // Restore current (final) account balances
   for (const acct of currentBalances) {
-    db.update(schema.accounts)
+    await db.update(schema.accounts)
       .set({ balanceCurrent: acct.balanceCurrent })
-      .where(eq(schema.accounts.id, acct.id))
-      .run();
+      .where(eq(schema.accounts.id, acct.id));
   }
 }
 
@@ -300,7 +304,7 @@ export function seedSampleData(db: DB): void {
  * Run the full seed (categories + sample data).
  * For use with `npx tsx src/db/seed.ts`
  */
-export function seedAll(db: DB): void {
-  seedCategories(db);
-  seedSampleData(db);
+export async function seedAll(db: DB): Promise<void> {
+  await seedCategories(db);
+  await seedSampleData(db);
 }

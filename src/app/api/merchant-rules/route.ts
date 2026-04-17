@@ -13,7 +13,7 @@ import { requireCurrentWorkspace } from "@/lib/auth/current-workspace";
 export async function GET() {
   try {
     const { workspace } = await requireCurrentWorkspace();
-    const rules = getAllMerchantRules(db, workspace.workspaceId);
+    const rules = await getAllMerchantRules(db, workspace.workspaceId);
     return NextResponse.json({ rules });
   } catch (error) {
     console.error("GET /api/merchant-rules error:", error);
@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
     const trimmedMerchant = merchant.trim();
     const merchantKey = normalizeMerchantKey(trimmedMerchant);
 
-    const rule = createOrUpdateMerchantRule(db, {
+    const rule = await createOrUpdateMerchantRule(db, {
       merchantKey,
       label: trimmedMerchant,
       category: category.trim(),

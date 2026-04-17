@@ -130,12 +130,12 @@ export async function PUT(request: Request, context: RouteContext) {
     }
 
     // Get the current transaction before updating (for merchant rule auto-creation)
-    const beforeUpdate = getTransactionById(db, txnId, workspace.workspaceId);
+    const beforeUpdate = await getTransactionById(db, txnId, workspace.workspaceId);
     if (!beforeUpdate) {
       return NextResponse.json({ error: "Transaction not found" }, { status: 404 });
     }
 
-    const updated = updateTransaction(db, txnId, updates, workspace.workspaceId);
+    const updated = await updateTransaction(db, txnId, updates, workspace.workspaceId);
 
     if (!updated) {
       return NextResponse.json({ error: "Transaction not found" }, { status: 404 });
@@ -147,7 +147,7 @@ export async function PUT(request: Request, context: RouteContext) {
       if (merchantName) {
         try {
           const key = normalizeMerchantKey(merchantName);
-          createOrUpdateMerchantRule(db, {
+          await createOrUpdateMerchantRule(db, {
             merchantKey: key,
             label: merchantName,
             category: category,
@@ -182,7 +182,7 @@ export async function DELETE(request: Request, context: RouteContext) {
       return NextResponse.json({ error: "Invalid transaction ID" }, { status: 400 });
     }
 
-    const deleted = deleteTransaction(db, txnId, workspace.workspaceId);
+    const deleted = await deleteTransaction(db, txnId, workspace.workspaceId);
 
     if (!deleted) {
       return NextResponse.json({ error: "Transaction not found" }, { status: 404 });

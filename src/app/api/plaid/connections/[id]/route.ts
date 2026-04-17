@@ -27,7 +27,7 @@ export async function DELETE(
     }
 
     // Get connection to attempt Plaid item removal
-    const connection = getConnectionById(db, id, workspace.workspaceId);
+    const connection = await getConnectionById(db, id, workspace.workspaceId);
     if (!connection) {
       return NextResponse.json(
         { error: "Connection not found" },
@@ -48,7 +48,7 @@ export async function DELETE(
     }
 
     // Delete connection and all associated data from database
-    const deleted = deleteConnection(db, id, workspace.workspaceId);
+    const deleted = await deleteConnection(db, id, workspace.workspaceId);
     if (!deleted) {
       return NextResponse.json(
         { error: "Failed to delete connection" },

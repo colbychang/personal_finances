@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
 
     // If category is specified, return drill-down transactions
     if (category) {
-      const transactions = getCategoryTransactions(
+      const transactions = await getCategoryTransactions(
         db,
         category,
         startDate,
@@ -37,14 +37,18 @@ export async function GET(request: NextRequest) {
     }
 
     // Return spending by category + monthly trends
-    const spendingByCategory = getSpendingByCategory(
+    const spendingByCategory = await getSpendingByCategory(
       db,
       startDate,
       endDate,
       workspace.workspaceId,
     );
     const trendMonths = getTrendMonths(period);
-    const monthlyTrends = getMonthlySpendingTrends(db, trendMonths, workspace.workspaceId);
+    const monthlyTrends = await getMonthlySpendingTrends(
+      db,
+      trendMonths,
+      workspace.workspaceId,
+    );
 
     const totalSpending = spendingByCategory.reduce((sum, c) => sum + c.amount, 0);
 

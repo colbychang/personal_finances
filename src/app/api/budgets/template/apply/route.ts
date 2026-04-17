@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const count = applyBudgetTemplatesToMonth(db, month, workspace.workspaceId);
+    const count = await applyBudgetTemplatesToMonth(db, month, workspace.workspaceId);
 
     if (count === -1) {
       return NextResponse.json(

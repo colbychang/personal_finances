@@ -15,7 +15,7 @@ export default async function SettingsPage() {
   }
 
   await requireCurrentWorkspace();
-  const categories = getAllCategories(db);
+  const categories = await getAllCategories(db);
 
   return (
     <div className="p-4 md:p-8 max-w-4xl mx-auto">

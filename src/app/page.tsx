@@ -13,7 +13,7 @@ export default async function DashboardPage() {
 
   const { workspace } = await requireCurrentWorkspace();
   const currentMonth = new Date().toISOString().slice(0, 7);
-  const data = getDashboardData(db, currentMonth, workspace.workspaceId);
+  const data = await getDashboardData(db, currentMonth, workspace.workspaceId);
 
   return (
     <div className="p-4 md:p-8 max-w-6xl mx-auto">

@@ -1,8 +1,8 @@
-import { and, eq } from "drizzle-orm";
-import type { drizzle } from "drizzle-orm/better-sqlite3";
+import { and, eq, inArray } from "drizzle-orm";
+import type { AppDatabase } from "@/db/index";
 import * as schema from "../schema";
 
-type DB = ReturnType<typeof drizzle>;
+type DB = AppDatabase;
 
 export interface ConnectionWithAccounts {
   id: number;
@@ -23,51 +23,54 @@ export interface ConnectionWithAccounts {
   }[];
 }
 
-/**
- * Get all connections with their linked accounts.
- */
-export function getAllConnections(database: DB, workspaceId?: number): ConnectionWithAccounts[] {
-  const conns = database
+export async function getAllConnections(
+  database: DB,
+  workspaceId?: number,
+): Promise<ConnectionWithAccounts[]> {
+  const conns = await database
     .select()
     .from(schema.connections)
     .where(
-      workspaceId === undefined
-        ? undefined
-        : eq(schema.connections.workspaceId, workspaceId),
-    )
-    .all();
+      workspaceId === undefined ? undefined : eq(schema.connections.workspaceId, workspaceId),
+    );
 
-  return conns.map((conn) => {
-    // Get account links for this connection
-    const links = database
+  const results: ConnectionWithAccounts[] = [];
+
+  for (const conn of conns) {
+    const links = await database
       .select({
         accountId: schema.accountLinks.accountId,
         displayName: schema.accountLinks.displayName,
       })
       .from(schema.accountLinks)
-      .where(eq(schema.accountLinks.connectionId, conn.id))
-      .all();
+      .where(eq(schema.accountLinks.connectionId, conn.id));
 
-    // Get full account details for linked accounts
-    const accounts = links
-      .map((link) => {
-        const acct = database
-          .select({
-            id: schema.accounts.id,
-            name: schema.accounts.name,
-            mask: schema.accounts.mask,
-            type: schema.accounts.type,
-            subtype: schema.accounts.subtype,
-            balanceCurrent: schema.accounts.balanceCurrent,
-          })
-          .from(schema.accounts)
-          .where(eq(schema.accounts.id, link.accountId))
-          .get();
-        return acct ?? null;
-      })
-      .filter((a): a is NonNullable<typeof a> => a !== null);
+    const accountIds = links.map((link) => link.accountId);
+    const accounts =
+      accountIds.length === 0
+        ? []
+        : await database
+            .select({
+              id: schema.accounts.id,
+              name: schema.accounts.name,
+              mask: schema.accounts.mask,
+              type: schema.accounts.type,
+              subtype: schema.accounts.subtype,
+              balanceCurrent: schema.accounts.balanceCurrent,
+            })
+            .from(schema.accounts)
+            .where(
+              and(
+                workspaceId === undefined
+                  ? undefined
+                  : eq(schema.accounts.workspaceId, workspaceId),
+                accountIds.length === 1
+                  ? eq(schema.accounts.id, accountIds[0]!)
+                  : inArray(schema.accounts.id, accountIds),
+              ),
+            );
 
-    return {
+    results.push({
       id: conn.id,
       institutionName: conn.institutionName,
       provider: conn.provider,
@@ -77,51 +80,44 @@ export function getAllConnections(database: DB, workspaceId?: number): Connectio
       lastSyncStatus: conn.lastSyncStatus,
       lastSyncError: conn.lastSyncError,
       accounts,
-    };
-  });
+    });
+  }
+
+  return results;
 }
 
-/**
- * Get a single connection by ID.
- */
-export function getConnectionById(
+export async function getConnectionById(
   database: DB,
   id: number,
   workspaceId?: number,
-): typeof schema.connections.$inferSelect | null {
-  return (
-    database
-      .select()
-      .from(schema.connections)
-      .where(
-        workspaceId === undefined
-          ? eq(schema.connections.id, id)
-          : and(
-              eq(schema.connections.id, id),
-              eq(schema.connections.workspaceId, workspaceId),
-            ),
-      )
-      .get() ?? null
-  );
+): Promise<typeof schema.connections.$inferSelect | null> {
+  const [connection] = await database
+    .select()
+    .from(schema.connections)
+    .where(
+      workspaceId === undefined
+        ? eq(schema.connections.id, id)
+        : and(eq(schema.connections.id, id), eq(schema.connections.workspaceId, workspaceId)),
+    )
+    .limit(1);
+
+  return connection ?? null;
 }
 
 export interface CreateConnectionInput {
   institutionName: string;
   provider: string;
-  accessToken: string; // already encrypted
+  accessToken: string;
   itemId: string;
   isEncrypted: boolean;
 }
 
-/**
- * Create a new connection record.
- */
-export function createConnection(
+export async function createConnection(
   database: DB,
   input: CreateConnectionInput,
   workspaceId?: number,
-): typeof schema.connections.$inferSelect {
-  return database
+): Promise<typeof schema.connections.$inferSelect> {
+  const [connection] = await database
     .insert(schema.connections)
     .values({
       workspaceId: workspaceId ?? null,
@@ -131,140 +127,113 @@ export function createConnection(
       itemId: input.itemId,
       isEncrypted: input.isEncrypted,
     })
-    .returning()
-    .get();
+    .returning();
+
+  return connection;
 }
 
-/**
- * Delete a connection and all its associated account links.
- * Also removes associated accounts (Plaid-sourced) and their transactions.
- * Returns true if found and deleted, false if not found.
- */
-export function deleteConnection(database: DB, id: number, workspaceId?: number): boolean {
-  const conn = database
-    .select()
-    .from(schema.connections)
-    .where(
-      workspaceId === undefined
-        ? eq(schema.connections.id, id)
-        : and(eq(schema.connections.id, id), eq(schema.connections.workspaceId, workspaceId)),
-    )
-    .get();
-
+export async function deleteConnection(
+  database: DB,
+  id: number,
+  workspaceId?: number,
+): Promise<boolean> {
+  const conn = await getConnectionById(database, id, workspaceId);
   if (!conn) return false;
 
-  // Find account links for this connection
-  const links = database
+  const links = await database
     .select({ accountId: schema.accountLinks.accountId })
     .from(schema.accountLinks)
-    .where(eq(schema.accountLinks.connectionId, conn.id))
-    .all();
+    .where(eq(schema.accountLinks.connectionId, conn.id));
 
-  const accountIds = links.map((l) => l.accountId);
+  const accountIds = links.map((link) => link.accountId);
 
-  // Delete account links
-  database
+  await database
     .delete(schema.accountLinks)
-    .where(eq(schema.accountLinks.connectionId, conn.id))
-    .run();
+    .where(eq(schema.accountLinks.connectionId, conn.id));
 
-  // Delete transactions and splits for associated accounts
   for (const accountId of accountIds) {
-    // Get transaction IDs for this account
-    const txns = database
+    const txns = await database
       .select({ id: schema.transactions.id })
       .from(schema.transactions)
-      .where(eq(schema.transactions.accountId, accountId))
-      .all();
+      .where(eq(schema.transactions.accountId, accountId));
 
-    // Delete splits
-    for (const txn of txns) {
-      database
+    const txnIds = txns.map((txn) => txn.id);
+    if (txnIds.length > 0) {
+      await database
         .delete(schema.transactionSplits)
-        .where(eq(schema.transactionSplits.transactionId, txn.id))
-        .run();
+        .where(inArray(schema.transactionSplits.transactionId, txnIds));
     }
 
-    // Delete transactions
-    database
+    await database
       .delete(schema.transactions)
-      .where(eq(schema.transactions.accountId, accountId))
-      .run();
+      .where(eq(schema.transactions.accountId, accountId));
 
-    // Delete account snapshots
-    database
+    await database
       .delete(schema.accountSnapshots)
-      .where(eq(schema.accountSnapshots.accountId, accountId))
-      .run();
+      .where(eq(schema.accountSnapshots.accountId, accountId));
 
-    // Delete the account
-    database
-      .delete(schema.accounts)
-      .where(eq(schema.accounts.id, accountId))
-      .run();
+    await database.delete(schema.accounts).where(eq(schema.accounts.id, accountId));
   }
 
-  // Delete the connection
-  database.delete(schema.connections).where(eq(schema.connections.id, id)).run();
-
+  await database.delete(schema.connections).where(eq(schema.connections.id, id));
   return true;
 }
 
-/**
- * Create or find an institution by name for Plaid connections.
- */
-export function findOrCreatePlaidInstitution(
+export async function findOrCreatePlaidInstitution(
   database: DB,
   name: string,
   plaidInstitutionId?: string,
   workspaceId?: number,
-): number {
+): Promise<number> {
+  const [existingByPlaidId] = plaidInstitutionId
+    ? await database
+        .select()
+        .from(schema.institutions)
+        .where(
+          and(
+            eq(schema.institutions.plaidInstitutionId, plaidInstitutionId),
+            workspaceId === undefined
+              ? undefined
+              : eq(schema.institutions.workspaceId, workspaceId),
+          ),
+        )
+        .limit(1)
+    : [];
+
   const existing =
-    (plaidInstitutionId
-      ? database
-          .select()
-          .from(schema.institutions)
-          .where(
-            and(
-              eq(schema.institutions.plaidInstitutionId, plaidInstitutionId),
-              workspaceId === undefined
-                ? undefined
-                : eq(schema.institutions.workspaceId, workspaceId),
-            ),
-          )
-          .get()
-      : null) ??
-    database
-      .select()
-      .from(schema.institutions)
-      .where(
-        and(
-          eq(schema.institutions.name, name),
-          workspaceId === undefined
-            ? undefined
-            : eq(schema.institutions.workspaceId, workspaceId),
-        ),
-      )
-      .get();
+    existingByPlaidId ??
+    (
+      await database
+        .select()
+        .from(schema.institutions)
+        .where(
+          and(
+            eq(schema.institutions.name, name),
+            workspaceId === undefined
+              ? undefined
+              : eq(schema.institutions.workspaceId, workspaceId),
+          ),
+        )
+        .limit(1)
+    )[0];
 
   if (existing) {
     if (
       existing.name !== name ||
       existing.plaidInstitutionId !== (plaidInstitutionId ?? existing.plaidInstitutionId)
     ) {
-      database
+      await database
         .update(schema.institutions)
         .set({
           name,
           plaidInstitutionId: plaidInstitutionId ?? existing.plaidInstitutionId,
         })
-        .where(eq(schema.institutions.id, existing.id))
-        .run();
+        .where(eq(schema.institutions.id, existing.id));
     }
     return existing.id;
   }
 
-  const result = database
+  const [institution] = await database
     .insert(schema.institutions)
     .values({
       workspaceId: workspaceId ?? null,
@@ -273,51 +242,47 @@ export function findOrCreatePlaidInstitution(
       status: "active",
       plaidInstitutionId: plaidInstitutionId ?? null,
     })
-    .returning()
-    .get();
+    .returning();
 
-  return result.id;
+  return institution.id;
 }
 
 export interface CreatePlaidAccountInput {
   institutionId: number;
-  externalRef: string; // Plaid account_id
+  externalRef: string;
   name: string;
   mask: string | null;
   type: string;
   subtype: string | null;
-  balanceCurrent: number; // cents
-  balanceAvailable: number | null; // cents
+  balanceCurrent: number;
+  balanceAvailable: number | null;
   isAsset: boolean;
 }
 
-/**
- * Create a Plaid-sourced account and its account link.
- */
-export function createPlaidAccount(
+export async function createPlaidAccount(
   database: DB,
   input: CreatePlaidAccountInput,
   connectionId: number,
   institutionName: string,
   workspaceId?: number,
-): typeof schema.accounts.$inferSelect {
-  // Check if account with this external ref already exists
-  const existingWhere = workspaceId === undefined
-    ? eq(schema.accounts.externalRef, input.externalRef)
-    : and(
-        eq(schema.accounts.externalRef, input.externalRef),
-        eq(schema.accounts.workspaceId, workspaceId),
-      );
-
-  const existing = database
+): Promise<typeof schema.accounts.$inferSelect> {
+  const [existing] = await database
     .select()
     .from(schema.accounts)
-    .where(existingWhere)
-    .get();
+    .where(
+      workspaceId === undefined
+        ? eq(schema.accounts.externalRef, input.externalRef)
+        : and(
+            eq(schema.accounts.externalRef, input.externalRef),
+            eq(schema.accounts.workspaceId, workspaceId),
+          ),
+    )
+    .limit(1);
+
+  let account = existing;
 
   if (existing) {
-    // Keep account details current in case Plaid metadata changes over time.
-    database
+    await database
       .update(schema.accounts)
       .set({
         workspaceId: workspaceId ?? existing.workspaceId,
@@ -330,36 +295,34 @@ export function createPlaidAccount(
         balanceAvailable: input.balanceAvailable,
         isAsset: input.isAsset,
       })
+      .where(eq(schema.accounts.id, existing.id));
+
+    [account] = await database
+      .select()
+      .from(schema.accounts)
       .where(eq(schema.accounts.id, existing.id))
-      .run();
+      .limit(1);
+  } else {
+    [account] = await database
+      .insert(schema.accounts)
+      .values({
+        workspaceId: workspaceId ?? null,
+        institutionId: input.institutionId,
+        externalRef: input.externalRef,
+        name: input.name,
+        mask: input.mask,
+        type: input.type,
+        subtype: input.subtype,
+        balanceCurrent: input.balanceCurrent,
+        balanceAvailable: input.balanceAvailable,
+        isAsset: input.isAsset,
+        currency: "USD",
+        source: "plaid",
+      })
+      .returning();
   }
 
-  const account = existing
-    ? database
-        .select()
-        .from(schema.accounts)
-        .where(eq(schema.accounts.id, existing.id))
-        .get()!
-    : database
-        .insert(schema.accounts)
-        .values({
-          workspaceId: workspaceId ?? null,
-          institutionId: input.institutionId,
-          externalRef: input.externalRef,
-          name: input.name,
-          mask: input.mask,
-          type: input.type,
-          subtype: input.subtype,
-          balanceCurrent: input.balanceCurrent,
-          balanceAvailable: input.balanceAvailable,
-          isAsset: input.isAsset,
-          currency: "USD",
-          source: "plaid",
-        })
-        .returning()
-        .get();
-
-  const existingLink = database
+  const [existingLink] = await database
     .select({ id: schema.accountLinks.id })
     .from(schema.accountLinks)
     .where(
@@ -370,7 +333,7 @@ export function createPlaidAccount(
             eq(schema.accountLinks.workspaceId, workspaceId),
           ),
     )
-    .get();
+    .limit(1);
 
   const linkValues = {
     provider: "plaid" as const,
@@ -384,16 +347,12 @@ export function createPlaidAccount(
   };
 
   if (existingLink) {
-    database
+    await database
       .update(schema.accountLinks)
       .set(linkValues)
-      .where(eq(schema.accountLinks.id, existingLink.id))
-      .run();
+      .where(eq(schema.accountLinks.id, existingLink.id));
   } else {
-    database
-      .insert(schema.accountLinks)
-      .values(linkValues)
-      .run();
+    await database.insert(schema.accountLinks).values(linkValues);
   }
 
   return account;

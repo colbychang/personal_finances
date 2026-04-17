@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
         ? `${year + 1}-01`
         : `${year}-${String(monthNum + 1).padStart(2, "0")}`;
 
-    const count = copyBudgetsFromMonth(db, nextMonth, month, workspace.workspaceId);
+    const count = await copyBudgetsFromMonth(db, nextMonth, month, workspace.workspaceId);
 
     if (count === -1) {
       return NextResponse.json(

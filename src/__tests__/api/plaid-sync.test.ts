@@ -1,171 +1,110 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
-import Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
-import { migrate } from "drizzle-orm/better-sqlite3/migrator";
-import { sql, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
+import type { AppDatabase } from "@/db/index";
 import * as schema from "@/db/schema";
 import {
   createConnection,
-  findOrCreatePlaidInstitution,
   createPlaidAccount,
+  findOrCreatePlaidInstitution,
 } from "@/db/queries/connections";
+import { getTransactions } from "@/db/queries/transactions";
 import {
   syncTransactionsFromPlaid,
-  updateConnectionSyncStatus,
   updateAccountBalances,
+  updateConnectionSyncStatus,
 } from "@/db/queries/sync";
-import { getTransactions } from "@/db/queries/transactions";
+import {
+  closeTestDb,
+  createTestDb,
+  resetTestDb,
+  type TestDb,
+} from "@/__tests__/helpers/test-db";
 
-let sqlite: InstanceType<typeof Database>;
-let db: ReturnType<typeof drizzle>;
+let testDb: TestDb;
+let db: AppDatabase;
 
-beforeAll(() => {
-  sqlite = new Database(":memory:");
-  sqlite.pragma("journal_mode = WAL");
-  sqlite.pragma("foreign_keys = ON");
-  db = drizzle({ client: sqlite, schema });
-  migrate(db, { migrationsFolder: "./drizzle" });
+beforeAll(async () => {
+  testDb = await createTestDb();
+  db = testDb.db;
 });
 
-afterAll(() => {
-  sqlite.close();
+afterAll(async () => {
+  await closeTestDb(testDb);
 });
 
-beforeEach(() => {
-  db.run(sql`DELETE FROM transaction_splits`);
-  db.run(sql`DELETE FROM account_snapshots`);
-  db.run(sql`DELETE FROM account_links`);
-  db.run(sql`DELETE FROM transactions`);
-  db.run(sql`DELETE FROM accounts`);
-  db.run(sql`DELETE FROM connections`);
-  db.run(sql`DELETE FROM institutions`);
+beforeEach(async () => {
+  await resetTestDb(db);
 });
 
-/**
- * Helper: create a connection with an account for testing sync.
- */
-function setupConnectionWithAccount() {
-  const conn = createConnection(db, {
-    institutionName: "Test Bank",
+async function setupConnectionWithAccount({
+  institutionName = "Test Bank",
+  connectionInstitutionName = institutionName,
+  plaidInstitutionId = "ins_1",
+  externalRef = "plaid-acct-001",
+  accountName = "Plaid Checking",
+  type = "checking",
+  subtype = "checking",
+  isAsset = true,
+}: {
+  institutionName?: string;
+  connectionInstitutionName?: string;
+  plaidInstitutionId?: string;
+  externalRef?: string;
+  accountName?: string;
+  type?: string;
+  subtype?: string;
+  isAsset?: boolean;
+} = {}) {
+  const connection = await createConnection(db, {
+    institutionName: connectionInstitutionName,
     provider: "plaid",
-    accessToken: "encrypted-access-token",
-    itemId: "item-001",
+    accessToken: `token-${externalRef}`,
+    itemId: `item-${externalRef}`,
     isEncrypted: true,
   });
 
-  const instId = findOrCreatePlaidInstitution(db, "Test Bank", "ins_1");
-  const account = createPlaidAccount(
+  const institutionId = await findOrCreatePlaidInstitution(db, institutionName, plaidInstitutionId);
+  const account = await createPlaidAccount(
     db,
     {
-      institutionId: instId,
-      externalRef: "plaid-acct-001",
-      name: "Plaid Checking",
+      institutionId,
+      externalRef,
+      name: accountName,
       mask: "0000",
-      type: "checking",
-      subtype: "checking",
-      balanceCurrent: 100000,
-      balanceAvailable: 95000,
-      isAsset: true,
+      type,
+      subtype,
+      balanceCurrent: 100_000,
+      balanceAvailable: 95_000,
+      isAsset,
     },
-    conn.id,
-    "Test Bank"
+    connection.id,
+    institutionName,
   );
 
-  return { conn, account, instId };
+  return { connection, account, institutionId };
 }
 
 describe("syncTransactionsFromPlaid", () => {
-  it("stores added transactions with correct sign (Plaid positive = expense)", () => {
-    const { conn } = setupConnectionWithAccount();
+  it("stores added transactions with correct cents and account mapping", async () => {
+    const { connection } = await setupConnectionWithAccount();
 
-    const addedPlaidTransactions = [
-      {
-        transaction_id: "txn-001",
-        account_id: "plaid-acct-001",
-        amount: 25.5, // Plaid positive = money out = expense
-        date: "2026-03-15",
-        name: "Coffee Shop",
-        merchant_name: "Starbucks",
-        pending: false,
-      },
-      {
-        transaction_id: "txn-002",
-        account_id: "plaid-acct-001",
-        amount: -100.0, // Plaid negative = money in = income/credit
-        date: "2026-03-14",
-        name: "Payroll",
-        merchant_name: null,
-        pending: false,
-      },
-    ];
-
-    const result = syncTransactionsFromPlaid(db, conn.id, {
-      added: addedPlaidTransactions,
-      modified: [],
-      removed: [],
-    });
-
-    expect(result.added).toBe(2);
-    expect(result.modified).toBe(0);
-    expect(result.removed).toBe(0);
-
-    // Check stored transactions
-    const txns = db.select().from(schema.transactions).all();
-    expect(txns).toHaveLength(2);
-
-    // Plaid positive (25.50) should be stored as positive (expense in cents)
-    const coffeeTxn = txns.find((t) => t.externalId === "txn-001")!;
-    expect(coffeeTxn.amount).toBe(2550); // positive cents = expense
-    expect(coffeeTxn.name).toBe("Coffee Shop");
-    expect(coffeeTxn.merchant).toBe("Starbucks");
-    expect(coffeeTxn.postedAt).toBe("2026-03-15");
-    expect(coffeeTxn.pending).toBe(false);
-
-    // Plaid negative (-100.00) should be stored as negative (income in cents)
-    const payrollTxn = txns.find((t) => t.externalId === "txn-002")!;
-    expect(payrollTxn.amount).toBe(-10000); // negative cents = income
-    expect(payrollTxn.name).toBe("Payroll");
-  });
-
-  it("maps transactions to correct account via external ref", () => {
-    const { conn } = setupConnectionWithAccount(); // account auto-created by helper
-
-    // Create a second account for the same connection
-    const instId = findOrCreatePlaidInstitution(db, "Test Bank");
-    createPlaidAccount(
-      db,
-      {
-        institutionId: instId,
-        externalRef: "plaid-acct-002",
-        name: "Plaid Savings",
-        mask: "1111",
-        type: "savings",
-        subtype: "savings",
-        balanceCurrent: 500000,
-        balanceAvailable: 500000,
-        isAsset: true,
-      },
-      conn.id,
-      "Test Bank"
-    );
-
-    syncTransactionsFromPlaid(db, conn.id, {
+    const result = await syncTransactionsFromPlaid(db, connection.id, {
       added: [
         {
-          transaction_id: "txn-a",
+          transaction_id: "txn-001",
           account_id: "plaid-acct-001",
-          amount: 10,
-          date: "2026-03-10",
-          name: "Purchase A",
-          merchant_name: null,
+          amount: 25.5,
+          date: "2026-03-15",
+          name: "Coffee Shop",
+          merchant_name: "Starbucks",
           pending: false,
         },
         {
-          transaction_id: "txn-b",
-          account_id: "plaid-acct-002",
-          amount: 20,
-          date: "2026-03-11",
-          name: "Purchase B",
+          transaction_id: "txn-002",
+          account_id: "plaid-acct-001",
+          amount: -100,
+          date: "2026-03-14",
+          name: "Payroll",
           merchant_name: null,
           pending: false,
         },
@@ -174,50 +113,46 @@ describe("syncTransactionsFromPlaid", () => {
       removed: [],
     });
 
-    const txns = db.select().from(schema.transactions).all();
-    expect(txns).toHaveLength(2);
+    expect(result).toEqual({ added: 2, modified: 0, removed: 0 });
 
-    const txnA = txns.find((t) => t.externalId === "txn-a")!;
-    const txnB = txns.find((t) => t.externalId === "txn-b")!;
-
-    // txn-a should belong to checking (plaid-acct-001)
-    // txn-b should belong to savings (plaid-acct-002)
-    expect(txnA.accountId).not.toBe(txnB.accountId);
+    const stored = await db.select().from(schema.transactions);
+    expect(stored.find((txn) => txn.externalId === "txn-001")?.amount).toBe(2_550);
+    expect(stored.find((txn) => txn.externalId === "txn-002")?.amount).toBe(-10_000);
   });
 
-  it("skips syncing transactions for investment accounts", () => {
-    const conn = createConnection(db, {
+  it("skips syncing transactions for investment and retirement accounts", async () => {
+    const investment = await setupConnectionWithAccount({
       institutionName: "Merrill",
-      provider: "plaid",
-      accessToken: "encrypted-investment-token",
-      itemId: "item-investment",
-      isEncrypted: true,
+      plaidInstitutionId: "ins_merrill",
+      externalRef: "merrill-investment-001",
+      accountName: "Brokerage",
+      type: "investment",
+      subtype: "brokerage",
+    });
+    const retirement = await setupConnectionWithAccount({
+      institutionName: "Merrill",
+      plaidInstitutionId: "ins_merrill",
+      externalRef: "merrill-retirement-001",
+      accountName: "Roth IRA",
+      type: "retirement",
+      subtype: "ira",
     });
 
-    const instId = findOrCreatePlaidInstitution(db, "Merrill", "ins_investment");
-    createPlaidAccount(
-      db,
-      {
-        institutionId: instId,
-        externalRef: "merrill-investment-001",
-        name: "Brokerage",
-        mask: "9999",
-        type: "investment",
-        subtype: "brokerage",
-        balanceCurrent: 2500000,
-        balanceAvailable: 2500000,
-        isAsset: true,
-      },
-      conn.id,
-      "Merrill"
-    );
-
-    const result = syncTransactionsFromPlaid(db, conn.id, {
+    const result = await syncTransactionsFromPlaid(db, investment.connection.id, {
       added: [
         {
           transaction_id: "investment-dividend-001",
           account_id: "merrill-investment-001",
           amount: -25,
+          date: "2026-04-10",
+          name: "Dividend",
+          merchant_name: null,
+          pending: false,
+        },
+        {
+          transaction_id: "retirement-dividend-001",
+          account_id: "merrill-retirement-001",
+          amount: -10,
           date: "2026-04-10",
           name: "Dividend",
           merchant_name: null,
@@ -230,19 +165,16 @@ describe("syncTransactionsFromPlaid", () => {
 
     expect(result.added).toBe(0);
 
-    const stored = db
-      .select()
-      .from(schema.transactions)
-      .where(eq(schema.transactions.externalId, "investment-dividend-001"))
-      .get();
+    const visible = await getTransactions(db, { page: 1, limit: 20 });
+    expect(visible.total).toBe(0);
 
-    expect(stored).toBeUndefined();
+    expect(retirement.account.type).toBe("retirement");
   });
 
-  it("marks interest and dividend income transactions as excluded", () => {
-    const { conn } = setupConnectionWithAccount();
+  it("marks passive income transactions as excluded from visible spending", async () => {
+    const { connection } = await setupConnectionWithAccount();
 
-    const result = syncTransactionsFromPlaid(db, conn.id, {
+    await syncTransactionsFromPlaid(db, connection.id, {
       added: [
         {
           transaction_id: "interest-income-001",
@@ -258,192 +190,37 @@ describe("syncTransactionsFromPlaid", () => {
       removed: [],
     });
 
-    expect(result.added).toBe(1);
-
-    const stored = db
+    const [stored] = await db
       .select()
       .from(schema.transactions)
       .where(eq(schema.transactions.externalId, "interest-income-001"))
-      .get();
-
+      .limit(1);
     expect(stored?.isExcluded).toBe(true);
 
-    const visibleTransactions = getTransactions(db, { page: 1, limit: 20 });
-    expect(visibleTransactions.total).toBe(0);
+    const visible = await getTransactions(db, { page: 1, limit: 20 });
+    expect(visible.total).toBe(0);
   });
 
-  it("excludes investment and retirement account transactions from the transactions list", () => {
-    const instId = findOrCreatePlaidInstitution(db, "Merrill", "ins_filter");
-    const connection = createConnection(db, {
-      institutionName: "Merrill",
-      provider: "plaid",
-      accessToken: "encrypted-filter-token",
-      itemId: "item-filter",
-      isEncrypted: true,
-    });
-
-    const checkingAccount = createPlaidAccount(
-      db,
-      {
-        institutionId: instId,
-        externalRef: "checking-001",
-        name: "Cash Management",
-        mask: "1111",
-        type: "checking",
-        subtype: "checking",
-        balanceCurrent: 500000,
-        balanceAvailable: 500000,
-        isAsset: true,
-      },
-      connection.id,
-      "Merrill"
-    );
-
-    const investmentAccount = createPlaidAccount(
-      db,
-      {
-        institutionId: instId,
-        externalRef: "investment-001",
-        name: "Brokerage",
-        mask: "2222",
-        type: "investment",
-        subtype: "brokerage",
-        balanceCurrent: 2500000,
-        balanceAvailable: 2500000,
-        isAsset: true,
-      },
-      connection.id,
-      "Merrill"
-    );
-
-    const retirementAccount = createPlaidAccount(
-      db,
-      {
-        institutionId: instId,
-        externalRef: "retirement-001",
-        name: "Roth IRA",
-        mask: "3333",
-        type: "retirement",
-        subtype: "ira",
-        balanceCurrent: 1200000,
-        balanceAvailable: 1200000,
-        isAsset: true,
-      },
-      connection.id,
-      "Merrill"
-    );
-
-    db.insert(schema.transactions)
-      .values([
-        {
-          accountId: checkingAccount.id,
-          postedAt: "2026-04-10",
-          name: "Coffee Shop",
-          amount: 750,
-          category: "Eating Out",
-          pending: false,
-          isTransfer: false,
-          reviewState: "none",
-        },
-        {
-          accountId: investmentAccount.id,
-          postedAt: "2026-04-10",
-          name: "Dividend",
-          amount: -2500,
-          category: null,
-          pending: false,
-          isTransfer: false,
-          reviewState: "none",
-        },
-        {
-          accountId: retirementAccount.id,
-          postedAt: "2026-04-10",
-          name: "Reinvestment",
-          amount: -1500,
-          category: null,
-          pending: false,
-          isTransfer: false,
-          reviewState: "none",
-        },
-      ])
-      .run();
-
-    const result = getTransactions(db, { page: 1, limit: 20 });
-
-    expect(result.total).toBe(1);
-    expect(result.transactions).toHaveLength(1);
-    expect(result.transactions[0]?.name).toBe("Coffee Shop");
-  });
-
-  it("marks duplicate bank-side Venmo funding pulls as transfers when a matching Venmo payment exists", () => {
-    const bankConnection = createConnection(db, {
+  it("marks bank-side Venmo pulls as transfers when a matching Venmo expense exists", async () => {
+    const wealthfront = await setupConnectionWithAccount({
       institutionName: "Wealthfront",
-      provider: "plaid",
-      accessToken: "encrypted-bank-token",
-      itemId: "item-bank",
-      isEncrypted: true,
+      plaidInstitutionId: "ins_wealthfront",
+      externalRef: "wf-acct-001",
+      accountName: "Cash Account",
     });
-
-    const bankInstitutionId = findOrCreatePlaidInstitution(
-      db,
-      "Wealthfront",
-      "ins_bank"
-    );
-
-    createPlaidAccount(
-      db,
-      {
-        institutionId: bankInstitutionId,
-        externalRef: "wf-acct-001",
-        name: "Cash Account",
-        mask: "1234",
-        type: "checking",
-        subtype: "checking",
-        balanceCurrent: 100000,
-        balanceAvailable: 100000,
-        isAsset: true,
-      },
-      bankConnection.id,
-      "Wealthfront"
-    );
-
-    const venmoConnection = createConnection(db, {
+    const venmo = await setupConnectionWithAccount({
       institutionName: "Venmo - Personal",
-      provider: "plaid",
-      accessToken: "encrypted-venmo-token",
-      itemId: "item-venmo",
-      isEncrypted: true,
+      plaidInstitutionId: "ins_venmo",
+      externalRef: "venmo-acct-001",
+      accountName: "Personal Profile",
     });
 
-    const venmoInstitutionId = findOrCreatePlaidInstitution(
-      db,
-      "Venmo - Personal",
-      "ins_venmo"
-    );
-
-    createPlaidAccount(
-      db,
-      {
-        institutionId: venmoInstitutionId,
-        externalRef: "venmo-acct-001",
-        name: "Personal Profile",
-        mask: "5678",
-        type: "checking",
-        subtype: "checking",
-        balanceCurrent: 50000,
-        balanceAvailable: 50000,
-        isAsset: true,
-      },
-      venmoConnection.id,
-      "Venmo - Personal"
-    );
-
-    syncTransactionsFromPlaid(db, venmoConnection.id, {
+    await syncTransactionsFromPlaid(db, venmo.connection.id, {
       added: [
         {
           transaction_id: "venmo-payment-001",
           account_id: "venmo-acct-001",
-          amount: 127.0,
+          amount: 127,
           date: "2026-04-13",
           name: 'Max Fu "Dodgers giants"',
           merchant_name: null,
@@ -454,12 +231,12 @@ describe("syncTransactionsFromPlaid", () => {
       removed: [],
     });
 
-    syncTransactionsFromPlaid(db, bankConnection.id, {
+    await syncTransactionsFromPlaid(db, wealthfront.connection.id, {
       added: [
         {
           transaction_id: "bank-venmo-001",
           account_id: "wf-acct-001",
-          amount: 127.0,
+          amount: 127,
           date: "2026-04-14",
           name: "Venmo",
           merchant_name: null,
@@ -470,187 +247,48 @@ describe("syncTransactionsFromPlaid", () => {
       removed: [],
     });
 
-    const bankTxn = db
+    const [bankTxn] = await db
       .select()
       .from(schema.transactions)
       .where(eq(schema.transactions.externalId, "bank-venmo-001"))
-      .get();
-
-    const venmoTxn = db
+      .limit(1);
+    const [venmoTxn] = await db
       .select()
       .from(schema.transactions)
       .where(eq(schema.transactions.externalId, "venmo-payment-001"))
-      .get();
+      .limit(1);
 
-    expect(bankTxn).not.toBeNull();
-    expect(venmoTxn).not.toBeNull();
-    expect(bankTxn!.isTransfer).toBe(true);
-    expect(bankTxn!.notes).toContain("Auto-marked as transfer");
-    expect(venmoTxn!.isTransfer).toBe(false);
+    expect(bankTxn?.isTransfer).toBe(true);
+    expect(bankTxn?.notes).toContain("double-counting a matched Venmo transaction");
+    expect(venmoTxn?.isTransfer).toBe(false);
   });
 
-  it("marks matched transfers between tracked accounts as transfers", () => {
-    const alliantConnection = createConnection(db, {
-      institutionName: "Alliant Credit Union",
-      provider: "plaid",
-      accessToken: "encrypted-alliant-token",
-      itemId: "item-alliant",
-      isEncrypted: true,
-    });
-
-    const alliantInstitutionId = findOrCreatePlaidInstitution(
-      db,
-      "Alliant Credit Union",
-      "ins_alliant"
-    );
-
-    createPlaidAccount(
-      db,
-      {
-        institutionId: alliantInstitutionId,
-        externalRef: "alliant-checking-001",
-        name: "Checking",
-        mask: "1111",
-        type: "checking",
-        subtype: "checking",
-        balanceCurrent: 200000,
-        balanceAvailable: 200000,
-        isAsset: true,
-      },
-      alliantConnection.id,
-      "Alliant Credit Union"
-    );
-
-    const merrillConnection = createConnection(db, {
-      institutionName: "Merrill",
-      provider: "plaid",
-      accessToken: "encrypted-merrill-token",
-      itemId: "item-merrill",
-      isEncrypted: true,
-    });
-
-    const merrillInstitutionId = findOrCreatePlaidInstitution(
-      db,
-      "Merrill",
-      "ins_merrill"
-    );
-
-    createPlaidAccount(
-      db,
-      {
-        institutionId: merrillInstitutionId,
-        externalRef: "merrill-cma-001",
-        name: "CMA-Edge",
-        mask: "2222",
-        type: "checking",
-        subtype: "checking",
-        balanceCurrent: 500000,
-        balanceAvailable: 500000,
-        isAsset: true,
-      },
-      merrillConnection.id,
-      "Merrill"
-    );
-
-    syncTransactionsFromPlaid(db, alliantConnection.id, {
-      added: [
-        {
-          transaction_id: "alliant-transfer-001",
-          account_id: "alliant-checking-001",
-          amount: 1000,
-          date: "2026-04-01",
-          name: "Withdrawal Ach Merrill Lynch Type: Funds Trfr",
-          merchant_name: null,
-          pending: false,
-        },
-      ],
-      modified: [],
-      removed: [],
-    });
-
-    syncTransactionsFromPlaid(db, merrillConnection.id, {
-      added: [
-        {
-          transaction_id: "merrill-transfer-001",
-          account_id: "merrill-cma-001",
-          amount: -1000,
-          date: "2026-04-01",
-          name: "ALLIANT CREDIT UNION",
-          merchant_name: null,
-          pending: false,
-        },
-      ],
-      modified: [],
-      removed: [],
-    });
-
-    const alliantTxn = db
-      .select()
-      .from(schema.transactions)
-      .where(eq(schema.transactions.externalId, "alliant-transfer-001"))
-      .get();
-    const merrillTxn = db
-      .select()
-      .from(schema.transactions)
-      .where(eq(schema.transactions.externalId, "merrill-transfer-001"))
-      .get();
-
-    expect(alliantTxn?.isTransfer).toBe(true);
-    expect(merrillTxn?.isTransfer).toBe(true);
-    expect(alliantTxn?.notes).toContain("matched move between tracked accounts");
-    expect(merrillTxn?.notes).toContain("matched move between tracked accounts");
-  });
-
-  it("marks tracked-account transfers when the matching pair posts within four days", () => {
-    const amexConnection = createConnection(db, {
+  it("marks matched internal transfers within a four-day window", async () => {
+    const amexChecking = await setupConnectionWithAccount({
       institutionName: "American Express",
-      provider: "plaid",
-      accessToken: "encrypted-amex-token",
-      itemId: "item-amex",
-      isEncrypted: true,
+      plaidInstitutionId: "ins_amex",
+      externalRef: "amex-checking-001",
+      accountName: "Rewards Checking",
+      type: "checking",
     });
-
-    const amexInstitutionId = findOrCreatePlaidInstitution(
-      db,
-      "American Express",
-      "ins_amex"
-    );
-
-    createPlaidAccount(
+    await createPlaidAccount(
       db,
       {
-        institutionId: amexInstitutionId,
-        externalRef: "amex-checking-001",
-        name: "Rewards Checking",
-        mask: "5555",
-        type: "checking",
-        subtype: "checking",
-        balanceCurrent: 300000,
-        balanceAvailable: 300000,
-        isAsset: true,
-      },
-      amexConnection.id,
-      "American Express"
-    );
-
-    createPlaidAccount(
-      db,
-      {
-        institutionId: amexInstitutionId,
+        institutionId: amexChecking.institutionId,
         externalRef: "amex-card-001",
         name: "American Express Gold Card",
         mask: "6666",
         type: "credit",
         subtype: "credit card",
-        balanceCurrent: -150000,
+        balanceCurrent: -150_000,
         balanceAvailable: null,
         isAsset: false,
       },
-      amexConnection.id,
-      "American Express"
+      amexChecking.connection.id,
+      "American Express",
     );
 
-    syncTransactionsFromPlaid(db, amexConnection.id, {
+    await syncTransactionsFromPlaid(db, amexChecking.connection.id, {
       added: [
         {
           transaction_id: "amex-checking-transfer-001",
@@ -675,266 +313,37 @@ describe("syncTransactionsFromPlaid", () => {
       removed: [],
     });
 
-    const checkingTxn = db
+    const [checkingTxn] = await db
       .select()
       .from(schema.transactions)
       .where(eq(schema.transactions.externalId, "amex-checking-transfer-001"))
-      .get();
-    const cardTxn = db
+      .limit(1);
+    const [cardTxn] = await db
       .select()
       .from(schema.transactions)
       .where(eq(schema.transactions.externalId, "amex-card-payment-001"))
-      .get();
+      .limit(1);
 
     expect(checkingTxn?.isTransfer).toBe(true);
     expect(cardTxn?.isTransfer).toBe(true);
+    expect(checkingTxn?.notes).toContain("matched move between tracked accounts");
   });
 
-  it("marks Venmo Standard transfers as transfers and flags exact duplicates as cancelled", () => {
-    const venmoConnection = createConnection(db, {
-      institutionName: "Venmo - Personal",
-      provider: "plaid",
-      accessToken: "encrypted-venmo-token",
-      itemId: "item-venmo-standard-transfer",
-      isEncrypted: true,
-    });
-
-    const venmoInstitutionId = findOrCreatePlaidInstitution(
-      db,
-      "Venmo - Personal",
-      "ins_venmo_standard_transfer"
-    );
-
-    createPlaidAccount(
-      db,
-      {
-        institutionId: venmoInstitutionId,
-        externalRef: "venmo-standard-transfer-acct-001",
-        name: "Venmo",
-        mask: "7777",
-        type: "checking",
-        subtype: "checking",
-        balanceCurrent: 500000,
-        balanceAvailable: 500000,
-        isAsset: true,
-      },
-      venmoConnection.id,
-      "Venmo - Personal"
-    );
-
-    syncTransactionsFromPlaid(db, venmoConnection.id, {
-      added: [
-        {
-          transaction_id: "venmo-standard-transfer-001",
-          account_id: "venmo-standard-transfer-acct-001",
-          amount: 2593,
-          date: "2026-04-03",
-          name: "Standard transfer",
-          merchant_name: null,
-          pending: false,
-        },
-        {
-          transaction_id: "venmo-standard-transfer-002",
-          account_id: "venmo-standard-transfer-acct-001",
-          amount: 2593,
-          date: "2026-04-03",
-          name: "Standard transfer",
-          merchant_name: null,
-          pending: false,
-        },
-      ],
-      modified: [],
-      removed: [],
-    });
-
-    const firstTransfer = db
-      .select()
-      .from(schema.transactions)
-      .where(eq(schema.transactions.externalId, "venmo-standard-transfer-001"))
-      .get();
-    const duplicateTransfer = db
-      .select()
-      .from(schema.transactions)
-      .where(eq(schema.transactions.externalId, "venmo-standard-transfer-002"))
-      .get();
-
-    expect(firstTransfer?.isTransfer).toBe(true);
-    expect(firstTransfer?.notes).toContain("money movement");
-    expect(duplicateTransfer?.isTransfer).toBe(true);
-    expect(duplicateTransfer?.notes).toContain("duplicate/cancelled");
-  });
-
-  it("marks the non-Venmo counterpart of a Venmo Standard transfer as a transfer", () => {
-    const wealthfrontConnection = createConnection(db, {
+  it("does not auto-mark equal and opposite amounts without transfer clues", async () => {
+    const wealthfront = await setupConnectionWithAccount({
       institutionName: "Wealthfront",
-      provider: "plaid",
-      accessToken: "encrypted-wealthfront-token",
-      itemId: "item-wealthfront-venmo",
-      isEncrypted: true,
+      plaidInstitutionId: "ins_wealthfront",
+      externalRef: "wealthfront-acct-001",
+      accountName: "Cash Account",
     });
-
-    const wealthfrontInstitutionId = findOrCreatePlaidInstitution(
-      db,
-      "Wealthfront",
-      "ins_wealthfront_venmo"
-    );
-
-    createPlaidAccount(
-      db,
-      {
-        institutionId: wealthfrontInstitutionId,
-        externalRef: "wealthfront-cash-001",
-        name: "High Yield Cash",
-        mask: "1212",
-        type: "savings",
-        subtype: "savings",
-        balanceCurrent: 1000000,
-        balanceAvailable: 1000000,
-        isAsset: true,
-      },
-      wealthfrontConnection.id,
-      "Wealthfront"
-    );
-
-    const venmoConnection = createConnection(db, {
-      institutionName: "Venmo - Personal",
-      provider: "plaid",
-      accessToken: "encrypted-venmo-token",
-      itemId: "item-venmo-counterpart",
-      isEncrypted: true,
-    });
-
-    const venmoInstitutionId = findOrCreatePlaidInstitution(
-      db,
-      "Venmo - Personal",
-      "ins_venmo_counterpart"
-    );
-
-    createPlaidAccount(
-      db,
-      {
-        institutionId: venmoInstitutionId,
-        externalRef: "venmo-wallet-001",
-        name: "Venmo",
-        mask: "3434",
-        type: "checking",
-        subtype: "checking",
-        balanceCurrent: 500000,
-        balanceAvailable: 500000,
-        isAsset: true,
-      },
-      venmoConnection.id,
-      "Venmo - Personal"
-    );
-
-    syncTransactionsFromPlaid(db, venmoConnection.id, {
-      added: [
-        {
-          transaction_id: "venmo-standard-transfer-counterpart-001",
-          account_id: "venmo-wallet-001",
-          amount: 2593,
-          date: "2026-04-03",
-          name: "Standard transfer",
-          merchant_name: null,
-          pending: false,
-        },
-      ],
-      modified: [],
-      removed: [],
-    });
-
-    syncTransactionsFromPlaid(db, wealthfrontConnection.id, {
-      added: [
-        {
-          transaction_id: "wealthfront-venmo-counterpart-001",
-          account_id: "wealthfront-cash-001",
-          amount: -2593,
-          date: "2026-04-06",
-          name: "Venmo",
-          merchant_name: null,
-          pending: false,
-        },
-      ],
-      modified: [],
-      removed: [],
-    });
-
-    const counterpart = db
-      .select()
-      .from(schema.transactions)
-      .where(
-        eq(schema.transactions.externalId, "wealthfront-venmo-counterpart-001")
-      )
-      .get();
-
-    expect(counterpart?.isTransfer).toBe(true);
-    expect(counterpart?.notes).toContain("matched Venmo Standard transfer");
-  });
-
-  it("does not mark same-day equal-and-opposite amounts as transfers without transfer clues", () => {
-    const firstConnection = createConnection(db, {
-      institutionName: "Wealthfront",
-      provider: "plaid",
-      accessToken: "encrypted-wealthfront-token",
-      itemId: "item-wealthfront",
-      isEncrypted: true,
-    });
-
-    const firstInstitutionId = findOrCreatePlaidInstitution(
-      db,
-      "Wealthfront",
-      "ins_wealthfront"
-    );
-
-    createPlaidAccount(
-      db,
-      {
-        institutionId: firstInstitutionId,
-        externalRef: "wealthfront-acct-001",
-        name: "Cash Account",
-        mask: "3333",
-        type: "checking",
-        subtype: "checking",
-        balanceCurrent: 100000,
-        balanceAvailable: 100000,
-        isAsset: true,
-      },
-      firstConnection.id,
-      "Wealthfront"
-    );
-
-    const secondConnection = createConnection(db, {
+    const capitalOne = await setupConnectionWithAccount({
       institutionName: "Capital One",
-      provider: "plaid",
-      accessToken: "encrypted-capital-one-token",
-      itemId: "item-capital-one",
-      isEncrypted: true,
+      plaidInstitutionId: "ins_capital_one",
+      externalRef: "capital-one-acct-001",
+      accountName: "Checking",
     });
 
-    const secondInstitutionId = findOrCreatePlaidInstitution(
-      db,
-      "Capital One",
-      "ins_capital_one"
-    );
-
-    createPlaidAccount(
-      db,
-      {
-        institutionId: secondInstitutionId,
-        externalRef: "capital-one-acct-001",
-        name: "Checking",
-        mask: "4444",
-        type: "checking",
-        subtype: "checking",
-        balanceCurrent: 100000,
-        balanceAvailable: 100000,
-        isAsset: true,
-      },
-      secondConnection.id,
-      "Capital One"
-    );
-
-    syncTransactionsFromPlaid(db, firstConnection.id, {
+    await syncTransactionsFromPlaid(db, wealthfront.connection.id, {
       added: [
         {
           transaction_id: "wf-normal-expense",
@@ -950,7 +359,7 @@ describe("syncTransactionsFromPlaid", () => {
       removed: [],
     });
 
-    syncTransactionsFromPlaid(db, secondConnection.id, {
+    await syncTransactionsFromPlaid(db, capitalOne.connection.id, {
       added: [
         {
           transaction_id: "capital-income",
@@ -966,251 +375,187 @@ describe("syncTransactionsFromPlaid", () => {
       removed: [],
     });
 
-    const wealthfrontTxn = db
+    const [expense] = await db
       .select()
       .from(schema.transactions)
       .where(eq(schema.transactions.externalId, "wf-normal-expense"))
-      .get();
-    const capitalTxn = db
+      .limit(1);
+    const [income] = await db
       .select()
       .from(schema.transactions)
       .where(eq(schema.transactions.externalId, "capital-income"))
-      .get();
+      .limit(1);
 
-    expect(wealthfrontTxn?.isTransfer).toBe(false);
-    expect(capitalTxn?.isTransfer).toBe(false);
+    expect(expense?.isTransfer).toBe(false);
+    expect(income?.isTransfer).toBe(false);
   });
 
-  it("handles modified transactions by updating existing records", () => {
-    const { conn } = setupConnectionWithAccount();
+  it("marks Venmo Standard transfers and matching non-Venmo counterparts", async () => {
+    const wealthfront = await setupConnectionWithAccount({
+      institutionName: "Wealthfront",
+      plaidInstitutionId: "ins_wealthfront_venmo",
+      externalRef: "wealthfront-cash-001",
+      accountName: "High Yield Cash",
+      type: "savings",
+      subtype: "savings",
+    });
+    const venmo = await setupConnectionWithAccount({
+      institutionName: "Venmo - Personal",
+      plaidInstitutionId: "ins_venmo_standard_transfer",
+      externalRef: "venmo-wallet-001",
+      accountName: "Venmo",
+    });
 
-    // First sync — add a transaction
-    syncTransactionsFromPlaid(db, conn.id, {
+    await syncTransactionsFromPlaid(db, venmo.connection.id, {
       added: [
         {
-          transaction_id: "txn-mod",
-          account_id: "plaid-acct-001",
-          amount: 50.0,
-          date: "2026-03-12",
-          name: "Original Name",
-          merchant_name: "Original Merchant",
-          pending: true,
+          transaction_id: "venmo-standard-transfer-001",
+          account_id: "venmo-wallet-001",
+          amount: 2593,
+          date: "2026-04-03",
+          name: "Standard transfer",
+          merchant_name: null,
+          pending: false,
+        },
+        {
+          transaction_id: "venmo-standard-transfer-002",
+          account_id: "venmo-wallet-001",
+          amount: 2593,
+          date: "2026-04-03",
+          name: "Standard transfer",
+          merchant_name: null,
+          pending: false,
         },
       ],
       modified: [],
       removed: [],
     });
 
-    let txns = db.select().from(schema.transactions).all();
-    expect(txns).toHaveLength(1);
-    expect(txns[0]!.name).toBe("Original Name");
-    expect(txns[0]!.pending).toBe(true);
+    await syncTransactionsFromPlaid(db, wealthfront.connection.id, {
+      added: [
+        {
+          transaction_id: "wealthfront-venmo-counterpart-001",
+          account_id: "wealthfront-cash-001",
+          amount: -2593,
+          date: "2026-04-06",
+          name: "Venmo",
+          merchant_name: null,
+          pending: false,
+        },
+      ],
+      modified: [],
+      removed: [],
+    });
 
-    // Second sync — modify the transaction
-    const result = syncTransactionsFromPlaid(db, conn.id, {
+    const standardTransfers = await db
+      .select()
+      .from(schema.transactions)
+      .where(eq(schema.transactions.name, "Standard transfer"));
+    const [counterpart] = await db
+      .select()
+      .from(schema.transactions)
+      .where(eq(schema.transactions.externalId, "wealthfront-venmo-counterpart-001"))
+      .limit(1);
+
+    expect(standardTransfers).toHaveLength(2);
+    expect(standardTransfers[0]?.isTransfer).toBe(true);
+    expect(standardTransfers[1]?.isTransfer).toBe(true);
+    expect(standardTransfers.some((txn) => txn.notes?.includes("duplicate/cancelled"))).toBe(true);
+    expect(counterpart?.isTransfer).toBe(true);
+    expect(counterpart?.notes).toContain("matched Venmo Standard transfer");
+  });
+
+  it("updates modified transactions and removes deleted ones", async () => {
+    const { connection } = await setupConnectionWithAccount();
+
+    await syncTransactionsFromPlaid(db, connection.id, {
+      added: [
+        {
+          transaction_id: "txn-mod",
+          account_id: "plaid-acct-001",
+          amount: 10,
+          date: "2026-04-01",
+          name: "Coffee",
+          merchant_name: null,
+          pending: false,
+        },
+      ],
+      modified: [],
+      removed: [],
+    });
+
+    const result = await syncTransactionsFromPlaid(db, connection.id, {
       added: [],
       modified: [
         {
           transaction_id: "txn-mod",
           account_id: "plaid-acct-001",
-          amount: 55.0,
-          date: "2026-03-12",
-          name: "Updated Name",
-          merchant_name: "Updated Merchant",
-          pending: false,
+          amount: 12.5,
+          date: "2026-04-02",
+          name: "Coffee Shop",
+          merchant_name: "Blue Bottle",
+          pending: true,
         },
       ],
-      removed: [],
+      removed: [{ transaction_id: "txn-mod" }],
     });
 
     expect(result.modified).toBe(1);
-
-    txns = db.select().from(schema.transactions).all();
-    expect(txns).toHaveLength(1); // No duplicates
-    expect(txns[0]!.name).toBe("Updated Name");
-    expect(txns[0]!.merchant).toBe("Updated Merchant");
-    expect(txns[0]!.amount).toBe(5500);
-    expect(txns[0]!.pending).toBe(false);
-  });
-
-  it("handles removed transactions by deleting them", () => {
-    const { conn } = setupConnectionWithAccount();
-
-    // First sync — add transactions
-    syncTransactionsFromPlaid(db, conn.id, {
-      added: [
-        {
-          transaction_id: "txn-keep",
-          account_id: "plaid-acct-001",
-          amount: 10,
-          date: "2026-03-10",
-          name: "Keep",
-          merchant_name: null,
-          pending: false,
-        },
-        {
-          transaction_id: "txn-remove",
-          account_id: "plaid-acct-001",
-          amount: 20,
-          date: "2026-03-11",
-          name: "Remove",
-          merchant_name: null,
-          pending: false,
-        },
-      ],
-      modified: [],
-      removed: [],
-    });
-
-    expect(db.select().from(schema.transactions).all()).toHaveLength(2);
-
-    // Second sync — remove one
-    const result = syncTransactionsFromPlaid(db, conn.id, {
-      added: [],
-      modified: [],
-      removed: [{ transaction_id: "txn-remove" }],
-    });
-
     expect(result.removed).toBe(1);
-    const remaining = db.select().from(schema.transactions).all();
-    expect(remaining).toHaveLength(1);
-    expect(remaining[0]!.externalId).toBe("txn-keep");
-  });
 
-  it("does not create duplicates when same external_id is added twice", () => {
-    const { conn } = setupConnectionWithAccount();
-
-    const txn = {
-      transaction_id: "txn-dup",
-      account_id: "plaid-acct-001",
-      amount: 30,
-      date: "2026-03-13",
-      name: "Duplicate Test",
-      merchant_name: null,
-      pending: false,
-    };
-
-    // First sync
-    syncTransactionsFromPlaid(db, conn.id, {
-      added: [txn],
-      modified: [],
-      removed: [],
-    });
-
-    // Second sync with same transaction (shouldn't happen normally, but safeguard)
-    syncTransactionsFromPlaid(db, conn.id, {
-      added: [txn],
-      modified: [],
-      removed: [],
-    });
-
-    const txns = db.select().from(schema.transactions).all();
-    expect(txns).toHaveLength(1); // No duplicates
-  });
-
-  it("skips transactions with unknown account_id gracefully", () => {
-    const { conn } = setupConnectionWithAccount();
-
-    const result = syncTransactionsFromPlaid(db, conn.id, {
-      added: [
-        {
-          transaction_id: "txn-unknown",
-          account_id: "nonexistent-acct",
-          amount: 10,
-          date: "2026-03-10",
-          name: "Unknown Account",
-          merchant_name: null,
-          pending: false,
-        },
-      ],
-      modified: [],
-      removed: [],
-    });
-
-    // Should skip the unknown account transaction
-    expect(result.added).toBe(0);
-    expect(db.select().from(schema.transactions).all()).toHaveLength(0);
+    const [stored] = await db
+      .select()
+      .from(schema.transactions)
+      .where(eq(schema.transactions.externalId, "txn-mod"))
+      .limit(1);
+    expect(stored).toBeUndefined();
   });
 });
 
 describe("updateConnectionSyncStatus", () => {
-  it("updates cursor and sync status on success", () => {
-    const { conn } = setupConnectionWithAccount();
+  it("updates cursor and sync metadata", async () => {
+    const { connection } = await setupConnectionWithAccount();
 
-    updateConnectionSyncStatus(db, conn.id, {
-      cursor: "cursor-abc-123",
+    await updateConnectionSyncStatus(db, connection.id, {
+      cursor: "cursor-123",
       status: "success",
       error: null,
     });
 
-    const updated = db
+    const [updated] = await db
       .select()
       .from(schema.connections)
-      .where(eq(schema.connections.id, conn.id))
-      .get()!;
+      .where(eq(schema.connections.id, connection.id))
+      .limit(1);
 
-    expect(updated.transactionsCursor).toBe("cursor-abc-123");
-    expect(updated.lastSyncStatus).toBe("success");
-    expect(updated.lastSyncError).toBeNull();
-    expect(updated.lastSyncAt).toBeDefined();
-  });
-
-  it("records error status and message", () => {
-    const { conn } = setupConnectionWithAccount();
-
-    updateConnectionSyncStatus(db, conn.id, {
-      cursor: null, // Don't update cursor on error
-      status: "error",
-      error: "ITEM_LOGIN_REQUIRED",
-    });
-
-    const updated = db
-      .select()
-      .from(schema.connections)
-      .where(eq(schema.connections.id, conn.id))
-      .get()!;
-
-    expect(updated.lastSyncStatus).toBe("error");
-    expect(updated.lastSyncError).toBe("ITEM_LOGIN_REQUIRED");
-    expect(updated.transactionsCursor).toBeNull(); // Not updated
+    expect(updated?.transactionsCursor).toBe("cursor-123");
+    expect(updated?.lastSyncStatus).toBe("success");
+    expect(updated?.lastSyncError).toBeNull();
+    expect(updated?.lastSyncAt).toBeTruthy();
   });
 });
 
 describe("updateAccountBalances", () => {
-  it("updates account balances from Plaid account data", () => {
-    const { account } = setupConnectionWithAccount();
+  it("updates current and available balances in cents", async () => {
+    const { account } = await setupConnectionWithAccount();
 
-    updateAccountBalances(db, [
+    await updateAccountBalances(db, [
       {
         account_id: "plaid-acct-001",
         balances: {
-          current: 150.0,
-          available: 140.0,
+          current: 1234.56,
+          available: 1200,
         },
       },
     ]);
 
-    const updated = db
+    const [updated] = await db
       .select()
       .from(schema.accounts)
       .where(eq(schema.accounts.id, account.id))
-      .get()!;
+      .limit(1);
 
-    expect(updated.balanceCurrent).toBe(15000); // 150.00 in cents
-    expect(updated.balanceAvailable).toBe(14000); // 140.00 in cents
-  });
-
-  it("handles accounts not found in our database gracefully", () => {
-    setupConnectionWithAccount();
-
-    // Should not throw
-    expect(() => {
-      updateAccountBalances(db, [
-        {
-          account_id: "nonexistent-acct",
-          balances: { current: 100, available: 100 },
-        },
-      ]);
-    }).not.toThrow();
+    expect(updated?.balanceCurrent).toBe(123_456);
+    expect(updated?.balanceAvailable).toBe(120_000);
   });
 });

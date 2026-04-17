@@ -17,15 +17,11 @@ This repo now includes the first auth layer for a hosted beta:
 
 ## What is not ready yet
 
-The app data is still stored in SQLite and all finance queries are currently global. So while auth is now present, true multi-user isolation is not complete yet.
+The app runtime is now pointed at Postgres and finance queries are workspace-aware, but the hosted rollout still needs a couple more pieces before you should invite multiple friends:
 
-Before inviting multiple friends, we still need to:
-
-1. move the app database from SQLite to Supabase Postgres
-2. add `workspace_id` or equivalent ownership fields to finance tables
-3. scope every query and API route to the signed-in user/workspace
-4. bind Plaid connections and encrypted access tokens to that workspace
-5. backfill your existing local data into your own hosted account
+1. finish converting the automated test suite from in-memory SQLite to `PGlite`
+2. run the one-time SQLite -> Postgres importer against your real hosted workspace
+3. verify the full Plaid + auth + workspace flow against Supabase/Vercel end to end
 
 ## Recommended near-term deployment shape
 
@@ -60,10 +56,10 @@ Keep your Supabase Site URL / redirect configuration aligned with:
 
 ## Suggested next implementation slice
 
-1. create Postgres schema equivalents for the current Drizzle SQLite tables
-2. introduce `workspace_id` on top-level finance entities
-3. add a current-workspace helper to all finance queries
-4. migrate one end-to-end flow first:
-   accounts -> transactions -> budgets
+1. create your Supabase project and set `DATABASE_URL` plus the auth env vars locally and in Vercel
+2. sign in once so your hosted personal workspace exists
+3. run `npm run db:import-legacy -- --sqlite=./finance.db --workspace-id=<your workspace id>`
+4. verify accounts, transactions, budgets, and Plaid reconnects in the hosted app
+5. then expand `AUTHORIZED_EMAILS` to your first one or two testers
 
-That gives us a safe path to start inviting real testers without exposing your own data.
+That gives you a safer first hosted beta without exposing your data to other testers.

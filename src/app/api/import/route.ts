@@ -102,12 +102,16 @@ export async function POST(request: NextRequest) {
 
     // ── Duplicate Detection ────────────────────────────────────────
 
-    const account = getAccountById(db, accountId, workspace.workspaceId);
+    const account = await getAccountById(db, accountId, workspace.workspaceId);
     if (!account) {
       return NextResponse.json({ error: "Account not found" }, { status: 404 });
     }
 
-    const existing = getExistingTransactionsForDuplicateCheck(db, accountId, workspace.workspaceId);
+    const existing = await getExistingTransactionsForDuplicateCheck(
+      db,
+      accountId,
+      workspace.workspaceId,
+    );
     const duplicates = findDuplicates(mapResult.transactions, existing);
     const duplicateIndices = new Set(duplicates.map((d) => d.index));
 
@@ -134,7 +138,7 @@ export async function POST(request: NextRequest) {
       category: txn.category ?? null,
     }));
 
-    const imported = importTransactions(db, importInputs, workspace.workspaceId);
+    const imported = await importTransactions(db, importInputs, workspace.workspaceId);
 
     return NextResponse.json({
       imported,

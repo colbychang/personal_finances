@@ -47,15 +47,19 @@ export async function POST() {
     const encryptedToken = encrypt(accessToken);
     const institutionName = "First Platypus Bank";
 
-    const connection = createConnection(db, {
-      institutionName,
-      provider: "plaid",
-      accessToken: encryptedToken,
-      itemId,
-      isEncrypted: true,
-    }, workspace.workspaceId);
+    const connection = await createConnection(
+      db,
+      {
+        institutionName,
+        provider: "plaid",
+        accessToken: encryptedToken,
+        itemId,
+        isEncrypted: true,
+      },
+      workspace.workspaceId,
+    );
 
-    const institutionId = findOrCreatePlaidInstitution(
+    const institutionId = await findOrCreatePlaidInstitution(
       db,
       institutionName,
       "ins_109508",
@@ -78,7 +82,7 @@ export async function POST() {
         ? Math.round(plaidAccount.balances.available * 100)
         : null;
 
-      const account = createPlaidAccount(
+      const account = await createPlaidAccount(
         db,
         {
           institutionId,

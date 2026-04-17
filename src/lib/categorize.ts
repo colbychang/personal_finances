@@ -5,7 +5,7 @@
  */
 
 import { eq, inArray, isNull, notInArray, and } from "drizzle-orm";
-import type { drizzle } from "drizzle-orm/better-sqlite3";
+import type { AppDatabase } from "@/db/index";
 import * as schema from "@/db/schema";
 import {
   normalizeMerchantKey,
@@ -13,7 +13,7 @@ import {
 } from "@/db/queries/merchant-rules";
 import { INVESTMENT_LIKE_ACCOUNT_TYPES } from "@/lib/account-types";
 
-type DB = ReturnType<typeof drizzle>;
+type DB = AppDatabase;
 
 interface TransactionForCategorization {
   id: number;
@@ -27,17 +27,17 @@ interface TransactionForCategorization {
  * Apply merchant rules to a list of transaction IDs.
  * Returns which transactions had rules applied and which remain uncategorized.
  */
-export function applyMerchantRules(
+export async function applyMerchantRules(
   database: DB,
   transactionIds: number[],
   workspaceId?: number,
-): { ruleApplied: number[]; remaining: number[] } {
+): Promise<{ ruleApplied: number[]; remaining: number[] }> {
   if (transactionIds.length === 0) {
     return { ruleApplied: [], remaining: [] };
   }
 
   // Fetch transactions
-  const transactions = database
+  const transactions = await database
     .select({
       id: schema.transactions.id,
       name: schema.transactions.name,
@@ -59,11 +59,10 @@ export function applyMerchantRules(
         eq(schema.transactions.isExcluded, false),
         notInArray(schema.accounts.type, [...INVESTMENT_LIKE_ACCOUNT_TYPES])
       )
-    )
-    .all();
+    );
 
   // Get all merchant rules
-  const rules = getAllMerchantRules(database, workspaceId);
+  const rules = await getAllMerchantRules(database, workspaceId);
   const ruleMap = new Map(rules.map((r) => [r.merchantKey, r]));
 
   const ruleApplied: number[] = [];
@@ -95,14 +94,13 @@ export function applyMerchantRules(
 
     if (matchedRule) {
       // Apply the rule
-      database
+      await database
         .update(schema.transactions)
         .set({
           category: matchedRule.category,
           isTransfer: matchedRule.isTransfer,
         })
-        .where(eq(schema.transactions.id, txn.id))
-        .run();
+        .where(eq(schema.transactions.id, txn.id));
 
       ruleApplied.push(txn.id);
     } else {
@@ -116,14 +114,14 @@ export function applyMerchantRules(
 /**
  * Get uncategorized transactions for a given set of IDs.
  */
-export function getUncategorizedTransactions(
+export async function getUncategorizedTransactions(
   database: DB,
   transactionIds: number[],
   workspaceId?: number,
-): TransactionForCategorization[] {
+): Promise<TransactionForCategorization[]> {
   if (transactionIds.length === 0) return [];
 
-  return database
+  return await database
     .select({
       id: schema.transactions.id,
       name: schema.transactions.name,
@@ -145,8 +143,7 @@ export function getUncategorizedTransactions(
         eq(schema.transactions.isExcluded, false),
         notInArray(schema.accounts.type, [...INVESTMENT_LIKE_ACCOUNT_TYPES])
       )
-    )
-    .all();
+    );
 }
 
 /**
@@ -183,18 +180,17 @@ Return ONLY the JSON array, no other text.`;
 /**
  * Apply AI categorization results to transactions in the database.
  */
-export function applyCategorizationResults(
+export async function applyCategorizationResults(
   database: DB,
   results: Array<{ id: number; category: string }>
-): number {
+): Promise<number> {
   let applied = 0;
 
   for (const result of results) {
-    database
+    await database
       .update(schema.transactions)
       .set({ category: result.category })
-      .where(eq(schema.transactions.id, result.id))
-      .run();
+      .where(eq(schema.transactions.id, result.id));
     applied++;
   }
 
@@ -204,15 +200,15 @@ export function applyCategorizationResults(
 /**
  * Get all transaction IDs that are uncategorized (category is null).
  */
-export function getAllUncategorizedTransactionIds(database: DB): number[] {
+export function getAllUncategorizedTransactionIds(database: DB): Promise<number[]> {
   return getAllUncategorizedTransactionIdsForWorkspace(database, undefined);
 }
 
 export function getAllUncategorizedTransactionIdsForWorkspace(
   database: DB,
   workspaceId?: number,
-): number[] {
-  const rows = database
+): Promise<number[]> {
+  return database
     .select({ id: schema.transactions.id })
     .from(schema.transactions)
     .innerJoin(
@@ -229,7 +225,5 @@ export function getAllUncategorizedTransactionIdsForWorkspace(
         notInArray(schema.accounts.type, [...INVESTMENT_LIKE_ACCOUNT_TYPES])
       )
     )
-    .all();
-
-  return rows.map((r) => r.id);
+    .then((rows) => rows.map((r) => r.id));
 }

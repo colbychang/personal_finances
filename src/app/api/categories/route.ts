@@ -7,7 +7,7 @@ import { getAllCategories, createCategory, getCategoryByName } from "@/db/querie
  */
 export async function GET() {
   try {
-    const categories = getAllCategories(db);
+    const categories = await getAllCategories(db);
     return NextResponse.json({ categories });
   } catch (error) {
     console.error("GET /api/categories error:", error);
@@ -38,7 +38,7 @@ export async function POST(request: Request) {
     const trimmedName = name.trim();
 
     // Check for duplicate name
-    const existing = getCategoryByName(db, trimmedName);
+    const existing = await getCategoryByName(db, trimmedName);
     if (existing) {
       return NextResponse.json(
         { error: `A category named "${trimmedName}" already exists` },
@@ -46,7 +46,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const category = createCategory(db, {
+    const category = await createCategory(db, {
       name: trimmedName,
       color: color || undefined,
       icon: icon || undefined,

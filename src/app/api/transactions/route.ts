@@ -76,7 +76,7 @@ export async function GET(request: NextRequest) {
     const needsReview =
       needsReviewParam === "1" || needsReviewParam === "true";
 
-    const result = getTransactions(db, {
+    const result = await getTransactions(db, {
       workspaceId: workspace.workspaceId,
       dateFrom,
       dateTo,
@@ -171,7 +171,7 @@ export async function POST(request: NextRequest) {
     const amountCents = Math.round(amount * 100);
     const signedAmount = type === "income" ? -amountCents : amountCents;
 
-    const transaction = createTransaction(db, {
+    const transaction = await createTransaction(db, {
       accountId,
       postedAt: date,
       overrideMonth: overrideMonth || null,

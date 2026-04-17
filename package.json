@@ -12,18 +12,22 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate"
+    "db:migrate": "drizzle-kit migrate",
+    "db:import-legacy": "tsx src/db/import-legacy-sqlite.ts"
   },
   "dependencies": {
+    "@electric-sql/pglite": "^0.4.4",
     "@supabase/ssr": "^0.10.2",
     "@supabase/supabase-js": "^2.103.3",
     "better-sqlite3": "^11.8.2",
     "clsx": "^2.1.1",
+    "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.0",
     "lucide-react": "^0.475.0",
     "next": "^16.1.6",
     "openai": "^4.86.0",
     "plaid": "^41.4.0",
+    "postgres": "^3.4.9",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-plaid-link": "^4.1.0",
@@ -43,6 +47,7 @@
     "eslint-config-next": "^16.1.6",
     "jsdom": "^26.0.0",
     "tailwindcss": "^4.1.0",
+    "tsx": "^4.21.0",
     "typescript": "^5.8.0",
     "vitest": "^3.1.0"
   }

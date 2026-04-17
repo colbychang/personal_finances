@@ -14,7 +14,7 @@ import { requireCurrentWorkspace } from "@/lib/auth/current-workspace";
 export async function GET() {
   try {
     const { workspace } = await requireCurrentWorkspace();
-    const templates = getBudgetTemplates(db, workspace.workspaceId);
+    const templates = await getBudgetTemplates(db, workspace.workspaceId);
     return NextResponse.json({ templates });
   } catch (error) {
     console.error("GET /api/budgets/template error:", error);
@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const count = replaceBudgetTemplatesFromMonth(db, month, workspace.workspaceId);
+    const count = await replaceBudgetTemplatesFromMonth(db, month, workspace.workspaceId);
 
     if (count === -1) {
       return NextResponse.json(
@@ -131,7 +131,7 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ errors }, { status: 400 });
     }
 
-    const saved = replaceBudgetTemplates(db, parsedTemplates, workspace.workspaceId);
+    const saved = await replaceBudgetTemplates(db, parsedTemplates, workspace.workspaceId);
 
     return NextResponse.json(
       {

@@ -1,9 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
-import Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
-import { migrate } from "drizzle-orm/better-sqlite3/migrator";
-import { sql } from "drizzle-orm";
-import * as schema from "@/db/schema";
+import type { AppDatabase } from "@/db/index";
 import {
   createTransaction,
   updateTransaction,
@@ -12,61 +8,51 @@ import {
   createOrUpdateSplits,
   getTransactionSplits,
 } from "@/db/queries/transactions";
+import {
+  closeTestDb,
+  createTestDb,
+  resetTestDb,
+  seedManualAccount,
+  seedManualInstitution,
+  type TestDb,
+} from "@/__tests__/helpers/test-db";
 
-let sqlite: InstanceType<typeof Database>;
-let db: ReturnType<typeof drizzle>;
+let testDb: TestDb;
+let db: AppDatabase;
 
-beforeAll(() => {
-  sqlite = new Database(":memory:");
-  sqlite.pragma("journal_mode = WAL");
-  sqlite.pragma("foreign_keys = ON");
-  db = drizzle({ client: sqlite, schema });
-  migrate(db, { migrationsFolder: "./drizzle" });
+beforeAll(async () => {
+  testDb = await createTestDb();
+  db = testDb.db;
 });
 
-afterAll(() => {
-  sqlite.close();
+afterAll(async () => {
+  await closeTestDb(testDb);
 });
 
-beforeEach(() => {
-  db.run(sql`DELETE FROM transaction_splits`);
-  db.run(sql`DELETE FROM transactions`);
-  db.run(sql`DELETE FROM accounts`);
-  db.run(sql`DELETE FROM institutions`);
+beforeEach(async () => {
+  await resetTestDb(db);
 });
 
 // ─── Helpers ──────────────────────────────────────────────────────────
 
-function seedInstitution() {
-  db.insert(schema.institutions)
-    .values({ name: "Test Bank", provider: "manual", status: "active" })
-    .run();
-  return db.select().from(schema.institutions).all()[0]!;
-}
-
-function seedAccount() {
-  const inst = seedInstitution();
-  db.insert(schema.accounts)
-    .values({
-      institutionId: inst.id,
-      name: "Checking",
-      type: "checking",
-      balanceCurrent: 500000,
-      isAsset: true,
-      currency: "USD",
-      source: "manual",
-    })
-    .run();
-  return db.select().from(schema.accounts).all()[0]!;
+async function seedAccount() {
+  const inst = await seedManualInstitution(db, "Test Bank");
+  return seedManualAccount(db, {
+    institutionId: inst.id,
+    name: "Checking",
+    type: "checking",
+    balanceCurrent: 500000,
+    isAsset: true,
+  });
 }
 
 // ─── Tests: createTransaction ───────────────────────────────────────
 
 describe("createTransaction", () => {
-  it("creates a new expense transaction with all fields", () => {
-    const account = seedAccount();
+  it("creates a new expense transaction with all fields", async () => {
+    const account = await seedAccount();
 
-    const txn = createTransaction(db, {
+    const txn = await createTransaction(db, {
       accountId: account.id,
       postedAt: "2026-03-15",
       name: "Whole Foods",
@@ -87,10 +73,10 @@ describe("createTransaction", () => {
     expect(txn.pending).toBe(false);
   });
 
-  it("creates an income transaction (negative amount)", () => {
-    const account = seedAccount();
+  it("creates an income transaction (negative amount)", async () => {
+    const account = await seedAccount();
 
-    const txn = createTransaction(db, {
+    const txn = await createTransaction(db, {
       accountId: account.id,
       postedAt: "2026-03-15",
       name: "Paycheck",
@@ -104,10 +90,10 @@ describe("createTransaction", () => {
     expect(txn.isExcluded).toBe(true);
   });
 
-  it("creates FOUNDATION ROBOT credits as excluded income-like transactions", () => {
-    const account = seedAccount();
+  it("creates FOUNDATION ROBOT credits as excluded income-like transactions", async () => {
+    const account = await seedAccount();
 
-    const txn = createTransaction(db, {
+    const txn = await createTransaction(db, {
       accountId: account.id,
       postedAt: "2026-03-31",
       name: "FOUNDATION ROBOT",
@@ -119,10 +105,10 @@ describe("createTransaction", () => {
     expect(txn.isExcluded).toBe(true);
   });
 
-  it("creates a transfer transaction", () => {
-    const account = seedAccount();
+  it("creates a transfer transaction", async () => {
+    const account = await seedAccount();
 
-    const txn = createTransaction(db, {
+    const txn = await createTransaction(db, {
       accountId: account.id,
       postedAt: "2026-03-15",
       name: "Transfer to Savings",
@@ -133,10 +119,10 @@ describe("createTransaction", () => {
     expect(txn.isTransfer).toBe(true);
   });
 
-  it("creates transaction without optional fields", () => {
-    const account = seedAccount();
+  it("creates transaction without optional fields", async () => {
+    const account = await seedAccount();
 
-    const txn = createTransaction(db, {
+    const txn = await createTransaction(db, {
       accountId: account.id,
       postedAt: "2026-03-15",
       name: "Mystery Payment",
@@ -152,9 +138,9 @@ describe("createTransaction", () => {
 // ─── Tests: updateTransaction ───────────────────────────────────────
 
 describe("updateTransaction", () => {
-  it("updates transaction name and amount", () => {
-    const account = seedAccount();
-    const txn = createTransaction(db, {
+  it("updates transaction name and amount", async () => {
+    const account = await seedAccount();
+    const txn = await createTransaction(db, {
       accountId: account.id,
       postedAt: "2026-03-15",
       name: "Old Name",
@@ -162,7 +148,7 @@ describe("updateTransaction", () => {
       isTransfer: false,
     });
 
-    const updated = updateTransaction(db, txn.id, {
+    const updated = await updateTransaction(db, txn.id, {
       name: "New Name",
       amount: 7500,
     });
@@ -172,9 +158,9 @@ describe("updateTransaction", () => {
     expect(updated!.amount).toBe(7500);
   });
 
-  it("updates category", () => {
-    const account = seedAccount();
-    const txn = createTransaction(db, {
+  it("updates category", async () => {
+    const account = await seedAccount();
+    const txn = await createTransaction(db, {
       accountId: account.id,
       postedAt: "2026-03-15",
       name: "Purchase",
@@ -183,16 +169,16 @@ describe("updateTransaction", () => {
       isTransfer: false,
     });
 
-    const updated = updateTransaction(db, txn.id, {
+    const updated = await updateTransaction(db, txn.id, {
       category: "Eating Out",
     });
 
     expect(updated!.category).toBe("Eating Out");
   });
 
-  it("updates isTransfer flag", () => {
-    const account = seedAccount();
-    const txn = createTransaction(db, {
+  it("updates isTransfer flag", async () => {
+    const account = await seedAccount();
+    const txn = await createTransaction(db, {
       accountId: account.id,
       postedAt: "2026-03-15",
       name: "Payment",
@@ -200,13 +186,13 @@ describe("updateTransaction", () => {
       isTransfer: false,
     });
 
-    const updated = updateTransaction(db, txn.id, { isTransfer: true });
+    const updated = await updateTransaction(db, txn.id, { isTransfer: true });
     expect(updated!.isTransfer).toBe(true);
   });
 
-  it("updates notes", () => {
-    const account = seedAccount();
-    const txn = createTransaction(db, {
+  it("updates notes", async () => {
+    const account = await seedAccount();
+    const txn = await createTransaction(db, {
       accountId: account.id,
       postedAt: "2026-03-15",
       name: "Purchase",
@@ -214,12 +200,12 @@ describe("updateTransaction", () => {
       isTransfer: false,
     });
 
-    const updated = updateTransaction(db, txn.id, { notes: "Added a note" });
+    const updated = await updateTransaction(db, txn.id, { notes: "Added a note" });
     expect(updated!.notes).toBe("Added a note");
   });
 
-  it("returns null for non-existent transaction", () => {
-    const result = updateTransaction(db, 99999, { name: "No Exist" });
+  it("returns null for non-existent transaction", async () => {
+    const result = await updateTransaction(db, 99999, { name: "No Exist" });
     expect(result).toBeNull();
   });
 });
@@ -227,9 +213,9 @@ describe("updateTransaction", () => {
 // ─── Tests: deleteTransaction ───────────────────────────────────────
 
 describe("deleteTransaction", () => {
-  it("deletes a transaction", () => {
-    const account = seedAccount();
-    const txn = createTransaction(db, {
+  it("deletes a transaction", async () => {
+    const account = await seedAccount();
+    const txn = await createTransaction(db, {
       accountId: account.id,
       postedAt: "2026-03-15",
       name: "To Delete",
@@ -237,17 +223,17 @@ describe("deleteTransaction", () => {
       isTransfer: false,
     });
 
-    const deleted = deleteTransaction(db, txn.id);
+    const deleted = await deleteTransaction(db, txn.id);
     expect(deleted).toBe(true);
 
     // Verify it's gone
-    const found = getTransactionById(db, txn.id);
+    const found = await getTransactionById(db, txn.id);
     expect(found).toBeNull();
   });
 
-  it("also deletes associated splits", () => {
-    const account = seedAccount();
-    const txn = createTransaction(db, {
+  it("also deletes associated splits", async () => {
+    const account = await seedAccount();
+    const txn = await createTransaction(db, {
       accountId: account.id,
       postedAt: "2026-03-15",
       name: "Split Purchase",
@@ -256,21 +242,21 @@ describe("deleteTransaction", () => {
     });
 
     // Add splits
-    createOrUpdateSplits(db, txn.id, [
+    await createOrUpdateSplits(db, txn.id, [
       { category: "Groceries", amount: 6000 },
       { category: "Home Goods", amount: 4000 },
     ]);
 
-    const deleted = deleteTransaction(db, txn.id);
+    const deleted = await deleteTransaction(db, txn.id);
     expect(deleted).toBe(true);
 
     // Verify splits are also gone
-    const splits = getTransactionSplits(db, txn.id);
+    const splits = await getTransactionSplits(db, txn.id);
     expect(splits).toHaveLength(0);
   });
 
-  it("returns false for non-existent transaction", () => {
-    const deleted = deleteTransaction(db, 99999);
+  it("returns false for non-existent transaction", async () => {
+    const deleted = await deleteTransaction(db, 99999);
     expect(deleted).toBe(false);
   });
 });
@@ -278,9 +264,9 @@ describe("deleteTransaction", () => {
 // ─── Tests: getTransactionById ──────────────────────────────────────
 
 describe("getTransactionById", () => {
-  it("returns transaction with account name", () => {
-    const account = seedAccount();
-    const txn = createTransaction(db, {
+  it("returns transaction with account name", async () => {
+    const account = await seedAccount();
+    const txn = await createTransaction(db, {
       accountId: account.id,
       postedAt: "2026-03-15",
       name: "Test Txn",
@@ -289,15 +275,15 @@ describe("getTransactionById", () => {
       isTransfer: false,
     });
 
-    const found = getTransactionById(db, txn.id);
+    const found = await getTransactionById(db, txn.id);
     expect(found).not.toBeNull();
     expect(found!.id).toBe(txn.id);
     expect(found!.accountName).toBe("Checking");
     expect(found!.category).toBe("Groceries");
   });
 
-  it("returns null for non-existent id", () => {
-    const found = getTransactionById(db, 99999);
+  it("returns null for non-existent id", async () => {
+    const found = await getTransactionById(db, 99999);
     expect(found).toBeNull();
   });
 });
@@ -305,9 +291,9 @@ describe("getTransactionById", () => {
 // ─── Tests: Transaction Splits ──────────────────────────────────────
 
 describe("createOrUpdateSplits", () => {
-  it("creates splits for a transaction", () => {
-    const account = seedAccount();
-    const txn = createTransaction(db, {
+  it("creates splits for a transaction", async () => {
+    const account = await seedAccount();
+    const txn = await createTransaction(db, {
       accountId: account.id,
       postedAt: "2026-03-15",
       name: "Split Purchase",
@@ -315,7 +301,7 @@ describe("createOrUpdateSplits", () => {
       isTransfer: false,
     });
 
-    const splits = createOrUpdateSplits(db, txn.id, [
+    const splits = await createOrUpdateSplits(db, txn.id, [
       { category: "Groceries", amount: 6000 },
       { category: "Home Goods", amount: 4000 },
     ]);
@@ -327,9 +313,9 @@ describe("createOrUpdateSplits", () => {
     expect(splits[1].amount).toBe(4000);
   });
 
-  it("replaces existing splits on update", () => {
-    const account = seedAccount();
-    const txn = createTransaction(db, {
+  it("replaces existing splits on update", async () => {
+    const account = await seedAccount();
+    const txn = await createTransaction(db, {
       accountId: account.id,
       postedAt: "2026-03-15",
       name: "Split Purchase",
@@ -338,13 +324,13 @@ describe("createOrUpdateSplits", () => {
     });
 
     // First set of splits
-    createOrUpdateSplits(db, txn.id, [
+    await createOrUpdateSplits(db, txn.id, [
       { category: "Groceries", amount: 6000 },
       { category: "Home Goods", amount: 4000 },
     ]);
 
     // Replace with new splits
-    const newSplits = createOrUpdateSplits(db, txn.id, [
+    const newSplits = await createOrUpdateSplits(db, txn.id, [
       { category: "Eating Out", amount: 5000 },
       { category: "Bars/Clubs/Going Out", amount: 3000 },
       { category: "Insurance", amount: 2000 },
@@ -354,13 +340,13 @@ describe("createOrUpdateSplits", () => {
     expect(newSplits[0].category).toBe("Eating Out");
 
     // Old splits should be gone
-    const allSplits = getTransactionSplits(db, txn.id);
+    const allSplits = await getTransactionSplits(db, txn.id);
     expect(allSplits).toHaveLength(3);
   });
 
-  it("clears splits when passed empty array", () => {
-    const account = seedAccount();
-    const txn = createTransaction(db, {
+  it("clears splits when passed empty array", async () => {
+    const account = await seedAccount();
+    const txn = await createTransaction(db, {
       accountId: account.id,
       postedAt: "2026-03-15",
       name: "Split Purchase",
@@ -368,24 +354,24 @@ describe("createOrUpdateSplits", () => {
       isTransfer: false,
     });
 
-    createOrUpdateSplits(db, txn.id, [
+    await createOrUpdateSplits(db, txn.id, [
       { category: "Groceries", amount: 6000 },
       { category: "Home Goods", amount: 4000 },
     ]);
 
     // Clear splits
-    const cleared = createOrUpdateSplits(db, txn.id, []);
+    const cleared = await createOrUpdateSplits(db, txn.id, []);
     expect(cleared).toHaveLength(0);
 
-    const remaining = getTransactionSplits(db, txn.id);
+    const remaining = await getTransactionSplits(db, txn.id);
     expect(remaining).toHaveLength(0);
   });
 });
 
 describe("getTransactionSplits", () => {
-  it("returns splits for a transaction", () => {
-    const account = seedAccount();
-    const txn = createTransaction(db, {
+  it("returns splits for a transaction", async () => {
+    const account = await seedAccount();
+    const txn = await createTransaction(db, {
       accountId: account.id,
       postedAt: "2026-03-15",
       name: "Split Purchase",
@@ -393,19 +379,19 @@ describe("getTransactionSplits", () => {
       isTransfer: false,
     });
 
-    createOrUpdateSplits(db, txn.id, [
+    await createOrUpdateSplits(db, txn.id, [
       { category: "Groceries", amount: 6000 },
       { category: "Home Goods", amount: 4000 },
     ]);
 
-    const splits = getTransactionSplits(db, txn.id);
+    const splits = await getTransactionSplits(db, txn.id);
     expect(splits).toHaveLength(2);
     expect(splits.map((s) => s.category)).toContain("Groceries");
     expect(splits.map((s) => s.category)).toContain("Home Goods");
   });
 
-  it("returns empty array when no splits exist", () => {
-    const splits = getTransactionSplits(db, 99999);
+  it("returns empty array when no splits exist", async () => {
+    const splits = await getTransactionSplits(db, 99999);
     expect(splits).toHaveLength(0);
   });
 });

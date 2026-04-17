@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get connection
-    const connection = getConnectionById(db, connectionId, workspace.workspaceId);
+    const connection = await getConnectionById(db, connectionId, workspace.workspaceId);
     if (!connection) {
       return NextResponse.json(
         { error: "Connection not found" },
@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Mark as syncing
-    updateConnectionSyncStatus(db, connectionId, {
+    await updateConnectionSyncStatus(db, connectionId, {
       cursor: null,
       status: "syncing",
       error: null,
@@ -82,7 +82,7 @@ export async function POST(request: NextRequest) {
         ? decrypt(connection.accessToken)
         : connection.accessToken;
     } catch {
-      updateConnectionSyncStatus(db, connectionId, {
+      await updateConnectionSyncStatus(db, connectionId, {
         cursor: null,
         status: "error",
         error: "Failed to decrypt access token. Please reconnect your account.",
@@ -148,7 +148,7 @@ export async function POST(request: NextRequest) {
 
         // Update account balances from the sync response
         if (data.accounts && data.accounts.length > 0) {
-          updateAccountBalances(
+          await updateAccountBalances(
             db,
             data.accounts.map((acct) => ({
               account_id: acct.account_id,
@@ -171,7 +171,7 @@ export async function POST(request: NextRequest) {
       // Handle pagination mutation error — restart from beginning
       if (errorCode === "TRANSACTIONS_SYNC_MUTATION_DURING_PAGINATION") {
         // Don't update the cursor — keep the old one for retry
-        updateConnectionSyncStatus(db, connectionId, {
+        await updateConnectionSyncStatus(db, connectionId, {
           cursor: null,
           status: "error",
           error: getUserFriendlyError(errorCode),
@@ -190,7 +190,7 @@ export async function POST(request: NextRequest) {
         ? getUserFriendlyError(errorCode)
         : "An unexpected error occurred while syncing transactions.";
 
-      updateConnectionSyncStatus(db, connectionId, {
+      await updateConnectionSyncStatus(db, connectionId, {
         cursor: null,
         status: "error",
         error: userMessage,
@@ -207,14 +207,14 @@ export async function POST(request: NextRequest) {
     }
 
     // Apply all collected transaction updates to database
-    const result = syncTransactionsFromPlaid(db, connectionId, {
+    const result = await syncTransactionsFromPlaid(db, connectionId, {
       added: allAdded,
       modified: allModified,
       removed: allRemoved,
     });
 
     // Update connection sync status and cursor
-    updateConnectionSyncStatus(db, connectionId, {
+    await updateConnectionSyncStatus(db, connectionId, {
       cursor,
       status: "success",
       error: null,

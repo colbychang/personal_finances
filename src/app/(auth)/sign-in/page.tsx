@@ -24,7 +24,7 @@ async function signIn(formData: FormData) {
   } = await supabase.auth.getUser();
 
   if (user?.email) {
-    ensurePersonalWorkspaceForAuthUser(db, user.id, user.email);
+    await ensurePersonalWorkspaceForAuthUser(db, user.id, user.email);
   }
 
   redirect(next || "/");

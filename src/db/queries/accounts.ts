@@ -1,8 +1,8 @@
 import { and, eq, inArray } from "drizzle-orm";
-import type { drizzle } from "drizzle-orm/better-sqlite3";
+import type { AppDatabase } from "@/db/index";
 import * as schema from "../schema";
 
-type DB = ReturnType<typeof drizzle>;
+type DB = AppDatabase;
 
 // Account types mapped to section names
 const SECTION_MAP: Record<string, string> = {
@@ -42,12 +42,15 @@ export interface AccountSection {
  * Get all accounts grouped by type section with subtotals.
  * Sections: "Checking & Savings", "Credit Cards", "Investments & Retirement"
  */
-export function getAllAccountsGrouped(database: DB, workspaceId?: number): AccountSection[] {
+export async function getAllAccountsGrouped(
+  database: DB,
+  workspaceId?: number,
+): Promise<AccountSection[]> {
   const where = workspaceId === undefined
     ? undefined
     : eq(schema.accounts.workspaceId, workspaceId);
 
-  const rows = database
+  const rows = await database
     .select({
       id: schema.accounts.id,
       name: schema.accounts.name,
@@ -64,8 +67,7 @@ export function getAllAccountsGrouped(database: DB, workspaceId?: number): Accou
       schema.institutions,
       eq(schema.accounts.institutionId, schema.institutions.id)
     )
-    .where(where)
-    .all();
+    .where(where);
 
   // Group by section
   const sectionMap = new Map<string, AccountWithInstitution[]>();
@@ -101,13 +103,17 @@ export interface CreateAccountInput {
 /**
  * Create a new account. Creates or reuses institution by name.
  */
-export function createAccount(database: DB, input: CreateAccountInput, workspaceId?: number) {
+export async function createAccount(
+  database: DB,
+  input: CreateAccountInput,
+  workspaceId?: number,
+) {
   // Find or create institution
-  const institutionId = findOrCreateInstitution(database, input.institution, workspaceId);
+  const institutionId = await findOrCreateInstitution(database, input.institution, workspaceId);
 
   const isAsset = input.type !== "credit";
 
-  const result = database
+  const [result] = await database
     .insert(schema.accounts)
     .values({
       institutionId,
@@ -120,8 +126,7 @@ export function createAccount(database: DB, input: CreateAccountInput, workspace
       currency: "USD",
       source: "manual",
     })
-    .returning()
-    .get();
+    .returning();
 
   return result;
 }
@@ -136,7 +141,7 @@ export interface UpdateAccountInput {
 /**
  * Update an existing account. Returns the updated account or null if not found.
  */
-export function updateAccount(
+export async function updateAccount(
   database: DB,
   id: number,
   input: UpdateAccountInput,
@@ -147,11 +152,11 @@ export function updateAccount(
     ? eq(schema.accounts.id, id)
     : and(eq(schema.accounts.id, id), eq(schema.accounts.workspaceId, workspaceId));
 
-  const existing = database
+  const [existing] = await database
     .select()
     .from(schema.accounts)
     .where(existingWhere)
-    .get();
+    .limit(1);
 
   if (!existing) return null;
 
@@ -172,7 +177,7 @@ export function updateAccount(
   }
 
   if (input.institution !== undefined) {
-    updates.institutionId = findOrCreateInstitution(
+    updates.institutionId = await findOrCreateInstitution(
       database,
       input.institution,
       workspaceId,
@@ -180,80 +185,76 @@ export function updateAccount(
   }
 
   if (Object.keys(updates).length > 0) {
-    database
+    await database
       .update(schema.accounts)
       .set(updates)
-      .where(existingWhere)
-      .run();
+      .where(existingWhere);
   }
 
-  return database
+  const [updatedAccount] = await database
     .select()
     .from(schema.accounts)
     .where(existingWhere)
-    .get()!;
+    .limit(1);
+
+  return updatedAccount!;
 }
 
 /**
  * Delete an account and all its associated transactions (and their splits).
  * Returns true if the account was found and deleted, false otherwise.
  */
-export function deleteAccountWithTransactions(
+export async function deleteAccountWithTransactions(
   database: DB,
   id: number,
   workspaceId?: number,
-): boolean {
+): Promise<boolean> {
   const existingWhere = workspaceId === undefined
     ? eq(schema.accounts.id, id)
     : and(eq(schema.accounts.id, id), eq(schema.accounts.workspaceId, workspaceId));
 
-  const existing = database
+  const [existing] = await database
     .select()
     .from(schema.accounts)
     .where(existingWhere)
-    .get();
+    .limit(1);
 
   if (!existing) return false;
 
   // Get all transaction IDs for this account
-  const txnIds = database
+  const txnIds = (await database
     .select({ id: schema.transactions.id })
     .from(schema.transactions)
     .where(eq(schema.transactions.accountId, id))
-    .all()
+    )
     .map((t) => t.id);
 
   // Delete transaction splits first (FK constraint)
   if (txnIds.length > 0) {
-    database
+    await database
       .delete(schema.transactionSplits)
-      .where(inArray(schema.transactionSplits.transactionId, txnIds))
-      .run();
+      .where(inArray(schema.transactionSplits.transactionId, txnIds));
   }
 
   // Delete transactions
-  database
+  await database
     .delete(schema.transactions)
-    .where(eq(schema.transactions.accountId, id))
-    .run();
+    .where(eq(schema.transactions.accountId, id));
 
   // Delete account snapshots
-  database
+  await database
     .delete(schema.accountSnapshots)
-    .where(eq(schema.accountSnapshots.accountId, id))
-    .run();
+    .where(eq(schema.accountSnapshots.accountId, id));
 
   // Delete account links
-  database
+  await database
     .delete(schema.accountLinks)
-    .where(eq(schema.accountLinks.accountId, id))
-    .run();
+    .where(eq(schema.accountLinks.accountId, id));
 
   // Delete the account itself
-  database
+  await database
     .delete(schema.accounts)
-    .where(eq(schema.accounts.id, id))
-    .run();
+    .where(eq(schema.accounts.id, id));
 
   return true;
 }
@@ -261,16 +262,16 @@ export function deleteAccountWithTransactions(
 /**
  * Get a single account by ID with institution name.
  */
-export function getAccountById(
+export async function getAccountById(
   database: DB,
   id: number,
   workspaceId?: number,
-): AccountWithInstitution | null {
+): Promise<AccountWithInstitution | null> {
   const where = workspaceId === undefined
     ? eq(schema.accounts.id, id)
     : and(eq(schema.accounts.id, id), eq(schema.accounts.workspaceId, workspaceId));
 
-  const row = database
+  const [row] = await database
     .select({
       id: schema.accounts.id,
       name: schema.accounts.name,
@@ -288,7 +289,7 @@ export function getAccountById(
       eq(schema.accounts.institutionId, schema.institutions.id)
     )
     .where(where)
-    .get();
+    .limit(1);
 
   return row ?? null;
 }
@@ -296,7 +297,11 @@ export function getAccountById(
 /**
  * Find an institution by name or create one if it doesn't exist.
  */
-function findOrCreateInstitution(database: DB, name: string, workspaceId?: number): number {
+async function findOrCreateInstitution(
+  database: DB,
+  name: string,
+  workspaceId?: number,
+): Promise<number> {
   const where = workspaceId === undefined
     ? eq(schema.institutions.name, name)
     : and(
@@ -304,15 +309,15 @@ function findOrCreateInstitution(database: DB, name: string, workspaceId?: numbe
         eq(schema.institutions.workspaceId, workspaceId),
       );
 
-  const existing = database
+  const [existing] = await database
     .select()
     .from(schema.institutions)
     .where(where)
-    .get();
+    .limit(1);
 
   if (existing) return existing.id;
 
-  const result = database
+  const [result] = await database
     .insert(schema.institutions)
     .values({
       workspaceId: workspaceId ?? null,
@@ -320,8 +325,7 @@ function findOrCreateInstitution(database: DB, name: string, workspaceId?: numbe
       provider: "manual",
       status: "active",
     })
-    .returning()
-    .get();
+    .returning();
 
   return result.id;
 }

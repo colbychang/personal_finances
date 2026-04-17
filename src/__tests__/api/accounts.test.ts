@@ -1,9 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
-import Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
-import { migrate } from "drizzle-orm/better-sqlite3/migrator";
-import { sql, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import * as schema from "@/db/schema";
+import type { AppDatabase } from "@/db/index";
 import {
   getAllAccountsGrouped,
   createAccount,
@@ -11,100 +9,96 @@ import {
   deleteAccountWithTransactions,
   getAccountById,
 } from "@/db/queries/accounts";
+import {
+  closeTestDb,
+  createTestDb,
+  getInstitutionByName,
+  resetTestDb,
+  seedManualAccount,
+  seedManualInstitution,
+  type TestDb,
+} from "@/__tests__/helpers/test-db";
 
-let sqlite: InstanceType<typeof Database>;
-let db: ReturnType<typeof drizzle>;
+let testDb: TestDb;
+let db: AppDatabase;
 
-beforeAll(() => {
-  sqlite = new Database(":memory:");
-  sqlite.pragma("journal_mode = WAL");
-  sqlite.pragma("foreign_keys = ON");
-  db = drizzle({ client: sqlite, schema });
-  migrate(db, { migrationsFolder: "./drizzle" });
+beforeAll(async () => {
+  testDb = await createTestDb();
+  db = testDb.db;
 });
 
-afterAll(() => {
-  sqlite.close();
+afterAll(async () => {
+  await closeTestDb(testDb);
 });
 
-beforeEach(() => {
-  db.run(sql`DELETE FROM transaction_splits`);
-  db.run(sql`DELETE FROM account_snapshots`);
-  db.run(sql`DELETE FROM account_links`);
-  db.run(sql`DELETE FROM transactions`);
-  db.run(sql`DELETE FROM accounts`);
-  db.run(sql`DELETE FROM institutions`);
+beforeEach(async () => {
+  await resetTestDb(db);
 });
 
-function seedInstitution() {
-  db.insert(schema.institutions)
-    .values({ name: "Test Bank", provider: "manual", status: "active" })
-    .run();
-  const [inst] = db.select().from(schema.institutions).all();
-  return inst!;
+async function seedInstitution() {
+  return seedManualInstitution(db, "Test Bank");
 }
 
-function seedAccounts(institutionId: number) {
-  db.insert(schema.accounts)
-    .values([
-      {
-        institutionId,
-        name: "My Checking",
-        type: "checking",
-        balanceCurrent: 500000,
-        isAsset: true,
-        currency: "USD",
-        source: "manual",
-      },
-      {
-        institutionId,
-        name: "My Savings",
-        type: "savings",
-        balanceCurrent: 1000000,
-        isAsset: true,
-        currency: "USD",
-        source: "manual",
-      },
-      {
-        institutionId,
-        name: "Credit Card",
-        type: "credit",
-        balanceCurrent: 250000,
-        isAsset: false,
-        currency: "USD",
-        source: "manual",
-      },
-      {
-        institutionId,
-        name: "401k",
-        type: "retirement",
-        balanceCurrent: 5000000,
-        isAsset: true,
-        currency: "USD",
-        source: "manual",
-      },
-      {
-        institutionId,
-        name: "Brokerage",
-        type: "investment",
-        balanceCurrent: 3000000,
-        isAsset: true,
-        currency: "USD",
-        source: "manual",
-      },
-    ])
-    .run();
-  return db.select().from(schema.accounts).all();
+async function seedAccounts(institutionId: number) {
+  await db.insert(schema.accounts).values([
+    {
+      institutionId,
+      name: "My Checking",
+      type: "checking",
+      balanceCurrent: 500000,
+      isAsset: true,
+      currency: "USD",
+      source: "manual",
+    },
+    {
+      institutionId,
+      name: "My Savings",
+      type: "savings",
+      balanceCurrent: 1000000,
+      isAsset: true,
+      currency: "USD",
+      source: "manual",
+    },
+    {
+      institutionId,
+      name: "Credit Card",
+      type: "credit",
+      balanceCurrent: 250000,
+      isAsset: false,
+      currency: "USD",
+      source: "manual",
+    },
+    {
+      institutionId,
+      name: "401k",
+      type: "retirement",
+      balanceCurrent: 5000000,
+      isAsset: true,
+      currency: "USD",
+      source: "manual",
+    },
+    {
+      institutionId,
+      name: "Brokerage",
+      type: "investment",
+      balanceCurrent: 3000000,
+      isAsset: true,
+      currency: "USD",
+      source: "manual",
+    },
+  ]).returning();
+
+  return db.select().from(schema.accounts);
 }
 
 describe("getAllAccountsGrouped", () => {
-  it("returns accounts grouped by type sections", () => {
-    const inst = seedInstitution();
-    seedAccounts(inst.id);
+  it("returns accounts grouped by type sections", async () => {
+    const inst = await seedInstitution();
+    await seedAccounts(inst.id);
 
-    const grouped = getAllAccountsGrouped(db);
+    const grouped = await getAllAccountsGrouped(db);
 
-    expect(grouped).toHaveLength(3); // 3 sections
+    expect(grouped).toHaveLength(3);
 
     const sectionNames = grouped.map((g) => g.section);
     expect(sectionNames).toContain("Checking & Savings");
@@ -112,68 +106,65 @@ describe("getAllAccountsGrouped", () => {
     expect(sectionNames).toContain("Investments & Retirement");
   });
 
-  it("computes correct subtotals per section", () => {
-    const inst = seedInstitution();
-    seedAccounts(inst.id);
+  it("computes correct subtotals per section", async () => {
+    const inst = await seedInstitution();
+    await seedAccounts(inst.id);
 
-    const grouped = getAllAccountsGrouped(db);
+    const grouped = await getAllAccountsGrouped(db);
 
     const checkingSavings = grouped.find((g) => g.section === "Checking & Savings")!;
-    expect(checkingSavings.subtotal).toBe(1500000); // 500000 + 1000000
+    expect(checkingSavings.subtotal).toBe(1500000);
 
     const creditCards = grouped.find((g) => g.section === "Credit Cards")!;
     expect(creditCards.subtotal).toBe(250000);
 
     const investments = grouped.find((g) => g.section === "Investments & Retirement")!;
-    expect(investments.subtotal).toBe(8000000); // 5000000 + 3000000
+    expect(investments.subtotal).toBe(8000000);
   });
 
-  it("includes institution name in account data", () => {
-    const inst = seedInstitution();
-    seedAccounts(inst.id);
+  it("includes institution name in account data", async () => {
+    const inst = await seedInstitution();
+    await seedAccounts(inst.id);
 
-    const grouped = getAllAccountsGrouped(db);
+    const grouped = await getAllAccountsGrouped(db);
     const allAccounts = grouped.flatMap((g) => g.accounts);
     allAccounts.forEach((a) => {
       expect(a.institutionName).toBe("Test Bank");
     });
   });
 
-  it("returns empty array when no accounts exist", () => {
-    const grouped = getAllAccountsGrouped(db);
+  it("returns empty array when no accounts exist", async () => {
+    const grouped = await getAllAccountsGrouped(db);
     expect(grouped).toHaveLength(0);
   });
 
-  it("omits sections that have no accounts", () => {
-    const inst = seedInstitution();
-    // Only add checking account
-    db.insert(schema.accounts)
-      .values({
-        institutionId: inst.id,
-        name: "Only Checking",
-        type: "checking",
-        balanceCurrent: 100000,
-        isAsset: true,
-        currency: "USD",
-        source: "manual",
-      })
-      .run();
+  it("omits sections that have no accounts", async () => {
+    const inst = await seedInstitution();
+    await db.insert(schema.accounts).values({
+      institutionId: inst.id,
+      name: "Only Checking",
+      type: "checking",
+      balanceCurrent: 100000,
+      isAsset: true,
+      currency: "USD",
+      source: "manual",
+    }).returning();
 
-    const grouped = getAllAccountsGrouped(db);
+    const grouped = await getAllAccountsGrouped(db);
     expect(grouped).toHaveLength(1);
     expect(grouped[0].section).toBe("Checking & Savings");
   });
 });
 
 describe("createAccount", () => {
-  it("creates a new account with correct values", () => {
-    seedInstitution();
+  it("creates a new account with correct values", async () => {
+    await seedInstitution();
 
-    const account = createAccount(db, {
+    const account = await createAccount(db, {
       name: "New Checking",
       institution: "Test Bank",
       type: "checking",
-      balance: 150000, // in cents
+      balance: 150000,
     });
 
     expect(account.name).toBe("New Checking");
@@ -182,10 +173,10 @@ describe("createAccount", () => {
     expect(account.isAsset).toBe(true);
   });
 
-  it("creates a credit card account with isAsset=false", () => {
-    seedInstitution();
+  it("creates a credit card account with isAsset=false", async () => {
+    await seedInstitution();
 
-    const account = createAccount(db, {
+    const account = await createAccount(db, {
       name: "New Credit Card",
       institution: "Test Bank",
       type: "credit",
@@ -195,8 +186,8 @@ describe("createAccount", () => {
     expect(account.isAsset).toBe(false);
   });
 
-  it("creates institution if it does not exist", () => {
-    const account = createAccount(db, {
+  it("creates institution if it does not exist", async () => {
+    const account = await createAccount(db, {
       name: "New Account",
       institution: "Brand New Bank",
       type: "checking",
@@ -204,40 +195,40 @@ describe("createAccount", () => {
     });
 
     expect(account).toBeDefined();
-    const institutions = db.select().from(schema.institutions).all();
+    const institutions = await db.select().from(schema.institutions);
     expect(institutions.some((i) => i.name === "Brand New Bank")).toBe(true);
   });
 
-  it("reuses existing institution by name", () => {
-    seedInstitution(); // Creates "Test Bank"
+  it("reuses existing institution by name", async () => {
+    await seedInstitution();
 
-    createAccount(db, {
+    await createAccount(db, {
       name: "Account 1",
       institution: "Test Bank",
       type: "checking",
       balance: 100000,
     });
 
-    createAccount(db, {
+    await createAccount(db, {
       name: "Account 2",
       institution: "Test Bank",
       type: "savings",
       balance: 200000,
     });
 
-    const institutions = db.select().from(schema.institutions).all();
+    const institutions = await db.select().from(schema.institutions);
     const testBanks = institutions.filter((i) => i.name === "Test Bank");
     expect(testBanks).toHaveLength(1);
   });
 });
 
 describe("updateAccount", () => {
-  it("updates account name and balance", () => {
-    const inst = seedInstitution();
-    seedAccounts(inst.id);
-    const [account] = db.select().from(schema.accounts).all();
+  it("updates account name and balance", async () => {
+    const inst = await seedInstitution();
+    const accounts = await seedAccounts(inst.id);
+    const account = accounts[0]!;
 
-    const updated = updateAccount(db, account!.id, {
+    const updated = await updateAccount(db, account.id, {
       name: "Updated Checking",
       balance: 600000,
     });
@@ -246,22 +237,18 @@ describe("updateAccount", () => {
     expect(updated!.balanceCurrent).toBe(600000);
   });
 
-  it("updates account type and adjusts isAsset", () => {
-    const inst = seedInstitution();
-    db.insert(schema.accounts)
-      .values({
-        institutionId: inst.id,
-        name: "Test Account",
-        type: "checking",
-        balanceCurrent: 100000,
-        isAsset: true,
-        currency: "USD",
-        source: "manual",
-      })
-      .run();
-    const [account] = db.select().from(schema.accounts).all();
+  it("updates account type and adjusts isAsset", async () => {
+    const inst = await seedInstitution();
+    await seedManualAccount(db, {
+      institutionId: inst.id,
+      name: "Test Account",
+      type: "checking",
+      balanceCurrent: 100000,
+      isAsset: true,
+    });
+    const [account] = await db.select().from(schema.accounts);
 
-    const updated = updateAccount(db, account!.id, {
+    const updated = await updateAccount(db, account!.id, {
       type: "credit",
     });
 
@@ -269,149 +256,129 @@ describe("updateAccount", () => {
     expect(updated!.isAsset).toBe(false);
   });
 
-  it("returns null for non-existent account", () => {
-    const result = updateAccount(db, 99999, { name: "No exist" });
+  it("returns null for non-existent account", async () => {
+    const result = await updateAccount(db, 99999, { name: "No exist" });
     expect(result).toBeNull();
   });
 
-  it("updates institution when institution name changes", () => {
-    const inst = seedInstitution();
-    db.insert(schema.accounts)
-      .values({
-        institutionId: inst.id,
-        name: "Test Account",
-        type: "checking",
-        balanceCurrent: 100000,
-        isAsset: true,
-        currency: "USD",
-        source: "manual",
-      })
-      .run();
-    const [account] = db.select().from(schema.accounts).all();
+  it("updates institution when institution name changes", async () => {
+    const inst = await seedInstitution();
+    await seedManualAccount(db, {
+      institutionId: inst.id,
+      name: "Test Account",
+      type: "checking",
+      balanceCurrent: 100000,
+      isAsset: true,
+    });
+    const [account] = await db.select().from(schema.accounts);
 
-    const updated = updateAccount(db, account!.id, {
+    const updated = await updateAccount(db, account!.id, {
       institution: "New Bank Name",
     });
 
     expect(updated).toBeDefined();
-    // Verify institution was created/changed
-    const institutions = db.select().from(schema.institutions).all();
+    const institutions = await db.select().from(schema.institutions);
     expect(institutions.some((i) => i.name === "New Bank Name")).toBe(true);
   });
 });
 
 describe("deleteAccountWithTransactions", () => {
-  it("deletes account and its transactions", () => {
-    const inst = seedInstitution();
-    seedAccounts(inst.id);
-    const [account] = db.select().from(schema.accounts).all();
+  it("deletes account and its transactions", async () => {
+    const inst = await seedInstitution();
+    const accounts = await seedAccounts(inst.id);
+    const account = accounts[0]!;
 
-    // Add a transaction to this account
-    db.insert(schema.transactions)
-      .values({
-        accountId: account!.id,
-        postedAt: "2026-03-01",
-        name: "Test Transaction",
-        amount: 5000,
-        pending: false,
-        isTransfer: false,
-        reviewState: "none",
-      })
-      .run();
+    await db.insert(schema.transactions).values({
+      accountId: account.id,
+      postedAt: "2026-03-01",
+      name: "Test Transaction",
+      amount: 5000,
+      pending: false,
+      isTransfer: false,
+      reviewState: "none",
+    }).returning();
 
-    const deleted = deleteAccountWithTransactions(db, account!.id);
+    const deleted = await deleteAccountWithTransactions(db, account.id);
     expect(deleted).toBe(true);
 
-    // Account should be gone
-    const accounts = db.select().from(schema.accounts).where(eq(schema.accounts.id, account!.id)).all();
-    expect(accounts).toHaveLength(0);
+    const accountsAfter = await db.select().from(schema.accounts).where(eq(schema.accounts.id, account.id));
+    expect(accountsAfter).toHaveLength(0);
 
-    // Transactions should be gone
-    const txns = db.select().from(schema.transactions).where(eq(schema.transactions.accountId, account!.id)).all();
+    const txns = await db
+      .select()
+      .from(schema.transactions)
+      .where(eq(schema.transactions.accountId, account.id));
     expect(txns).toHaveLength(0);
   });
 
-  it("deletes account with no transactions", () => {
-    const inst = seedInstitution();
-    db.insert(schema.accounts)
-      .values({
-        institutionId: inst.id,
-        name: "Empty Account",
-        type: "checking",
-        balanceCurrent: 0,
-        isAsset: true,
-        currency: "USD",
-        source: "manual",
-      })
-      .run();
-    const [account] = db.select().from(schema.accounts).all();
+  it("deletes account with no transactions", async () => {
+    const inst = await seedInstitution();
+    await seedManualAccount(db, {
+      institutionId: inst.id,
+      name: "Empty Account",
+      type: "checking",
+      balanceCurrent: 0,
+      isAsset: true,
+    });
+    const [account] = await db.select().from(schema.accounts);
 
-    const deleted = deleteAccountWithTransactions(db, account!.id);
+    const deleted = await deleteAccountWithTransactions(db, account!.id);
     expect(deleted).toBe(true);
   });
 
-  it("returns false for non-existent account", () => {
-    const deleted = deleteAccountWithTransactions(db, 99999);
+  it("returns false for non-existent account", async () => {
+    const deleted = await deleteAccountWithTransactions(db, 99999);
     expect(deleted).toBe(false);
   });
 
-  it("also deletes transaction splits when deleting transactions", () => {
-    const inst = seedInstitution();
-    db.insert(schema.accounts)
-      .values({
-        institutionId: inst.id,
-        name: "Account with splits",
-        type: "checking",
-        balanceCurrent: 100000,
-        isAsset: true,
-        currency: "USD",
-        source: "manual",
-      })
-      .run();
-    const [account] = db.select().from(schema.accounts).all();
+  it("also deletes transaction splits when deleting transactions", async () => {
+    const inst = await seedInstitution();
+    const account = await seedManualAccount(db, {
+      institutionId: inst.id,
+      name: "Account with splits",
+      type: "checking",
+      balanceCurrent: 100000,
+      isAsset: true,
+    });
 
-    db.insert(schema.transactions)
-      .values({
-        accountId: account!.id,
-        postedAt: "2026-03-01",
-        name: "Split Transaction",
-        amount: 10000,
-        pending: false,
-        isTransfer: false,
-        reviewState: "none",
-      })
-      .run();
-    const [txn] = db.select().from(schema.transactions).all();
+    await db.insert(schema.transactions).values({
+      accountId: account.id,
+      postedAt: "2026-03-01",
+      name: "Split Transaction",
+      amount: 10000,
+      pending: false,
+      isTransfer: false,
+      reviewState: "none",
+    }).returning();
+    const [txn] = await db.select().from(schema.transactions);
 
-    db.insert(schema.transactionSplits)
-      .values([
-        { transactionId: txn!.id, category: "Groceries", amount: 6000 },
-        { transactionId: txn!.id, category: "Home Goods", amount: 4000 },
-      ])
-      .run();
+    await db.insert(schema.transactionSplits).values([
+      { transactionId: txn!.id, category: "Groceries", amount: 6000 },
+      { transactionId: txn!.id, category: "Home Goods", amount: 4000 },
+    ]).returning();
 
-    const deleted = deleteAccountWithTransactions(db, account!.id);
+    const deleted = await deleteAccountWithTransactions(db, account.id);
     expect(deleted).toBe(true);
 
-    const splits = db.select().from(schema.transactionSplits).all();
+    const splits = await db.select().from(schema.transactionSplits);
     expect(splits).toHaveLength(0);
   });
 });
 
 describe("getAccountById", () => {
-  it("returns account with institution name", () => {
-    const inst = seedInstitution();
-    seedAccounts(inst.id);
-    const [account] = db.select().from(schema.accounts).all();
+  it("returns account with institution name", async () => {
+    const inst = await seedInstitution();
+    const accounts = await seedAccounts(inst.id);
+    const account = accounts[0]!;
 
-    const result = getAccountById(db, account!.id);
+    const result = await getAccountById(db, account.id);
     expect(result).toBeDefined();
-    expect(result!.id).toBe(account!.id);
+    expect(result!.id).toBe(account.id);
     expect(result!.institutionName).toBe("Test Bank");
   });
 
-  it("returns null for non-existent id", () => {
-    const result = getAccountById(db, 99999);
+  it("returns null for non-existent id", async () => {
+    const result = await getAccountById(db, 99999);
     expect(result).toBeNull();
   });
 });

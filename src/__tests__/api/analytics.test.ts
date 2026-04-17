@@ -1,97 +1,80 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
-import { migrate } from "drizzle-orm/better-sqlite3/migrator";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import * as schema from "@/db/schema";
+import type { AppDatabase } from "@/db/index";
 import { seedCategories } from "@/db/seed";
 import {
   getSpendingByCategory,
   getMonthlySpendingTrends,
   getCategoryTransactions,
 } from "@/db/queries/analytics";
+import {
+  closeTestDb,
+  createTestDb,
+  resetTestDb,
+  seedManualAccount,
+  seedManualInstitution,
+  type TestDb,
+} from "@/__tests__/helpers/test-db";
 
-function createTestDB() {
-  const sqlite = new Database(":memory:");
-  sqlite.pragma("journal_mode = WAL");
-  sqlite.pragma("foreign_keys = ON");
-  const db = drizzle({ client: sqlite, schema });
-  migrate(db, { migrationsFolder: "./drizzle" });
-  return { db, sqlite };
-}
+async function seedBaseData(db: AppDatabase) {
+  await seedCategories(db);
 
-function seedBaseData(db: ReturnType<typeof drizzle>) {
-  seedCategories(db);
+  const bank = await seedManualInstitution(db, "Test Bank");
+  const creditCo = await seedManualInstitution(db, "Credit Co");
+  const checking = await seedManualAccount(db, {
+    institutionId: bank.id,
+    name: "Checking",
+    type: "checking",
+    balanceCurrent: 800000,
+    isAsset: true,
+  });
+  const credit = await seedManualAccount(db, {
+    institutionId: creditCo.id,
+    name: "Credit Card",
+    type: "credit",
+    balanceCurrent: 150000,
+    isAsset: false,
+  });
 
-  db.insert(schema.institutions)
-    .values([
-      { name: "Test Bank", provider: "manual", status: "active" },
-      { name: "Credit Co", provider: "manual", status: "active" },
-    ])
-    .run();
-
-  const institutions = db.select().from(schema.institutions).all();
-  const bank = institutions.find((i) => i.name === "Test Bank")!;
-  const creditCo = institutions.find((i) => i.name === "Credit Co")!;
-
-  db.insert(schema.accounts)
-    .values([
-      {
-        institutionId: bank.id,
-        name: "Checking",
-        type: "checking",
-        balanceCurrent: 800000,
-        isAsset: true,
-        source: "manual",
-      },
-      {
-        institutionId: creditCo.id,
-        name: "Credit Card",
-        type: "credit",
-        balanceCurrent: 150000,
-        isAsset: false,
-        source: "manual",
-      },
-    ])
-    .run();
-
-  const accounts = db.select().from(schema.accounts).all();
   return {
-    checkingId: accounts.find((a) => a.type === "checking")!.id,
-    creditId: accounts.find((a) => a.type === "credit")!.id,
+    checkingId: checking.id,
+    creditId: credit.id,
   };
 }
 
 describe("Analytics Queries", () => {
-  let db: ReturnType<typeof drizzle>;
-  let sqlite: Database.Database;
+  let testDb: TestDb;
+  let db: AppDatabase;
   let checkingId: number;
   let creditId: number;
 
-  beforeEach(() => {
-    const result = createTestDB();
-    db = result.db;
-    sqlite = result.sqlite;
-    const seedResult = seedBaseData(db);
+  beforeEach(async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-03-20T12:00:00Z"));
+    testDb = await createTestDb();
+    db = testDb.db;
+    const seedResult = await seedBaseData(db);
     checkingId = seedResult.checkingId;
     creditId = seedResult.creditId;
   });
 
-  afterEach(() => {
-    sqlite.close();
+  afterEach(async () => {
+    await closeTestDb(testDb);
+    vi.useRealTimers();
   });
 
   // ─── Spending by Category ──────────────────────────────────────────
 
   describe("getSpendingByCategory", () => {
-    it("returns spending aggregated by category for a single month", () => {
-      db.insert(schema.transactions).values([
+    it("returns spending aggregated by category for a single month", async () => {
+      await db.insert(schema.transactions).values([
         { accountId: checkingId, postedAt: "2026-03-01", name: "Rent", amount: 200000, category: "Rent/Home", isTransfer: false, reviewState: "none" },
         { accountId: creditId, postedAt: "2026-03-05", name: "Grocery 1", amount: 5000, category: "Groceries", isTransfer: false, reviewState: "none" },
         { accountId: creditId, postedAt: "2026-03-10", name: "Grocery 2", amount: 7500, category: "Groceries", isTransfer: false, reviewState: "none" },
         { accountId: creditId, postedAt: "2026-03-15", name: "Dinner", amount: 3000, category: "Eating Out", isTransfer: false, reviewState: "none" },
-      ]).run();
+      ]).returning();
 
-      const result = getSpendingByCategory(db, "2026-03-01", "2026-04-01");
+      const result = await getSpendingByCategory(db, "2026-03-01", "2026-04-01");
 
       expect(result.length).toBe(3);
       // Sorted descending by amount
@@ -103,43 +86,43 @@ describe("Analytics Queries", () => {
       expect(result[2].amount).toBe(3000);
     });
 
-    it("excludes transfers from spending", () => {
-      db.insert(schema.transactions).values([
+    it("excludes transfers from spending", async () => {
+      await db.insert(schema.transactions).values([
         { accountId: checkingId, postedAt: "2026-03-01", name: "Rent", amount: 200000, category: "Rent/Home", isTransfer: false, reviewState: "none" },
         { accountId: checkingId, postedAt: "2026-03-15", name: "Transfer", amount: 100000, isTransfer: true, reviewState: "none" },
-      ]).run();
+      ]).returning();
 
-      const result = getSpendingByCategory(db, "2026-03-01", "2026-04-01");
+      const result = await getSpendingByCategory(db, "2026-03-01", "2026-04-01");
 
       expect(result.length).toBe(1);
       expect(result[0].category).toBe("Rent/Home");
       expect(result[0].amount).toBe(200000);
     });
 
-    it("excludes income (negative amounts) from spending", () => {
-      db.insert(schema.transactions).values([
+    it("excludes income (negative amounts) from spending", async () => {
+      await db.insert(schema.transactions).values([
         { accountId: checkingId, postedAt: "2026-03-01", name: "Rent", amount: 200000, category: "Rent/Home", isTransfer: false, reviewState: "none" },
         { accountId: checkingId, postedAt: "2026-03-15", name: "Paycheck", amount: -500000, category: "Income", isTransfer: false, reviewState: "none" },
-      ]).run();
+      ]).returning();
 
-      const result = getSpendingByCategory(db, "2026-03-01", "2026-04-01");
+      const result = await getSpendingByCategory(db, "2026-03-01", "2026-04-01");
 
       expect(result.length).toBe(1);
       expect(result[0].category).toBe("Rent/Home");
     });
 
-    it("handles transaction splits correctly", () => {
-      db.insert(schema.transactions).values([
+    it("handles transaction splits correctly", async () => {
+      await db.insert(schema.transactions).values([
         { accountId: checkingId, postedAt: "2026-03-01", name: "Target", amount: 10000, category: "Home Goods", isTransfer: false, reviewState: "none" },
-      ]).run();
+      ]).returning();
 
-      const txn = db.select().from(schema.transactions).all()[0];
-      db.insert(schema.transactionSplits).values([
+      const [txn] = await db.select().from(schema.transactions).limit(1);
+      await db.insert(schema.transactionSplits).values([
         { transactionId: txn.id, category: "Home Goods", amount: 6000 },
         { transactionId: txn.id, category: "Groceries", amount: 4000 },
-      ]).run();
+      ]).returning();
 
-      const result = getSpendingByCategory(db, "2026-03-01", "2026-04-01");
+      const result = await getSpendingByCategory(db, "2026-03-01", "2026-04-01");
 
       const homeGoods = result.find((r) => r.category === "Home Goods");
       const groceries = result.find((r) => r.category === "Groceries");
@@ -147,32 +130,32 @@ describe("Analytics Queries", () => {
       expect(groceries?.amount).toBe(4000);
     });
 
-    it("aggregates across multiple months in a date range", () => {
-      db.insert(schema.transactions).values([
+    it("aggregates across multiple months in a date range", async () => {
+      await db.insert(schema.transactions).values([
         { accountId: checkingId, postedAt: "2026-01-15", name: "Jan Grocery", amount: 10000, category: "Groceries", isTransfer: false, reviewState: "none" },
         { accountId: checkingId, postedAt: "2026-02-15", name: "Feb Grocery", amount: 15000, category: "Groceries", isTransfer: false, reviewState: "none" },
         { accountId: checkingId, postedAt: "2026-03-15", name: "Mar Grocery", amount: 12000, category: "Groceries", isTransfer: false, reviewState: "none" },
-      ]).run();
+      ]).returning();
 
       // Last 3 months: Jan, Feb, Mar
-      const result = getSpendingByCategory(db, "2026-01-01", "2026-04-01");
+      const result = await getSpendingByCategory(db, "2026-01-01", "2026-04-01");
 
       expect(result.length).toBe(1);
       expect(result[0].category).toBe("Groceries");
       expect(result[0].amount).toBe(37000);
     });
 
-    it("returns empty array when no spending data", () => {
-      const result = getSpendingByCategory(db, "2026-03-01", "2026-04-01");
+    it("returns empty array when no spending data", async () => {
+      const result = await getSpendingByCategory(db, "2026-03-01", "2026-04-01");
       expect(result).toEqual([]);
     });
 
-    it("includes category colors from the categories table", () => {
-      db.insert(schema.transactions).values([
+    it("includes category colors from the categories table", async () => {
+      await db.insert(schema.transactions).values([
         { accountId: checkingId, postedAt: "2026-03-01", name: "Rent", amount: 200000, category: "Rent/Home", isTransfer: false, reviewState: "none" },
-      ]).run();
+      ]).returning();
 
-      const result = getSpendingByCategory(db, "2026-03-01", "2026-04-01");
+      const result = await getSpendingByCategory(db, "2026-03-01", "2026-04-01");
 
       expect(result[0].color).toBe("#8b5cf6"); // Rent/Home color
     });
@@ -181,8 +164,8 @@ describe("Analytics Queries", () => {
   // ─── Monthly Spending Trends ──────────────────────────────────────
 
   describe("getMonthlySpendingTrends", () => {
-    it("returns total spending per month over the given range", () => {
-      db.insert(schema.transactions).values([
+    it("returns total spending per month over the given range", async () => {
+      await db.insert(schema.transactions).values([
         { accountId: checkingId, postedAt: "2025-10-01", name: "Oct Rent", amount: 200000, category: "Rent/Home", isTransfer: false, reviewState: "none" },
         { accountId: creditId, postedAt: "2025-10-05", name: "Oct Grocery", amount: 15000, category: "Groceries", isTransfer: false, reviewState: "none" },
         { accountId: checkingId, postedAt: "2025-11-01", name: "Nov Rent", amount: 200000, category: "Rent/Home", isTransfer: false, reviewState: "none" },
@@ -191,9 +174,9 @@ describe("Analytics Queries", () => {
         { accountId: checkingId, postedAt: "2026-01-01", name: "Jan Rent", amount: 200000, category: "Rent/Home", isTransfer: false, reviewState: "none" },
         { accountId: checkingId, postedAt: "2026-02-01", name: "Feb Rent", amount: 200000, category: "Rent/Home", isTransfer: false, reviewState: "none" },
         { accountId: checkingId, postedAt: "2026-03-01", name: "Mar Rent", amount: 200000, category: "Rent/Home", isTransfer: false, reviewState: "none" },
-      ]).run();
+      ]).returning();
 
-      const result = getMonthlySpendingTrends(db, 6);
+      const result = await getMonthlySpendingTrends(db, 6);
 
       // Should return 6 months sorted oldest first (for chart display)
       expect(result.length).toBe(6);
@@ -203,26 +186,26 @@ describe("Analytics Queries", () => {
       expect(result[5].total).toBe(200000);
     });
 
-    it("excludes transfers and income from monthly totals", () => {
-      db.insert(schema.transactions).values([
+    it("excludes transfers and income from monthly totals", async () => {
+      await db.insert(schema.transactions).values([
         { accountId: checkingId, postedAt: "2026-03-01", name: "Rent", amount: 200000, category: "Rent/Home", isTransfer: false, reviewState: "none" },
         { accountId: checkingId, postedAt: "2026-03-15", name: "Transfer", amount: 100000, isTransfer: true, reviewState: "none" },
         { accountId: checkingId, postedAt: "2026-03-15", name: "Paycheck", amount: -500000, category: "Income", isTransfer: false, reviewState: "none" },
-      ]).run();
+      ]).returning();
 
-      const result = getMonthlySpendingTrends(db, 1);
+      const result = await getMonthlySpendingTrends(db, 1);
 
       expect(result.length).toBe(1);
       expect(result[0].total).toBe(200000);
     });
 
-    it("includes months with zero spending", () => {
+    it("includes months with zero spending", async () => {
       // Only add data for one month
-      db.insert(schema.transactions).values([
+      await db.insert(schema.transactions).values([
         { accountId: checkingId, postedAt: "2026-03-01", name: "Rent", amount: 200000, category: "Rent/Home", isTransfer: false, reviewState: "none" },
-      ]).run();
+      ]).returning();
 
-      const result = getMonthlySpendingTrends(db, 3);
+      const result = await getMonthlySpendingTrends(db, 3);
 
       expect(result.length).toBe(3);
       // Months without spending should have 0
@@ -230,14 +213,14 @@ describe("Analytics Queries", () => {
       expect(emptyMonths.length).toBe(2);
     });
 
-    it("returns spending sorted by month ascending (oldest first for chart display)", () => {
-      db.insert(schema.transactions).values([
+    it("returns spending sorted by month ascending (oldest first for chart display)", async () => {
+      await db.insert(schema.transactions).values([
         { accountId: checkingId, postedAt: "2026-01-01", name: "Jan", amount: 100000, category: "Rent/Home", isTransfer: false, reviewState: "none" },
         { accountId: checkingId, postedAt: "2026-02-01", name: "Feb", amount: 200000, category: "Rent/Home", isTransfer: false, reviewState: "none" },
         { accountId: checkingId, postedAt: "2026-03-01", name: "Mar", amount: 150000, category: "Rent/Home", isTransfer: false, reviewState: "none" },
-      ]).run();
+      ]).returning();
 
-      const result = getMonthlySpendingTrends(db, 3);
+      const result = await getMonthlySpendingTrends(db, 3);
 
       expect(result[0].month).toBe("2026-01");
       expect(result[1].month).toBe("2026-02");
@@ -248,35 +231,35 @@ describe("Analytics Queries", () => {
   // ─── Category Drill-Down ──────────────────────────────────────────
 
   describe("getCategoryTransactions", () => {
-    it("returns transactions for a specific category in the date range", () => {
-      db.insert(schema.transactions).values([
+    it("returns transactions for a specific category in the date range", async () => {
+      await db.insert(schema.transactions).values([
         { accountId: checkingId, postedAt: "2026-03-01", name: "Grocery 1", amount: 5000, category: "Groceries", isTransfer: false, reviewState: "none" },
         { accountId: checkingId, postedAt: "2026-03-10", name: "Grocery 2", amount: 7500, category: "Groceries", isTransfer: false, reviewState: "none" },
         { accountId: checkingId, postedAt: "2026-03-15", name: "Dinner", amount: 3000, category: "Eating Out", isTransfer: false, reviewState: "none" },
-      ]).run();
+      ]).returning();
 
-      const result = getCategoryTransactions(db, "Groceries", "2026-03-01", "2026-04-01");
+      const result = await getCategoryTransactions(db, "Groceries", "2026-03-01", "2026-04-01");
 
       expect(result.length).toBe(2);
       expect(result[0].name).toBe("Grocery 2"); // Most recent first
       expect(result[1].name).toBe("Grocery 1");
     });
 
-    it("includes transactions where the category appears in splits", () => {
-      db.insert(schema.transactions).values([
+    it("includes transactions where the category appears in splits", async () => {
+      await db.insert(schema.transactions).values([
         { accountId: checkingId, postedAt: "2026-03-01", name: "Target", amount: 10000, category: "Home Goods", isTransfer: false, reviewState: "none" },
         { accountId: checkingId, postedAt: "2026-03-05", name: "Pure Grocery", amount: 5000, category: "Groceries", isTransfer: false, reviewState: "none" },
-      ]).run();
+      ]).returning();
 
-      const txns = db.select().from(schema.transactions).all();
+      const txns = await db.select().from(schema.transactions);
       const targetTxn = txns.find((t) => t.name === "Target")!;
 
-      db.insert(schema.transactionSplits).values([
+      await db.insert(schema.transactionSplits).values([
         { transactionId: targetTxn.id, category: "Home Goods", amount: 6000 },
         { transactionId: targetTxn.id, category: "Groceries", amount: 4000 },
-      ]).run();
+      ]).returning();
 
-      const result = getCategoryTransactions(db, "Groceries", "2026-03-01", "2026-04-01");
+      const result = await getCategoryTransactions(db, "Groceries", "2026-03-01", "2026-04-01");
 
       // Should return both the pure Grocery transaction and the split that contains Groceries
       expect(result.length).toBe(2);
@@ -285,30 +268,30 @@ describe("Analytics Queries", () => {
       expect(names).toContain("Target");
     });
 
-    it("excludes transactions outside the date range", () => {
-      db.insert(schema.transactions).values([
+    it("excludes transactions outside the date range", async () => {
+      await db.insert(schema.transactions).values([
         { accountId: checkingId, postedAt: "2026-02-28", name: "Feb Grocery", amount: 5000, category: "Groceries", isTransfer: false, reviewState: "none" },
         { accountId: checkingId, postedAt: "2026-03-01", name: "Mar Grocery", amount: 7500, category: "Groceries", isTransfer: false, reviewState: "none" },
         { accountId: checkingId, postedAt: "2026-04-01", name: "Apr Grocery", amount: 6000, category: "Groceries", isTransfer: false, reviewState: "none" },
-      ]).run();
+      ]).returning();
 
-      const result = getCategoryTransactions(db, "Groceries", "2026-03-01", "2026-04-01");
+      const result = await getCategoryTransactions(db, "Groceries", "2026-03-01", "2026-04-01");
 
       expect(result.length).toBe(1);
       expect(result[0].name).toBe("Mar Grocery");
     });
 
-    it("returns empty array when no matching transactions", () => {
-      const result = getCategoryTransactions(db, "Groceries", "2026-03-01", "2026-04-01");
+    it("returns empty array when no matching transactions", async () => {
+      const result = await getCategoryTransactions(db, "Groceries", "2026-03-01", "2026-04-01");
       expect(result).toEqual([]);
     });
 
-    it("includes account name with each transaction", () => {
-      db.insert(schema.transactions).values([
+    it("includes account name with each transaction", async () => {
+      await db.insert(schema.transactions).values([
         { accountId: checkingId, postedAt: "2026-03-01", name: "Grocery", amount: 5000, category: "Groceries", isTransfer: false, reviewState: "none" },
-      ]).run();
+      ]).returning();
 
-      const result = getCategoryTransactions(db, "Groceries", "2026-03-01", "2026-04-01");
+      const result = await getCategoryTransactions(db, "Groceries", "2026-03-01", "2026-04-01");
 
       expect(result[0].accountName).toBe("Checking");
     });

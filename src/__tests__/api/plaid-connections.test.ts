@@ -1,434 +1,348 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
-import Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
-import { migrate } from "drizzle-orm/better-sqlite3/migrator";
-import { sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
+import type { AppDatabase } from "@/db/index";
 import * as schema from "@/db/schema";
 import {
-  getAllConnections,
-  getConnectionById,
   createConnection,
+  createPlaidAccount,
   deleteConnection,
   findOrCreatePlaidInstitution,
-  createPlaidAccount,
+  getAllConnections,
+  getConnectionById,
 } from "@/db/queries/connections";
+import {
+  closeTestDb,
+  createTestDb,
+  resetTestDb,
+  seedWorkspace,
+  type TestDb,
+} from "@/__tests__/helpers/test-db";
 
-let sqlite: InstanceType<typeof Database>;
-let db: ReturnType<typeof drizzle>;
+let testDb: TestDb;
+let db: AppDatabase;
 
-beforeAll(() => {
-  sqlite = new Database(":memory:");
-  sqlite.pragma("journal_mode = WAL");
-  sqlite.pragma("foreign_keys = ON");
-  db = drizzle({ client: sqlite, schema });
-  migrate(db, { migrationsFolder: "./drizzle" });
+beforeAll(async () => {
+  testDb = await createTestDb();
+  db = testDb.db;
 });
 
-afterAll(() => {
-  sqlite.close();
+afterAll(async () => {
+  await closeTestDb(testDb);
 });
 
-beforeEach(() => {
-  db.run(sql`DELETE FROM transaction_splits`);
-  db.run(sql`DELETE FROM account_snapshots`);
-  db.run(sql`DELETE FROM account_links`);
-  db.run(sql`DELETE FROM transactions`);
-  db.run(sql`DELETE FROM accounts`);
-  db.run(sql`DELETE FROM connections`);
-  db.run(sql`DELETE FROM institutions`);
+beforeEach(async () => {
+  await resetTestDb(db);
 });
 
-describe("connections queries", () => {
-  describe("createConnection", () => {
-    it("creates a new connection record", () => {
-      const conn = createConnection(db, {
-        institutionName: "Test Bank",
-        provider: "plaid",
-        accessToken: "encrypted-access-token",
-        itemId: "item-id-123",
-        isEncrypted: true,
-      });
-
-      expect(conn.id).toBeDefined();
-      expect(conn.institutionName).toBe("Test Bank");
-      expect(conn.provider).toBe("plaid");
-      expect(conn.accessToken).toBe("encrypted-access-token");
-      expect(conn.itemId).toBe("item-id-123");
-      expect(conn.isEncrypted).toBe(true);
-      expect(conn.createdAt).toBeDefined();
+describe("connection lifecycle", () => {
+  it("creates and fetches a connection", async () => {
+    const created = await createConnection(db, {
+      institutionName: "Test Bank",
+      provider: "plaid",
+      accessToken: "encrypted-access-token",
+      itemId: "item-id-123",
+      isEncrypted: true,
     });
+
+    expect(created.id).toBeGreaterThan(0);
+    expect(created.institutionName).toBe("Test Bank");
+
+    const found = await getConnectionById(db, created.id);
+    expect(found?.itemId).toBe("item-id-123");
   });
 
-  describe("getConnectionById", () => {
-    it("returns a connection by ID", () => {
-      const created = createConnection(db, {
-        institutionName: "First Platypus Bank",
-        provider: "plaid",
-        accessToken: "enc-token",
-        itemId: "item-456",
-        isEncrypted: true,
-      });
+  it("returns null/false when a connection does not exist", async () => {
+    await expect(getConnectionById(db, 99_999)).resolves.toBeNull();
+    await expect(deleteConnection(db, 99_999)).resolves.toBe(false);
+  });
+});
 
-      const found = getConnectionById(db, created.id);
-      expect(found).not.toBeNull();
-      expect(found!.institutionName).toBe("First Platypus Bank");
+describe("getAllConnections", () => {
+  it("returns connections with only their linked accounts", async () => {
+    const firstConnection = await createConnection(db, {
+      institutionName: "Shared Bank",
+      provider: "plaid",
+      accessToken: "enc-1",
+      itemId: "item-1",
+      isEncrypted: true,
+    });
+    const secondConnection = await createConnection(db, {
+      institutionName: "Shared Bank",
+      provider: "plaid",
+      accessToken: "enc-2",
+      itemId: "item-2",
+      isEncrypted: true,
     });
 
-    it("returns null for non-existent ID", () => {
-      const found = getConnectionById(db, 99999);
-      expect(found).toBeNull();
-    });
+    const institutionId = await findOrCreatePlaidInstitution(db, "Shared Bank", "ins_shared");
+
+    await createPlaidAccount(
+      db,
+      {
+        institutionId,
+        externalRef: "shared-acct-1",
+        name: "Checking 1",
+        mask: "1111",
+        type: "checking",
+        subtype: "checking",
+        balanceCurrent: 100_000,
+        balanceAvailable: 100_000,
+        isAsset: true,
+      },
+      firstConnection.id,
+      "Shared Bank",
+    );
+
+    await createPlaidAccount(
+      db,
+      {
+        institutionId,
+        externalRef: "shared-acct-2",
+        name: "Checking 2",
+        mask: "2222",
+        type: "checking",
+        subtype: "checking",
+        balanceCurrent: 200_000,
+        balanceAvailable: 200_000,
+        isAsset: true,
+      },
+      secondConnection.id,
+      "Shared Bank",
+    );
+
+    const connections = await getAllConnections(db);
+    expect(connections).toHaveLength(2);
+    expect(connections.find((conn) => conn.id === firstConnection.id)?.accounts.map((a) => a.name)).toEqual([
+      "Checking 1",
+    ]);
+    expect(connections.find((conn) => conn.id === secondConnection.id)?.accounts.map((a) => a.name)).toEqual([
+      "Checking 2",
+    ]);
   });
 
-  describe("getAllConnections", () => {
-    it("returns empty array when no connections", () => {
-      const conns = getAllConnections(db);
-      expect(conns).toEqual([]);
-    });
+  it("filters connections by workspace", async () => {
+    const alpha = await seedWorkspace(db, { name: "Alpha", slug: "alpha-connections" });
+    const beta = await seedWorkspace(db, { name: "Beta", slug: "beta-connections" });
 
-    it("returns connections with linked accounts", () => {
-      // Create a connection
-      const connection = createConnection(db, {
-        institutionName: "Test Bank",
+    const alphaConnection = await createConnection(
+      db,
+      {
+        institutionName: "Alpha Bank",
         provider: "plaid",
-        accessToken: "enc-token",
-        itemId: "item-001",
+        accessToken: "alpha-token",
+        itemId: "alpha-item",
         isEncrypted: true,
-      });
-
-      // Create institution and account
-      const instId = findOrCreatePlaidInstitution(db, "Test Bank", "ins_1");
-      createPlaidAccount(
-        db,
-        {
-          institutionId: instId,
-          externalRef: "plaid-acct-001",
-          name: "Plaid Checking",
-          mask: "0000",
-          type: "checking",
-          subtype: "checking",
-          balanceCurrent: 100000,
-          balanceAvailable: 100000,
-          isAsset: true,
-        },
-        connection.id,
-        "Test Bank"
-      );
-
-      const conns = getAllConnections(db);
-      expect(conns).toHaveLength(1);
-      expect(conns[0]!.institutionName).toBe("Test Bank");
-      expect(conns[0]!.accounts).toHaveLength(1);
-      expect(conns[0]!.accounts[0]!.name).toBe("Plaid Checking");
-      expect(conns[0]!.accounts[0]!.mask).toBe("0000");
-    });
-
-    it("supports multiple connections", () => {
-      createConnection(db, {
-        institutionName: "Bank A",
+      },
+      alpha.id,
+    );
+    await createConnection(
+      db,
+      {
+        institutionName: "Beta Bank",
         provider: "plaid",
-        accessToken: "enc-a",
-        itemId: "item-a",
+        accessToken: "beta-token",
+        itemId: "beta-item",
         isEncrypted: true,
-      });
-      createConnection(db, {
-        institutionName: "Bank B",
-        provider: "plaid",
-        accessToken: "enc-b",
-        itemId: "item-b",
-        isEncrypted: true,
-      });
+      },
+      beta.id,
+    );
 
-      const conns = getAllConnections(db);
-      expect(conns).toHaveLength(2);
-    });
+    const scoped = await getAllConnections(db, alpha.id);
+    expect(scoped).toHaveLength(1);
+    expect(scoped[0]?.id).toBe(alphaConnection.id);
+  });
+});
 
-    it("keeps same-bank connections isolated", () => {
-      const firstConnection = createConnection(db, {
-        institutionName: "Shared Bank",
-        provider: "plaid",
-        accessToken: "enc-1",
-        itemId: "item-1",
-        isEncrypted: true,
-      });
-      const secondConnection = createConnection(db, {
-        institutionName: "Shared Bank",
-        provider: "plaid",
-        accessToken: "enc-2",
-        itemId: "item-2",
-        isEncrypted: true,
-      });
+describe("findOrCreatePlaidInstitution", () => {
+  it("creates and reuses Plaid institutions", async () => {
+    const firstId = await findOrCreatePlaidInstitution(db, "New Bank", "ins_123");
+    const secondId = await findOrCreatePlaidInstitution(db, "New Bank", "ins_123");
 
-      const instId = findOrCreatePlaidInstitution(db, "Shared Bank", "ins_shared");
+    expect(firstId).toBe(secondId);
 
-      createPlaidAccount(
-        db,
-        {
-          institutionId: instId,
-          externalRef: "shared-acct-1",
-          name: "Checking 1",
-          mask: "1111",
-          type: "checking",
-          subtype: "checking",
-          balanceCurrent: 100000,
-          balanceAvailable: 100000,
-          isAsset: true,
-        },
-        firstConnection.id,
-        "Shared Bank"
-      );
-      createPlaidAccount(
-        db,
-        {
-          institutionId: instId,
-          externalRef: "shared-acct-2",
-          name: "Checking 2",
-          mask: "2222",
-          type: "checking",
-          subtype: "checking",
-          balanceCurrent: 200000,
-          balanceAvailable: 200000,
-          isAsset: true,
-        },
-        secondConnection.id,
-        "Shared Bank"
-      );
+    const [institution] = await db
+      .select()
+      .from(schema.institutions)
+      .where(eq(schema.institutions.id, firstId))
+      .limit(1);
 
-      const conns = getAllConnections(db);
-      expect(conns).toHaveLength(2);
-      expect(conns.find((conn) => conn.id === firstConnection.id)?.accounts).toHaveLength(1);
-      expect(conns.find((conn) => conn.id === firstConnection.id)?.accounts[0]?.name).toBe(
-        "Checking 1"
-      );
-      expect(conns.find((conn) => conn.id === secondConnection.id)?.accounts).toHaveLength(1);
-      expect(conns.find((conn) => conn.id === secondConnection.id)?.accounts[0]?.name).toBe(
-        "Checking 2"
-      );
-    });
+    expect(institution?.provider).toBe("plaid");
+    expect(institution?.plaidInstitutionId).toBe("ins_123");
   });
 
-  describe("deleteConnection", () => {
-    it("deletes a connection and its associated data", () => {
-      const conn = createConnection(db, {
-        institutionName: "Delete Bank",
-        provider: "plaid",
-        accessToken: "enc-token",
-        itemId: "item-del",
-        isEncrypted: true,
-      });
+  it("scopes institution reuse by workspace", async () => {
+    const alpha = await seedWorkspace(db, { name: "Alpha", slug: "alpha-inst" });
+    const beta = await seedWorkspace(db, { name: "Beta", slug: "beta-inst" });
 
-      // Create associated account
-      const instId = findOrCreatePlaidInstitution(db, "Delete Bank");
-      createPlaidAccount(
-        db,
-        {
-          institutionId: instId,
-          externalRef: "plaid-acct-del",
-          name: "Checking",
-          mask: "1234",
-          type: "checking",
-          subtype: "checking",
-          balanceCurrent: 50000,
-          balanceAvailable: 50000,
-          isAsset: true,
-        },
-        conn.id,
-        "Delete Bank"
-      );
+    const alphaId = await findOrCreatePlaidInstitution(db, "Shared Bank", "ins_shared", alpha.id);
+    const betaId = await findOrCreatePlaidInstitution(db, "Shared Bank", "ins_shared", beta.id);
 
-      const result = deleteConnection(db, conn.id);
-      expect(result).toBe(true);
+    expect(alphaId).not.toBe(betaId);
+  });
+});
 
-      // Connection should be gone
-      expect(getConnectionById(db, conn.id)).toBeNull();
-
-      // Accounts should be gone
-      const accounts = db.select().from(schema.accounts).all();
-      expect(accounts).toHaveLength(0);
-
-      // Account links should be gone
-      const links = db.select().from(schema.accountLinks).all();
-      expect(links).toHaveLength(0);
+describe("createPlaidAccount", () => {
+  it("creates a new Plaid account and link record", async () => {
+    const connection = await createConnection(db, {
+      institutionName: "Test Bank",
+      provider: "plaid",
+      accessToken: "enc-test",
+      itemId: "item-test",
+      isEncrypted: true,
     });
+    const institutionId = await findOrCreatePlaidInstitution(db, "Test Bank");
 
-    it("returns false for non-existent connection", () => {
-      const result = deleteConnection(db, 99999);
-      expect(result).toBe(false);
-    });
+    const account = await createPlaidAccount(
+      db,
+      {
+        institutionId,
+        externalRef: "plaid-acct-new",
+        name: "Savings",
+        mask: "5678",
+        type: "savings",
+        subtype: "savings",
+        balanceCurrent: 250_000,
+        balanceAvailable: 250_000,
+        isAsset: true,
+      },
+      connection.id,
+      "Test Bank",
+    );
 
-    it("only deletes accounts linked to the requested connection", () => {
-      const firstConnection = createConnection(db, {
-        institutionName: "Shared Delete Bank",
-        provider: "plaid",
-        accessToken: "enc-1",
-        itemId: "item-1",
-        isEncrypted: true,
-      });
-      const secondConnection = createConnection(db, {
-        institutionName: "Shared Delete Bank",
-        provider: "plaid",
-        accessToken: "enc-2",
-        itemId: "item-2",
-        isEncrypted: true,
-      });
+    expect(account.source).toBe("plaid");
+    expect(account.externalRef).toBe("plaid-acct-new");
 
-      const instId = findOrCreatePlaidInstitution(db, "Shared Delete Bank");
-
-      createPlaidAccount(
-        db,
-        {
-          institutionId: instId,
-          externalRef: "delete-shared-1",
-          name: "Account 1",
-          mask: "1111",
-          type: "checking",
-          subtype: "checking",
-          balanceCurrent: 10000,
-          balanceAvailable: 10000,
-          isAsset: true,
-        },
-        firstConnection.id,
-        "Shared Delete Bank"
-      );
-      const secondAccount = createPlaidAccount(
-        db,
-        {
-          institutionId: instId,
-          externalRef: "delete-shared-2",
-          name: "Account 2",
-          mask: "2222",
-          type: "checking",
-          subtype: "checking",
-          balanceCurrent: 20000,
-          balanceAvailable: 20000,
-          isAsset: true,
-        },
-        secondConnection.id,
-        "Shared Delete Bank"
-      );
-
-      expect(deleteConnection(db, firstConnection.id)).toBe(true);
-
-      const remainingAccounts = db.select().from(schema.accounts).all();
-      expect(remainingAccounts).toHaveLength(1);
-      expect(remainingAccounts[0]?.id).toBe(secondAccount.id);
-
-      const remainingLinks = db.select().from(schema.accountLinks).all();
-      expect(remainingLinks).toHaveLength(1);
-      expect(remainingLinks[0]?.accountId).toBe(secondAccount.id);
-
-      expect(getConnectionById(db, secondConnection.id)).not.toBeNull();
-    });
+    const links = await db.select().from(schema.accountLinks);
+    expect(links).toHaveLength(1);
+    expect(links[0]?.accountId).toBe(account.id);
+    expect(links[0]?.connectionId).toBe(connection.id);
   });
 
-  describe("findOrCreatePlaidInstitution", () => {
-    it("creates a new institution", () => {
-      const id = findOrCreatePlaidInstitution(db, "New Bank", "ins_123");
-      expect(id).toBeGreaterThan(0);
-
-      const inst = db
-        .select()
-        .from(schema.institutions)
-        .all()
-        .find((i) => i.id === id);
-      expect(inst!.name).toBe("New Bank");
-      expect(inst!.provider).toBe("plaid");
-      expect(inst!.plaidInstitutionId).toBe("ins_123");
+  it("updates an existing account when the external ref already exists", async () => {
+    const connection = await createConnection(db, {
+      institutionName: "Test Bank",
+      provider: "plaid",
+      accessToken: "enc-test",
+      itemId: "item-test",
+      isEncrypted: true,
     });
+    const institutionId = await findOrCreatePlaidInstitution(db, "Test Bank");
 
-    it("reuses existing institution", () => {
-      const id1 = findOrCreatePlaidInstitution(db, "Same Bank");
-      const id2 = findOrCreatePlaidInstitution(db, "Same Bank");
-      expect(id1).toBe(id2);
-    });
+    const first = await createPlaidAccount(
+      db,
+      {
+        institutionId,
+        externalRef: "plaid-dup",
+        name: "Checking",
+        mask: "0000",
+        type: "checking",
+        subtype: "checking",
+        balanceCurrent: 100_000,
+        balanceAvailable: 100_000,
+        isAsset: true,
+      },
+      connection.id,
+      "Test Bank",
+    );
+
+    const second = await createPlaidAccount(
+      db,
+      {
+        institutionId,
+        externalRef: "plaid-dup",
+        name: "Checking",
+        mask: "0000",
+        type: "checking",
+        subtype: "checking",
+        balanceCurrent: 200_000,
+        balanceAvailable: 150_000,
+        isAsset: true,
+      },
+      connection.id,
+      "Test Bank",
+    );
+
+    expect(second.id).toBe(first.id);
+    expect(second.balanceCurrent).toBe(200_000);
+    expect(second.balanceAvailable).toBe(150_000);
   });
+});
 
-  describe("createPlaidAccount", () => {
-    it("creates a new Plaid account with link", () => {
-      const connection = createConnection(db, {
-        institutionName: "Test Bank",
-        provider: "plaid",
-        accessToken: "enc-test",
-        itemId: "item-test",
-        isEncrypted: true,
-      });
-      const instId = findOrCreatePlaidInstitution(db, "Test Bank");
-      const account = createPlaidAccount(
-        db,
-        {
-          institutionId: instId,
-          externalRef: "plaid-acct-new",
-          name: "Savings",
-          mask: "5678",
-          type: "savings",
-          subtype: "savings",
-          balanceCurrent: 250000,
-          balanceAvailable: 250000,
-          isAsset: true,
-        },
-        connection.id,
-        "Test Bank"
-      );
-
-      expect(account.id).toBeDefined();
-      expect(account.name).toBe("Savings");
-      expect(account.source).toBe("plaid");
-      expect(account.externalRef).toBe("plaid-acct-new");
-
-      // Check account link was created
-      const links = db.select().from(schema.accountLinks).all();
-      expect(links).toHaveLength(1);
-      expect(links[0]!.externalKey).toBe("plaid-acct-new");
-      expect(links[0]!.accountId).toBe(account.id);
-      expect(links[0]!.connectionId).toBe(connection.id);
+describe("deleteConnection", () => {
+  it("deletes only the selected connection and its linked data", async () => {
+    const firstConnection = await createConnection(db, {
+      institutionName: "Shared Delete Bank",
+      provider: "plaid",
+      accessToken: "enc-1",
+      itemId: "item-1",
+      isEncrypted: true,
+    });
+    const secondConnection = await createConnection(db, {
+      institutionName: "Shared Delete Bank",
+      provider: "plaid",
+      accessToken: "enc-2",
+      itemId: "item-2",
+      isEncrypted: true,
     });
 
-    it("updates balance for existing account (same externalRef)", () => {
-      const connection = createConnection(db, {
-        institutionName: "Test Bank",
-        provider: "plaid",
-        accessToken: "enc-test",
-        itemId: "item-test",
-        isEncrypted: true,
-      });
-      const instId = findOrCreatePlaidInstitution(db, "Test Bank");
-      const acct1 = createPlaidAccount(
-        db,
-        {
-          institutionId: instId,
-          externalRef: "plaid-dup",
-          name: "Checking",
-          mask: "0000",
-          type: "checking",
-          subtype: "checking",
-          balanceCurrent: 100000,
-          balanceAvailable: 100000,
-          isAsset: true,
-        },
-        connection.id,
-        "Test Bank"
-      );
+    const institutionId = await findOrCreatePlaidInstitution(db, "Shared Delete Bank");
 
-      // Create again with updated balance
-      const acct2 = createPlaidAccount(
-        db,
-        {
-          institutionId: instId,
-          externalRef: "plaid-dup",
-          name: "Checking",
-          mask: "0000",
-          type: "checking",
-          subtype: "checking",
-          balanceCurrent: 200000,
-          balanceAvailable: 200000,
-          isAsset: true,
-        },
-        connection.id,
-        "Test Bank"
-      );
+    await createPlaidAccount(
+      db,
+      {
+        institutionId,
+        externalRef: "delete-shared-1",
+        name: "Account 1",
+        mask: "1111",
+        type: "checking",
+        subtype: "checking",
+        balanceCurrent: 10_000,
+        balanceAvailable: 10_000,
+        isAsset: true,
+      },
+      firstConnection.id,
+      "Shared Delete Bank",
+    );
 
-      expect(acct2.id).toBe(acct1.id);
-      expect(acct2.balanceCurrent).toBe(200000);
+    const secondAccount = await createPlaidAccount(
+      db,
+      {
+        institutionId,
+        externalRef: "delete-shared-2",
+        name: "Account 2",
+        mask: "2222",
+        type: "checking",
+        subtype: "checking",
+        balanceCurrent: 20_000,
+        balanceAvailable: 20_000,
+        isAsset: true,
+      },
+      secondConnection.id,
+      "Shared Delete Bank",
+    );
+
+    await db.insert(schema.transactions).values({
+      accountId: secondAccount.id,
+      postedAt: "2026-04-01",
+      name: "Still here",
+      amount: 1_000,
+      category: "Groceries",
+      pending: false,
+      isTransfer: false,
+      isExcluded: false,
+      reviewState: "none",
     });
+
+    await expect(deleteConnection(db, firstConnection.id)).resolves.toBe(true);
+
+    const remainingAccounts = await db.select().from(schema.accounts);
+    const remainingConnections = await getAllConnections(db);
+    const remainingTransactions = await db.select().from(schema.transactions);
+
+    expect(remainingAccounts).toHaveLength(1);
+    expect(remainingAccounts[0]?.id).toBe(secondAccount.id);
+    expect(remainingConnections).toHaveLength(1);
+    expect(remainingConnections[0]?.id).toBe(secondConnection.id);
+    expect(remainingTransactions).toHaveLength(1);
   });
 });

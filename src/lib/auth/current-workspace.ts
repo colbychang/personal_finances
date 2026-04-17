@@ -22,8 +22,8 @@ export async function getCurrentAuthContext() {
     };
   }
 
-  const workspace = ensurePersonalWorkspaceForAuthUser(db, user.id, user.email);
-  claimUnownedFinanceDataForWorkspace(db, workspace.workspaceId);
+  const workspace = await ensurePersonalWorkspaceForAuthUser(db, user.id, user.email);
+  await claimUnownedFinanceDataForWorkspace(db, workspace.workspaceId);
 
   return {
     user,
@@ -41,8 +41,8 @@ export async function requireCurrentWorkspace() {
     throw new Error("Authentication required");
   }
 
-  const workspace = ensurePersonalWorkspaceForAuthUser(db, user.id, user.email);
-  claimUnownedFinanceDataForWorkspace(db, workspace.workspaceId);
+  const workspace = await ensurePersonalWorkspaceForAuthUser(db, user.id, user.email);
+  await claimUnownedFinanceDataForWorkspace(db, workspace.workspaceId);
 
   return {
     user,

@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
     let idsToProcess: number[];
 
     if (all === true) {
-      idsToProcess = getAllUncategorizedTransactionIdsForWorkspace(
+      idsToProcess = await getAllUncategorizedTransactionIdsForWorkspace(
         db,
         workspace.workspaceId,
       );
@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Step 1: Apply merchant rules
-    const { ruleApplied, remaining } = applyMerchantRules(
+    const { ruleApplied, remaining } = await applyMerchantRules(
       db,
       idsToProcess,
       workspace.workspaceId,
@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
 
     if (remaining.length > 0) {
       // Get transaction details for AI
-      const uncategorizedTxns = getUncategorizedTransactions(
+      const uncategorizedTxns = await getUncategorizedTransactions(
         db,
         remaining,
         workspace.workspaceId,
@@ -82,7 +82,7 @@ export async function POST(request: NextRequest) {
 
       if (uncategorizedTxns.length > 0) {
         // Get full category list
-        const categories = getAllCategories(db);
+        const categories = await getAllCategories(db);
         const categoryNames = categories.map((c) => c.name);
         const validCategorySet = new Set(categoryNames);
 
@@ -96,7 +96,7 @@ export async function POST(request: NextRequest) {
               validCategorySet.has(r.category)
             );
 
-            aiCategorized += applyCategorizationResults(db, validResults);
+            aiCategorized += await applyCategorizationResults(db, validResults);
           } catch (error) {
             console.error("AI categorization batch error:", error);
             aiError =

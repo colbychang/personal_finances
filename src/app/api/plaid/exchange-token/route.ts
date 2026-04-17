@@ -89,16 +89,20 @@ export async function POST(request: NextRequest) {
     const institutionName = body.institution_name ?? "Unknown Institution";
 
     // Create connection record
-    const connection = createConnection(db, {
-      institutionName,
-      provider: "plaid",
-      accessToken: encryptedToken,
-      itemId,
-      isEncrypted: true,
-    }, workspace.workspaceId);
+    const connection = await createConnection(
+      db,
+      {
+        institutionName,
+        provider: "plaid",
+        accessToken: encryptedToken,
+        itemId,
+        isEncrypted: true,
+      },
+      workspace.workspaceId,
+    );
 
     // Create or find institution
-    const institutionId = findOrCreatePlaidInstitution(
+    const institutionId = await findOrCreatePlaidInstitution(
       db,
       institutionName,
       body.institution_id,
@@ -137,7 +141,7 @@ export async function POST(request: NextRequest) {
         ? Math.round(plaidAccount.balances.available * 100)
         : null;
 
-      const account = createPlaidAccount(
+      const account = await createPlaidAccount(
         db,
         {
           institutionId,

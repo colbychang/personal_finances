@@ -13,7 +13,7 @@ export default async function AccountsPage() {
   }
 
   const { workspace } = await requireCurrentWorkspace();
-  const sections = getAllAccountsGrouped(db, workspace.workspaceId);
+  const sections = await getAllAccountsGrouped(db, workspace.workspaceId);
 
   return (
     <div className="p-4 md:p-8 max-w-4xl mx-auto">

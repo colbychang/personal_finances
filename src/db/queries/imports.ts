@@ -1,34 +1,26 @@
 import { and, eq } from "drizzle-orm";
-import type { drizzle } from "drizzle-orm/better-sqlite3";
+import type { AppDatabase } from "@/db/index";
 import * as schema from "../schema";
 import { shouldExcludePassiveIncomeTransaction } from "@/lib/transaction-exclusions";
 
-type DB = ReturnType<typeof drizzle>;
-
-// ─── Types ──────────────────────────────────────────────────────────
+type DB = AppDatabase;
 
 export interface ImportTransactionInput {
   accountId: number;
-  postedAt: string; // YYYY-MM-DD
+  postedAt: string;
   name: string;
-  amount: number; // cents (positive = expense, negative = income)
+  amount: number;
   category: string | null;
 }
 
-// ─── Queries ────────────────────────────────────────────────────────
-
-/**
- * Bulk import transactions into the database.
- * Returns the number of transactions inserted.
- */
-export function importTransactions(
+export async function importTransactions(
   database: DB,
   transactions: ImportTransactionInput[],
   workspaceId?: number,
-): number {
+): Promise<number> {
   if (transactions.length === 0) return 0;
 
-  database
+  await database
     .insert(schema.transactions)
     .values(
       transactions.map((txn) => ({
@@ -46,22 +38,17 @@ export function importTransactions(
           amount: txn.amount,
         }),
         reviewState: "none" as const,
-      }))
-    )
-    .run();
+      })),
+    );
 
   return transactions.length;
 }
 
-/**
- * Get existing transactions for an account for duplicate checking.
- * Returns minimal data needed for the duplicate detection algorithm.
- */
 export function getExistingTransactionsForDuplicateCheck(
   database: DB,
   accountId: number,
   workspaceId?: number,
-): Array<{ id: number; postedAt: string; name: string; amount: number }> {
+): Promise<Array<{ id: number; postedAt: string; name: string; amount: number }>> {
   return database
     .select({
       id: schema.transactions.id,
@@ -77,6 +64,5 @@ export function getExistingTransactionsForDuplicateCheck(
           ? undefined
           : eq(schema.transactions.workspaceId, workspaceId),
       ),
-    )
-    .all();
+    );
 }

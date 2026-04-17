@@ -22,12 +22,12 @@ export async function GET(request: Request, context: RouteContext) {
       return NextResponse.json({ error: "Invalid transaction ID" }, { status: 400 });
     }
 
-    const transaction = getTransactionById(db, txnId, workspace.workspaceId);
+    const transaction = await getTransactionById(db, txnId, workspace.workspaceId);
     if (!transaction) {
       return NextResponse.json({ error: "Transaction not found" }, { status: 404 });
     }
 
-    const splits = getTransactionSplits(db, txnId);
+    const splits = await getTransactionSplits(db, txnId);
     return NextResponse.json({ splits });
   } catch (error) {
     console.error("GET /api/transactions/[id]/splits error:", error);
@@ -55,7 +55,7 @@ export async function POST(request: Request, context: RouteContext) {
     }
 
     // Verify transaction exists
-    const transaction = getTransactionById(db, txnId, workspace.workspaceId);
+    const transaction = await getTransactionById(db, txnId, workspace.workspaceId);
     if (!transaction) {
       return NextResponse.json({ error: "Transaction not found" }, { status: 404 });
     }
@@ -72,7 +72,7 @@ export async function POST(request: Request, context: RouteContext) {
 
     // Empty array means "clear all splits"
     if (splits.length === 0) {
-      createOrUpdateSplits(db, txnId, []);
+      await createOrUpdateSplits(db, txnId, []);
       return NextResponse.json({ splits: [] }, { status: 201 });
     }
 
@@ -111,7 +111,7 @@ export async function POST(request: Request, context: RouteContext) {
       );
     }
 
-    const result = createOrUpdateSplits(db, txnId, splitsCents);
+    const result = await createOrUpdateSplits(db, txnId, splitsCents);
 
     return NextResponse.json({ splits: result }, { status: 201 });
   } catch (error) {

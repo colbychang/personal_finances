@@ -1,9 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
-import Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
-import { migrate } from "drizzle-orm/better-sqlite3/migrator";
-import { sql } from "drizzle-orm";
-import * as schema from "@/db/schema";
+import type { AppDatabase } from "@/db/index";
 import {
   getAllMerchantRules,
   getMerchantRuleByKey,
@@ -12,24 +8,27 @@ import {
   deleteMerchantRule,
   normalizeMerchantKey,
 } from "@/db/queries/merchant-rules";
+import {
+  closeTestDb,
+  createTestDb,
+  resetTestDb,
+  type TestDb,
+} from "@/__tests__/helpers/test-db";
 
-let sqlite: InstanceType<typeof Database>;
-let db: ReturnType<typeof drizzle>;
+let testDb: TestDb;
+let db: AppDatabase;
 
-beforeAll(() => {
-  sqlite = new Database(":memory:");
-  sqlite.pragma("journal_mode = WAL");
-  sqlite.pragma("foreign_keys = ON");
-  db = drizzle({ client: sqlite, schema });
-  migrate(db, { migrationsFolder: "./drizzle" });
+beforeAll(async () => {
+  testDb = await createTestDb();
+  db = testDb.db;
 });
 
-afterAll(() => {
-  sqlite.close();
+afterAll(async () => {
+  await closeTestDb(testDb);
 });
 
-beforeEach(() => {
-  db.run(sql`DELETE FROM merchant_rules`);
+beforeEach(async () => {
+  await resetTestDb(db);
 });
 
 // ─── Tests: normalizeMerchantKey ─────────────────────────────────────
@@ -51,8 +50,8 @@ describe("normalizeMerchantKey", () => {
 // ─── Tests: createOrUpdateMerchantRule ───────────────────────────────
 
 describe("createOrUpdateMerchantRule", () => {
-  it("creates a new merchant rule", () => {
-    const rule = createOrUpdateMerchantRule(db, {
+  it("creates a new merchant rule", async () => {
+    const rule = await createOrUpdateMerchantRule(db, {
       merchantKey: "whole foods",
       label: "Whole Foods",
       category: "Groceries",
@@ -65,14 +64,14 @@ describe("createOrUpdateMerchantRule", () => {
     expect(rule.isTransfer).toBe(false);
   });
 
-  it("updates existing rule when merchantKey matches", () => {
-    createOrUpdateMerchantRule(db, {
+  it("updates existing rule when merchantKey matches", async () => {
+    await createOrUpdateMerchantRule(db, {
       merchantKey: "whole foods",
       label: "Whole Foods",
       category: "Groceries",
     });
 
-    const updated = createOrUpdateMerchantRule(db, {
+    const updated = await createOrUpdateMerchantRule(db, {
       merchantKey: "whole foods",
       label: "Whole Foods Market",
       category: "Home Goods",
@@ -82,12 +81,12 @@ describe("createOrUpdateMerchantRule", () => {
     expect(updated.label).toBe("Whole Foods Market");
 
     // Should be only 1 rule
-    const all = getAllMerchantRules(db);
+    const all = await getAllMerchantRules(db);
     expect(all).toHaveLength(1);
   });
 
-  it("creates a transfer rule", () => {
-    const rule = createOrUpdateMerchantRule(db, {
+  it("creates a transfer rule", async () => {
+    const rule = await createOrUpdateMerchantRule(db, {
       merchantKey: "venmo",
       label: "Venmo",
       category: "Transfer",
@@ -101,23 +100,23 @@ describe("createOrUpdateMerchantRule", () => {
 // ─── Tests: getAllMerchantRules ───────────────────────────────────────
 
 describe("getAllMerchantRules", () => {
-  it("returns empty array when no rules exist", () => {
-    expect(getAllMerchantRules(db)).toHaveLength(0);
+  it("returns empty array when no rules exist", async () => {
+    await expect(getAllMerchantRules(db)).resolves.toHaveLength(0);
   });
 
-  it("returns all rules", () => {
-    createOrUpdateMerchantRule(db, {
+  it("returns all rules", async () => {
+    await createOrUpdateMerchantRule(db, {
       merchantKey: "whole foods",
       label: "Whole Foods",
       category: "Groceries",
     });
-    createOrUpdateMerchantRule(db, {
+    await createOrUpdateMerchantRule(db, {
       merchantKey: "starbucks",
       label: "Starbucks",
       category: "Eating Out",
     });
 
-    const rules = getAllMerchantRules(db);
+    const rules = await getAllMerchantRules(db);
     expect(rules).toHaveLength(2);
   });
 });
@@ -125,20 +124,20 @@ describe("getAllMerchantRules", () => {
 // ─── Tests: getMerchantRuleByKey ─────────────────────────────────────
 
 describe("getMerchantRuleByKey", () => {
-  it("finds a rule by merchant key", () => {
-    createOrUpdateMerchantRule(db, {
+  it("finds a rule by merchant key", async () => {
+    await createOrUpdateMerchantRule(db, {
       merchantKey: "whole foods",
       label: "Whole Foods",
       category: "Groceries",
     });
 
-    const rule = getMerchantRuleByKey(db, "whole foods");
+    const rule = await getMerchantRuleByKey(db, "whole foods");
     expect(rule).not.toBeNull();
     expect(rule!.category).toBe("Groceries");
   });
 
-  it("returns null for non-existent key", () => {
-    const rule = getMerchantRuleByKey(db, "nonexistent");
+  it("returns null for non-existent key", async () => {
+    const rule = await getMerchantRuleByKey(db, "nonexistent");
     expect(rule).toBeNull();
   });
 });
@@ -146,20 +145,20 @@ describe("getMerchantRuleByKey", () => {
 // ─── Tests: updateMerchantRule ───────────────────────────────────────
 
 describe("updateMerchantRule", () => {
-  it("updates rule category", () => {
-    const rule = createOrUpdateMerchantRule(db, {
+  it("updates rule category", async () => {
+    const rule = await createOrUpdateMerchantRule(db, {
       merchantKey: "whole foods",
       label: "Whole Foods",
       category: "Groceries",
     });
 
-    const updated = updateMerchantRule(db, rule.id, { category: "Home Goods" });
+    const updated = await updateMerchantRule(db, rule.id, { category: "Home Goods" });
     expect(updated).not.toBeNull();
     expect(updated!.category).toBe("Home Goods");
   });
 
-  it("returns null for non-existent id", () => {
-    const result = updateMerchantRule(db, 99999, { category: "Groceries" });
+  it("returns null for non-existent id", async () => {
+    const result = await updateMerchantRule(db, 99999, { category: "Groceries" });
     expect(result).toBeNull();
   });
 });
@@ -167,22 +166,22 @@ describe("updateMerchantRule", () => {
 // ─── Tests: deleteMerchantRule ───────────────────────────────────────
 
 describe("deleteMerchantRule", () => {
-  it("deletes a rule", () => {
-    const rule = createOrUpdateMerchantRule(db, {
+  it("deletes a rule", async () => {
+    const rule = await createOrUpdateMerchantRule(db, {
       merchantKey: "whole foods",
       label: "Whole Foods",
       category: "Groceries",
     });
 
-    const deleted = deleteMerchantRule(db, rule.id);
+    const deleted = await deleteMerchantRule(db, rule.id);
     expect(deleted).toBe(true);
 
-    const rules = getAllMerchantRules(db);
+    const rules = await getAllMerchantRules(db);
     expect(rules).toHaveLength(0);
   });
 
-  it("returns false for non-existent rule", () => {
-    const deleted = deleteMerchantRule(db, 99999);
+  it("returns false for non-existent rule", async () => {
+    const deleted = await deleteMerchantRule(db, 99999);
     expect(deleted).toBe(false);
   });
 });

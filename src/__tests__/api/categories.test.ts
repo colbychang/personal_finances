@@ -1,40 +1,39 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
-import Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
-import { migrate } from "drizzle-orm/better-sqlite3/migrator";
-import { sql } from "drizzle-orm";
-import * as schema from "@/db/schema";
+import type { AppDatabase } from "@/db/index";
 import {
   getAllCategories,
   createCategory,
   getCategoryByName,
 } from "@/db/queries/categories";
 import { seedCategories } from "@/db/seed";
+import {
+  closeTestDb,
+  createTestDb,
+  resetTestDb,
+  type TestDb,
+} from "@/__tests__/helpers/test-db";
 
-let sqlite: InstanceType<typeof Database>;
-let db: ReturnType<typeof drizzle>;
+let testDb: TestDb;
+let db: AppDatabase;
 
-beforeAll(() => {
-  sqlite = new Database(":memory:");
-  sqlite.pragma("journal_mode = WAL");
-  sqlite.pragma("foreign_keys = ON");
-  db = drizzle({ client: sqlite, schema });
-  migrate(db, { migrationsFolder: "./drizzle" });
+beforeAll(async () => {
+  testDb = await createTestDb();
+  db = testDb.db;
 });
 
-afterAll(() => {
-  sqlite.close();
+afterAll(async () => {
+  await closeTestDb(testDb);
 });
 
-beforeEach(() => {
-  db.run(sql`DELETE FROM categories`);
+beforeEach(async () => {
+  await resetTestDb(db);
 });
 
 describe("getAllCategories", () => {
-  it("returns all predefined categories after seeding", () => {
-    seedCategories(db);
+  it("returns all predefined categories after seeding", async () => {
+    await seedCategories(db);
 
-    const categories = getAllCategories(db);
+    const categories = await getAllCategories(db);
     expect(categories).toHaveLength(11);
 
     // Verify all predefined categories exist
@@ -52,10 +51,10 @@ describe("getAllCategories", () => {
     expect(names).toContain("Large Purchases");
   });
 
-  it("returns categories with color, icon, and is_predefined fields", () => {
-    seedCategories(db);
+  it("returns categories with color, icon, and is_predefined fields", async () => {
+    await seedCategories(db);
 
-    const categories = getAllCategories(db);
+    const categories = await getAllCategories(db);
     const rent = categories.find((c) => c.name === "Rent/Home")!;
 
     expect(rent.color).toBe("#8b5cf6");
@@ -63,13 +62,13 @@ describe("getAllCategories", () => {
     expect(rent.isPredefined).toBe(true);
   });
 
-  it("returns both predefined and custom categories", () => {
-    seedCategories(db);
+  it("returns both predefined and custom categories", async () => {
+    await seedCategories(db);
 
     // Add a custom category
-    createCategory(db, { name: "Pet Care" });
+    await createCategory(db, { name: "Pet Care" });
 
-    const categories = getAllCategories(db);
+    const categories = await getAllCategories(db);
     expect(categories).toHaveLength(12);
 
     const petCare = categories.find((c) => c.name === "Pet Care")!;
@@ -77,24 +76,24 @@ describe("getAllCategories", () => {
     expect(petCare.name).toBe("Pet Care");
   });
 
-  it("returns categories sorted by sort_order then name", () => {
-    seedCategories(db);
+  it("returns categories sorted by sort_order then name", async () => {
+    await seedCategories(db);
 
-    const categories = getAllCategories(db);
+    const categories = await getAllCategories(db);
     // Predefined have sort_order 1-11; custom have sort_order 100+
     expect(categories[0].name).toBe("Rent/Home"); // sort_order 1
     expect(categories[10].name).toBe("Large Purchases"); // sort_order 11
   });
 
-  it("returns empty array when no categories exist", () => {
-    const categories = getAllCategories(db);
+  it("returns empty array when no categories exist", async () => {
+    const categories = await getAllCategories(db);
     expect(categories).toHaveLength(0);
   });
 });
 
 describe("createCategory", () => {
-  it("creates a custom category with default color and icon", () => {
-    const category = createCategory(db, { name: "Pet Care" });
+  it("creates a custom category with default color and icon", async () => {
+    const category = await createCategory(db, { name: "Pet Care" });
 
     expect(category.name).toBe("Pet Care");
     expect(category.isPredefined).toBe(false);
@@ -102,8 +101,8 @@ describe("createCategory", () => {
     expect(category.icon).toBeTruthy(); // should have a default icon
   });
 
-  it("creates a custom category with provided color and icon", () => {
-    const category = createCategory(db, {
+  it("creates a custom category with provided color and icon", async () => {
+    const category = await createCategory(db, {
       name: "Pet Care",
       color: "#ff6b6b",
       icon: "paw-print",
@@ -113,42 +112,42 @@ describe("createCategory", () => {
     expect(category.icon).toBe("paw-print");
   });
 
-  it("rejects duplicate category name", () => {
-    seedCategories(db);
+  it("rejects duplicate category name", async () => {
+    await seedCategories(db);
 
     // Try to create a category with same name as predefined
-    expect(() => createCategory(db, { name: "Groceries" })).toThrow();
+    await expect(createCategory(db, { name: "Groceries" })).rejects.toThrow();
   });
 
-  it("rejects duplicate custom category name", () => {
-    createCategory(db, { name: "Pet Care" });
+  it("rejects duplicate custom category name", async () => {
+    await createCategory(db, { name: "Pet Care" });
 
-    expect(() => createCategory(db, { name: "Pet Care" })).toThrow();
+    await expect(createCategory(db, { name: "Pet Care" })).rejects.toThrow();
   });
 
-  it("trims whitespace from category name", () => {
-    const category = createCategory(db, { name: "  Pet Care  " });
+  it("trims whitespace from category name", async () => {
+    const category = await createCategory(db, { name: "  Pet Care  " });
     expect(category.name).toBe("Pet Care");
   });
 
-  it("assigns a sort_order of 100 for custom categories", () => {
-    const category = createCategory(db, { name: "Pet Care" });
+  it("assigns a sort_order of 100 for custom categories", async () => {
+    const category = await createCategory(db, { name: "Pet Care" });
     expect(category.sortOrder).toBe(100);
   });
 });
 
 describe("getCategoryByName", () => {
-  it("returns category by name when it exists", () => {
-    seedCategories(db);
+  it("returns category by name when it exists", async () => {
+    await seedCategories(db);
 
-    const category = getCategoryByName(db, "Groceries");
+    const category = await getCategoryByName(db, "Groceries");
     expect(category).toBeDefined();
     expect(category!.name).toBe("Groceries");
     expect(category!.isPredefined).toBe(true);
   });
 
-  it("returns null when category does not exist", () => {
-    const category = getCategoryByName(db, "Nonexistent");
+  it("returns null when category does not exist", async () => {
+    const category = await getCategoryByName(db, "Nonexistent");
     expect(category).toBeNull();
   });
 });

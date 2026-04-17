@@ -1,16 +1,14 @@
 import { eq, and, desc, asc, inArray, notInArray, sql } from "drizzle-orm";
-import type { drizzle } from "drizzle-orm/better-sqlite3";
+import type { AppDatabase } from "@/db/index";
 import * as schema from "../schema";
 import { INVESTMENT_LIKE_ACCOUNT_TYPES } from "@/lib/account-types";
 import { effectiveTransactionMonth } from "./effective-month";
 
-type DB = ReturnType<typeof drizzle>;
-
-// ─── Types ──────────────────────────────────────────────────────────────
+type DB = AppDatabase;
 
 export interface CategorySpending {
   category: string;
-  amount: number; // cents
+  amount: number;
   color: string | null;
 }
 
@@ -18,7 +16,7 @@ export interface RecentTransaction {
   id: number;
   postedAt: string;
   name: string;
-  amount: number; // cents
+  amount: number;
   category: string | null;
   isTransfer: boolean;
   accountName: string;
@@ -26,9 +24,9 @@ export interface RecentTransaction {
 
 export interface BudgetStatusItem {
   category: string;
-  budgeted: number; // cents
-  spent: number; // cents
-  percentage: number; // 0-100+
+  budgeted: number;
+  spent: number;
+  percentage: number;
   status: "on-track" | "approaching" | "over-budget";
   color: string | null;
 }
@@ -42,26 +40,26 @@ export interface BudgetStatusSummary {
 }
 
 export interface NetWorthTrend {
-  current: number; // cents (assets - liabilities from account balances)
-  previous: number | null; // cents (from previous month snapshot)
-  change: number | null; // cents (current - previous)
+  current: number;
+  previous: number | null;
+  change: number | null;
 }
 
 export interface MonthComparison {
   category: string;
-  currentMonth: number; // cents
-  previousMonth: number; // cents
-  change: number; // cents (current - previous)
+  currentMonth: number;
+  previousMonth: number;
+  change: number;
   color: string | null;
 }
 
 export interface NetWorthHistoryPoint {
   month: string;
-  netWorth: number; // cents
+  netWorth: number;
 }
 
 export interface DashboardData {
-  totalSpending: number; // cents
+  totalSpending: number;
   spendingByCategory: CategorySpending[];
   budgetStatus: BudgetStatusSummary;
   recentTransactions: RecentTransaction[];
@@ -70,11 +68,6 @@ export interface DashboardData {
   monthComparison: MonthComparison[];
 }
 
-// ─── Helper Functions ───────────────────────────────────────────────────
-
-/**
- * Get the previous month string for a YYYY-MM month.
- */
 function getPreviousMonth(month: string): string {
   const [year, monthNum] = month.split("-").map(Number);
   if (monthNum === 1) {
@@ -83,20 +76,14 @@ function getPreviousMonth(month: string): string {
   return `${year}-${String(monthNum - 1).padStart(2, "0")}`;
 }
 
-/**
- * Get spending by category for a date range.
- * Excludes transfers and income (negative amounts).
- * Handles transaction splits.
- */
-function getSpendingByCategory(
+async function getSpendingByCategory(
   database: DB,
   month: string,
   workspaceId?: number,
-): Map<string, number> {
+): Promise<Map<string, number>> {
   const spendingMap = new Map<string, number>();
 
-  // Get all non-transfer transactions in the date range
-  const txns = database
+  const txns = await database
     .select({
       id: schema.transactions.id,
       amount: schema.transactions.amount,
@@ -105,7 +92,7 @@ function getSpendingByCategory(
     .from(schema.transactions)
     .innerJoin(
       schema.accounts,
-      eq(schema.transactions.accountId, schema.accounts.id)
+      eq(schema.transactions.accountId, schema.accounts.id),
     )
     .where(
       and(
@@ -115,21 +102,18 @@ function getSpendingByCategory(
           : eq(schema.transactions.workspaceId, workspaceId),
         eq(schema.transactions.isTransfer, false),
         eq(schema.transactions.isExcluded, false),
-        notInArray(schema.accounts.type, [...INVESTMENT_LIKE_ACCOUNT_TYPES])
-      )
-    )
-    .all();
+        notInArray(schema.accounts.type, [...INVESTMENT_LIKE_ACCOUNT_TYPES]),
+      ),
+    );
 
-  // Get splits for these transactions
   const txnIds = txns.map((t) => t.id);
   const splitsMap = new Map<number, Array<{ category: string; amount: number }>>();
 
   if (txnIds.length > 0) {
-    const relevantSplits = database
+    const relevantSplits = await database
       .select()
       .from(schema.transactionSplits)
-      .where(inArray(schema.transactionSplits.transactionId, txnIds))
-      .all();
+      .where(inArray(schema.transactionSplits.transactionId, txnIds));
 
     for (const split of relevantSplits) {
       if (!splitsMap.has(split.transactionId)) {
@@ -142,49 +126,40 @@ function getSpendingByCategory(
     }
   }
 
-  // Process each transaction
   for (const txn of txns) {
-    // Skip income (negative amounts)
     if (txn.amount < 0) continue;
 
     const splits = splitsMap.get(txn.id);
-
     if (splits && splits.length > 0) {
       for (const split of splits) {
         const current = spendingMap.get(split.category) ?? 0;
         spendingMap.set(split.category, current + split.amount);
       }
-    } else {
-      const category = txn.category ?? "Uncategorized";
-      const current = spendingMap.get(category) ?? 0;
-      spendingMap.set(category, current + txn.amount);
+      continue;
     }
+
+    const category = txn.category ?? "Uncategorized";
+    const current = spendingMap.get(category) ?? 0;
+    spendingMap.set(category, current + txn.amount);
   }
 
   return spendingMap;
 }
 
-// ─── Main Query ─────────────────────────────────────────────────────────
-
-/**
- * Get all dashboard data for a given month.
- */
-export function getDashboardData(
+export async function getDashboardData(
   database: DB,
   month: string,
   workspaceId?: number,
-): DashboardData {
-  // Get all category info for color lookup
-  const allCategories = database
+): Promise<DashboardData> {
+  const allCategories = await database
     .select({ name: schema.categories.name, color: schema.categories.color })
-    .from(schema.categories)
-    .all();
-  const categoryColorMap = new Map(allCategories.map((c) => [c.name, c.color]));
+    .from(schema.categories);
+  const categoryColorMap = new Map<string, string | null>(
+    allCategories.map((c) => [c.name, c.color]),
+  );
 
   const prevMonth = getPreviousMonth(month);
-
-  // ─── 1. Spending by Category (current month) ─────────────────────
-  const currentSpending = getSpendingByCategory(database, month, workspaceId);
+  const currentSpending = await getSpendingByCategory(database, month, workspaceId);
 
   const spendingByCategory: CategorySpending[] = Array.from(currentSpending.entries())
     .map(([category, amount]) => ({
@@ -196,19 +171,15 @@ export function getDashboardData(
 
   const totalSpending = spendingByCategory.reduce((sum, c) => sum + c.amount, 0);
 
-  // ─── 2. Budget Status ────────────────────────────────────────────
-  const budgetRows = database
+  const budgetRows = await database
     .select()
     .from(schema.budgets)
     .where(
       and(
         eq(schema.budgets.month, month),
-        workspaceId === undefined
-          ? undefined
-          : eq(schema.budgets.workspaceId, workspaceId),
+        workspaceId === undefined ? undefined : eq(schema.budgets.workspaceId, workspaceId),
       ),
-    )
-    .all();
+    );
 
   const budgetItems: BudgetStatusItem[] = budgetRows.map((b) => {
     const spent = currentSpending.get(b.category) ?? 0;
@@ -237,8 +208,7 @@ export function getDashboardData(
     items: budgetItems,
   };
 
-  // ─── 3. Recent Transactions ──────────────────────────────────────
-  const recentTransactions: RecentTransaction[] = database
+  const recentTransactions = await database
     .select({
       id: schema.transactions.id,
       postedAt: schema.transactions.postedAt,
@@ -251,7 +221,7 @@ export function getDashboardData(
     .from(schema.transactions)
     .innerJoin(
       schema.accounts,
-      eq(schema.transactions.accountId, schema.accounts.id)
+      eq(schema.transactions.accountId, schema.accounts.id),
     )
     .where(
       and(
@@ -260,26 +230,21 @@ export function getDashboardData(
           : eq(schema.transactions.workspaceId, workspaceId),
         eq(schema.transactions.isExcluded, false),
         sql`lower(coalesce(${schema.transactions.category}, '')) <> 'income'`,
-        notInArray(schema.accounts.type, [...INVESTMENT_LIKE_ACCOUNT_TYPES])
-      )
+        notInArray(schema.accounts.type, [...INVESTMENT_LIKE_ACCOUNT_TYPES]),
+      ),
     )
     .orderBy(desc(schema.transactions.postedAt), desc(schema.transactions.id))
-    .limit(10)
-    .all();
+    .limit(10);
 
-  // ─── 4. Net Worth ────────────────────────────────────────────────
-  const accounts = database
+  const accounts = await database
     .select({
       balanceCurrent: schema.accounts.balanceCurrent,
       isAsset: schema.accounts.isAsset,
     })
     .from(schema.accounts)
     .where(
-      workspaceId === undefined
-        ? undefined
-        : eq(schema.accounts.workspaceId, workspaceId),
-    )
-    .all();
+      workspaceId === undefined ? undefined : eq(schema.accounts.workspaceId, workspaceId),
+    );
 
   let totalAssets = 0;
   let totalLiabilities = 0;
@@ -292,19 +257,16 @@ export function getDashboardData(
   }
   const currentNetWorth = totalAssets - totalLiabilities;
 
-  // Get previous month snapshot
-  const prevSnapshot = database
+  const [prevSnapshot] = await database
     .select()
     .from(schema.snapshots)
     .where(
       and(
         eq(schema.snapshots.month, prevMonth),
-        workspaceId === undefined
-          ? undefined
-          : eq(schema.snapshots.workspaceId, workspaceId),
+        workspaceId === undefined ? undefined : eq(schema.snapshots.workspaceId, workspaceId),
       ),
     )
-    .get();
+    .limit(1);
 
   const netWorth: NetWorthTrend = {
     current: currentNetWorth,
@@ -312,13 +274,11 @@ export function getDashboardData(
     change: prevSnapshot ? currentNetWorth - prevSnapshot.netWorth : null,
   };
 
-  // ─── 5. Month-over-Month Comparison ──────────────────────────────
-  const prevSpending = getSpendingByCategory(database, prevMonth, workspaceId);
-
-  // Merge all categories from both months
-  const allCategoryNames = new Set<string>();
-  for (const key of currentSpending.keys()) allCategoryNames.add(key);
-  for (const key of prevSpending.keys()) allCategoryNames.add(key);
+  const prevSpending = await getSpendingByCategory(database, prevMonth, workspaceId);
+  const allCategoryNames = new Set<string>([
+    ...currentSpending.keys(),
+    ...prevSpending.keys(),
+  ]);
 
   const monthComparison: MonthComparison[] = Array.from(allCategoryNames)
     .map((category) => {
@@ -334,20 +294,16 @@ export function getDashboardData(
     })
     .sort((a, b) => b.currentMonth - a.currentMonth);
 
-  // ─── 6. Net Worth History (for sparkline) ─────────────────────────
-  const netWorthHistory: NetWorthHistoryPoint[] = database
+  const netWorthHistory = await database
     .select({
       month: schema.snapshots.month,
       netWorth: schema.snapshots.netWorth,
     })
     .from(schema.snapshots)
     .where(
-      workspaceId === undefined
-        ? undefined
-        : eq(schema.snapshots.workspaceId, workspaceId),
+      workspaceId === undefined ? undefined : eq(schema.snapshots.workspaceId, workspaceId),
     )
-    .orderBy(asc(schema.snapshots.month))
-    .all();
+    .orderBy(asc(schema.snapshots.month));
 
   return {
     totalSpending,

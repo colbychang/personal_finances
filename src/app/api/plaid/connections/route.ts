@@ -10,7 +10,7 @@ import { requireCurrentWorkspace } from "@/lib/auth/current-workspace";
 export async function GET() {
   try {
     const { workspace } = await requireCurrentWorkspace();
-    const connections = getAllConnections(db, workspace.workspaceId);
+    const connections = await getAllConnections(db, workspace.workspaceId);
 
     // Never expose access_token or sensitive data to the client
     const sanitized = connections.map((conn) => ({

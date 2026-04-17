@@ -40,7 +40,7 @@ export async function PUT(request: NextRequest, context: RouteContext) {
       );
     }
 
-    const updated = updateMerchantRule(db, ruleId, {
+    const updated = await updateMerchantRule(db, ruleId, {
       category: category?.trim(),
       label: label?.trim(),
       isTransfer,
@@ -73,7 +73,7 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: "Invalid rule ID" }, { status: 400 });
     }
 
-    const deleted = deleteMerchantRuleForWorkspace(db, ruleId, workspace.workspaceId);
+    const deleted = await deleteMerchantRuleForWorkspace(db, ruleId, workspace.workspaceId);
 
     if (!deleted) {
       return NextResponse.json({ error: "Merchant rule not found" }, { status: 404 });

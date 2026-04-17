@@ -30,10 +30,10 @@ export default async function BudgetsPage({ searchParams }: BudgetsPageProps) {
     monthValue && /^\d{4}-\d{2}$/.test(monthValue) ? monthValue : currentMonth;
 
   // Fetch initial data server-side
-  const initialData = getBudgetsForMonth(db, activeMonth, workspace.workspaceId);
-  const initialBudgetTemplates = getBudgetTemplates(db, workspace.workspaceId);
-  const categories = getAllCategories(db);
-  const accounts = getAccountsForFilter(db, workspace.workspaceId);
+  const initialData = await getBudgetsForMonth(db, activeMonth, workspace.workspaceId);
+  const initialBudgetTemplates = await getBudgetTemplates(db, workspace.workspaceId);
+  const categories = await getAllCategories(db);
+  const accounts = await getAccountsForFilter(db, workspace.workspaceId);
 
   return (
     <div className="p-4 md:p-8 max-w-6xl mx-auto">

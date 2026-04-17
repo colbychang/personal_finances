@@ -11,13 +11,13 @@ import {
   isNull,
   notInArray,
 } from "drizzle-orm";
-import type { drizzle } from "drizzle-orm/better-sqlite3";
+import type { AppDatabase } from "@/db/index";
 import * as schema from "../schema";
 import { INVESTMENT_LIKE_ACCOUNT_TYPES } from "@/lib/account-types";
 import { shouldExcludePassiveIncomeTransaction } from "@/lib/transaction-exclusions";
 import { effectiveTransactionMonth } from "./effective-month";
 
-type DB = ReturnType<typeof drizzle>;
+type DB = AppDatabase;
 
 export interface TransactionWithAccount {
   id: number;
@@ -65,7 +65,8 @@ export interface PaginatedTransactions {
 export function getTransactions(
   database: DB,
   filters: TransactionFilters = {}
-): PaginatedTransactions {
+): Promise<PaginatedTransactions> {
+  return (async () => {
   const page = Math.max(1, filters.page ?? 1);
   const limit = Math.min(100, Math.max(1, filters.limit ?? 20));
   const offset = (page - 1) * limit;
@@ -74,7 +75,7 @@ export function getTransactions(
   const conditions = buildWhereConditions(filters);
 
   // Count total matching rows
-  const countResult = database
+  const [countResult] = await database
     .select({ count: sql<number>`count(*)` })
     .from(schema.transactions)
     .innerJoin(
@@ -82,13 +83,13 @@ export function getTransactions(
       eq(schema.transactions.accountId, schema.accounts.id)
     )
     .where(conditions.length > 0 ? and(...conditions) : undefined)
-    .get();
+    .limit(1);
 
   const total = countResult?.count ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / limit));
 
   // Fetch transactions with join to accounts
-  const transactions = database
+  const transactions = await database
     .select({
       id: schema.transactions.id,
       accountId: schema.transactions.accountId,
@@ -114,8 +115,7 @@ export function getTransactions(
     .where(conditions.length > 0 ? and(...conditions) : undefined)
     .orderBy(desc(schema.transactions.postedAt), desc(schema.transactions.id))
     .limit(limit)
-    .offset(offset)
-    .all();
+    .offset(offset);
 
   return {
     transactions,
@@ -124,6 +124,7 @@ export function getTransactions(
     limit,
     totalPages,
   };
+  })();
 }
 
 /**
@@ -198,7 +199,7 @@ function buildWhereConditions(filters: TransactionFilters) {
 export function getAccountsForFilter(
   database: DB,
   workspaceId?: number,
-): Array<{ id: number; name: string; type: string }> {
+): Promise<Array<{ id: number; name: string; type: string }>> {
   return database
     .select({
       id: schema.accounts.id,
@@ -211,8 +212,7 @@ export function getAccountsForFilter(
         ? undefined
         : eq(schema.accounts.workspaceId, workspaceId),
     )
-    .orderBy(schema.accounts.name)
-    .all();
+    .orderBy(schema.accounts.name);
 }
 
 // ─── CRUD Operations ──────────────────────────────────────────────────
@@ -236,8 +236,9 @@ export function createTransaction(
   input: CreateTransactionInput,
   workspaceId?: number,
 ) {
-  if (workspaceId !== undefined) {
-    const account = database
+  return (async () => {
+    if (workspaceId !== undefined) {
+      const [account] = await database
       .select({ id: schema.accounts.id })
       .from(schema.accounts)
       .where(
@@ -246,14 +247,14 @@ export function createTransaction(
           eq(schema.accounts.workspaceId, workspaceId),
         ),
       )
-      .get();
+      .limit(1);
 
-    if (!account) {
-      throw new Error("Account not found in current workspace");
+      if (!account) {
+        throw new Error("Account not found in current workspace");
+      }
     }
-  }
 
-  return database
+    const [transaction] = await database
     .insert(schema.transactions)
     .values({
       workspaceId: workspaceId ?? null,
@@ -273,8 +274,10 @@ export function createTransaction(
       pending: false,
       reviewState: "none",
     })
-    .returning()
-    .get();
+    .returning();
+
+    return transaction;
+  })();
 }
 
 export interface UpdateTransactionInput {
@@ -297,43 +300,44 @@ export function updateTransaction(
   input: UpdateTransactionInput,
   workspaceId?: number,
 ) {
-  const existingWhere = workspaceId === undefined
+  return (async () => {
+    const existingWhere = workspaceId === undefined
     ? eq(schema.transactions.id, id)
     : and(eq(schema.transactions.id, id), eq(schema.transactions.workspaceId, workspaceId));
 
-  const existing = database
+    const [existing] = await database
     .select()
     .from(schema.transactions)
     .where(existingWhere)
-    .get();
+    .limit(1);
 
-  if (!existing) return null;
+    if (!existing) return null;
 
-  const updates: Record<string, unknown> = {};
-  const nextName = input.name ?? existing.name;
-  const nextAmount = input.amount ?? existing.amount;
-  const nextMerchant = existing.merchant;
-  if (input.postedAt !== undefined) updates.postedAt = input.postedAt;
-  if (input.overrideMonth !== undefined) updates.overrideMonth = input.overrideMonth;
-  if (input.name !== undefined) updates.name = input.name;
-  if (input.amount !== undefined) updates.amount = input.amount;
-  if (input.category !== undefined) updates.category = input.category;
-  if (input.notes !== undefined) updates.notes = input.notes;
-  if (input.isTransfer !== undefined) updates.isTransfer = input.isTransfer;
-  if (input.accountId !== undefined) updates.accountId = input.accountId;
-  updates.isExcluded = shouldExcludePassiveIncomeTransaction({
-    name: nextName,
-    merchant: nextMerchant,
-    category:
-      input.category !== undefined
-        ? input.category
-        : (existing.category ?? null),
-    amount: nextAmount,
-  });
+    const updates: Record<string, unknown> = {};
+    const nextName = input.name ?? existing.name;
+    const nextAmount = input.amount ?? existing.amount;
+    const nextMerchant = existing.merchant;
+    if (input.postedAt !== undefined) updates.postedAt = input.postedAt;
+    if (input.overrideMonth !== undefined) updates.overrideMonth = input.overrideMonth;
+    if (input.name !== undefined) updates.name = input.name;
+    if (input.amount !== undefined) updates.amount = input.amount;
+    if (input.category !== undefined) updates.category = input.category;
+    if (input.notes !== undefined) updates.notes = input.notes;
+    if (input.isTransfer !== undefined) updates.isTransfer = input.isTransfer;
+    if (input.accountId !== undefined) updates.accountId = input.accountId;
+    updates.isExcluded = shouldExcludePassiveIncomeTransaction({
+      name: nextName,
+      merchant: nextMerchant,
+      category:
+        input.category !== undefined
+          ? input.category
+          : (existing.category ?? null),
+      amount: nextAmount,
+    });
 
-  if (Object.keys(updates).length > 0) {
-    if (input.accountId !== undefined && workspaceId !== undefined) {
-      const account = database
+    if (Object.keys(updates).length > 0) {
+      if (input.accountId !== undefined && workspaceId !== undefined) {
+        const [account] = await database
         .select({ id: schema.accounts.id })
         .from(schema.accounts)
         .where(
@@ -342,25 +346,27 @@ export function updateTransaction(
             eq(schema.accounts.workspaceId, workspaceId),
           ),
         )
-        .get();
+        .limit(1);
 
-      if (!account) {
-        throw new Error("Account not found in current workspace");
+        if (!account) {
+          throw new Error("Account not found in current workspace");
+        }
       }
-    }
 
-    database
+      await database
       .update(schema.transactions)
       .set(updates)
-      .where(existingWhere)
-      .run();
-  }
+      .where(existingWhere);
+    }
 
-  return database
+    const [transaction] = await database
     .select()
     .from(schema.transactions)
     .where(existingWhere)
-    .get()!;
+    .limit(1);
+
+    return transaction!;
+  })();
 }
 
 /**
@@ -370,32 +376,32 @@ export function deleteTransaction(
   database: DB,
   id: number,
   workspaceId?: number,
-): boolean {
-  const where = workspaceId === undefined
+): Promise<boolean> {
+  return (async () => {
+    const where = workspaceId === undefined
     ? eq(schema.transactions.id, id)
     : and(eq(schema.transactions.id, id), eq(schema.transactions.workspaceId, workspaceId));
 
-  const existing = database
+    const [existing] = await database
     .select()
     .from(schema.transactions)
     .where(where)
-    .get();
+    .limit(1);
 
-  if (!existing) return false;
+    if (!existing) return false;
 
   // Delete splits first (FK constraint)
-  database
+    await database
     .delete(schema.transactionSplits)
-    .where(eq(schema.transactionSplits.transactionId, id))
-    .run();
+    .where(eq(schema.transactionSplits.transactionId, id));
 
   // Delete the transaction
-  database
+    await database
     .delete(schema.transactions)
-    .where(where)
-    .run();
+    .where(where);
 
-  return true;
+    return true;
+  })();
 }
 
 /**
@@ -405,12 +411,13 @@ export function getTransactionById(
   database: DB,
   id: number,
   workspaceId?: number,
-): TransactionWithAccount | null {
-  const where = workspaceId === undefined
+): Promise<TransactionWithAccount | null> {
+  return (async () => {
+    const where = workspaceId === undefined
     ? eq(schema.transactions.id, id)
     : and(eq(schema.transactions.id, id), eq(schema.transactions.workspaceId, workspaceId));
 
-  const row = database
+    const [row] = await database
     .select({
       id: schema.transactions.id,
       accountId: schema.transactions.accountId,
@@ -434,9 +441,10 @@ export function getTransactionById(
       eq(schema.transactions.accountId, schema.accounts.id)
     )
     .where(where)
-    .get();
+    .limit(1);
 
-  return row ?? null;
+    return row ?? null;
+  })();
 }
 
 // ─── Transaction Splits ──────────────────────────────────────────────
@@ -461,17 +469,17 @@ export function createOrUpdateSplits(
   database: DB,
   transactionId: number,
   splits: SplitInput[]
-): TransactionSplit[] {
+): Promise<TransactionSplit[]> {
+  return (async () => {
   // Delete existing splits
-  database
+  await database
     .delete(schema.transactionSplits)
-    .where(eq(schema.transactionSplits.transactionId, transactionId))
-    .run();
+    .where(eq(schema.transactionSplits.transactionId, transactionId));
 
-  if (splits.length === 0) return [];
+    if (splits.length === 0) return [];
 
   // Insert new splits
-  database
+    await database
     .insert(schema.transactionSplits)
     .values(
       splits.map((s) => ({
@@ -479,14 +487,13 @@ export function createOrUpdateSplits(
         category: s.category,
         amount: s.amount,
       }))
-    )
-    .run();
+    );
 
-  return database
+    return await database
     .select()
     .from(schema.transactionSplits)
-    .where(eq(schema.transactionSplits.transactionId, transactionId))
-    .all();
+    .where(eq(schema.transactionSplits.transactionId, transactionId));
+  })();
 }
 
 /**
@@ -495,10 +502,9 @@ export function createOrUpdateSplits(
 export function getTransactionSplits(
   database: DB,
   transactionId: number
-): TransactionSplit[] {
+): Promise<TransactionSplit[]> {
   return database
     .select()
     .from(schema.transactionSplits)
-    .where(eq(schema.transactionSplits.transactionId, transactionId))
-    .all();
+    .where(eq(schema.transactionSplits.transactionId, transactionId));
 }

@@ -1,8 +1,8 @@
 import { and, asc, eq } from "drizzle-orm";
-import type { drizzle } from "drizzle-orm/better-sqlite3";
+import type { AppDatabase } from "@/db/index";
 import * as schema from "../schema";
 
-type DB = ReturnType<typeof drizzle>;
+type DB = AppDatabase;
 
 export interface MerchantRuleRow {
   id: number;
@@ -24,8 +24,8 @@ export function normalizeMerchantKey(name: string): string {
 /**
  * Get all merchant rules, ordered by label.
  */
-export function getAllMerchantRules(database: DB, workspaceId?: number): MerchantRuleRow[] {
-  return database
+export async function getAllMerchantRules(database: DB, workspaceId?: number): Promise<MerchantRuleRow[]> {
+  return await database
     .select({
       id: schema.merchantRules.id,
       merchantKey: schema.merchantRules.merchantKey,
@@ -40,8 +40,7 @@ export function getAllMerchantRules(database: DB, workspaceId?: number): Merchan
         ? undefined
         : eq(schema.merchantRules.workspaceId, workspaceId),
     )
-    .orderBy(asc(schema.merchantRules.label))
-    .all();
+    .orderBy(asc(schema.merchantRules.label));
 }
 
 /**
@@ -51,8 +50,8 @@ export function getMerchantRuleByKey(
   database: DB,
   key: string,
   workspaceId?: number,
-): MerchantRuleRow | null {
-  const row = database
+): Promise<MerchantRuleRow | null> {
+  return database
     .select({
       id: schema.merchantRules.id,
       merchantKey: schema.merchantRules.merchantKey,
@@ -70,9 +69,8 @@ export function getMerchantRuleByKey(
           : eq(schema.merchantRules.workspaceId, workspaceId),
       ),
     )
-    .get();
-
-  return row ?? null;
+    .limit(1)
+    .then((rows) => rows[0] ?? null);
 }
 
 export interface CreateMerchantRuleInput {
@@ -86,17 +84,17 @@ export interface CreateMerchantRuleInput {
  * Create or update a merchant rule (upsert by merchantKey).
  * If a rule with the same merchantKey exists, update it.
  */
-export function createOrUpdateMerchantRule(
+export async function createOrUpdateMerchantRule(
   database: DB,
   input: CreateMerchantRuleInput,
   workspaceId?: number,
-): MerchantRuleRow {
-  const existing = getMerchantRuleByKey(database, input.merchantKey, workspaceId);
+): Promise<MerchantRuleRow> {
+  const existing = await getMerchantRuleByKey(database, input.merchantKey, workspaceId);
 
   if (existing) {
     // Update existing rule
     const now = new Date().toISOString();
-    database
+    await database
       .update(schema.merchantRules)
       .set({
         label: input.label,
@@ -104,10 +102,9 @@ export function createOrUpdateMerchantRule(
         isTransfer: input.isTransfer ?? false,
         updatedAt: now,
       })
-      .where(eq(schema.merchantRules.id, existing.id))
-      .run();
+      .where(eq(schema.merchantRules.id, existing.id));
 
-    return database
+    const [updatedRule] = await database
       .select({
         id: schema.merchantRules.id,
         merchantKey: schema.merchantRules.merchantKey,
@@ -118,11 +115,13 @@ export function createOrUpdateMerchantRule(
       })
       .from(schema.merchantRules)
       .where(eq(schema.merchantRules.id, existing.id))
-      .get()!;
+      .limit(1);
+
+    return updatedRule!;
   }
 
   // Create new rule
-  return database
+  const [insertedRule] = await database
     .insert(schema.merchantRules)
     .values({
       workspaceId: workspaceId ?? null,
@@ -131,8 +130,9 @@ export function createOrUpdateMerchantRule(
       category: input.category,
       isTransfer: input.isTransfer ?? false,
     })
-    .returning()
-    .get();
+    .returning();
+
+  return insertedRule!;
 }
 
 export interface UpdateMerchantRuleInput {
@@ -144,13 +144,13 @@ export interface UpdateMerchantRuleInput {
 /**
  * Update a merchant rule by ID. Returns updated rule or null if not found.
  */
-export function updateMerchantRule(
+export async function updateMerchantRule(
   database: DB,
   id: number,
   input: UpdateMerchantRuleInput,
   workspaceId?: number,
-): MerchantRuleRow | null {
-  const existing = database
+): Promise<MerchantRuleRow | null> {
+  const [existing] = await database
     .select()
     .from(schema.merchantRules)
     .where(
@@ -158,7 +158,7 @@ export function updateMerchantRule(
         ? eq(schema.merchantRules.id, id)
         : and(eq(schema.merchantRules.id, id), eq(schema.merchantRules.workspaceId, workspaceId)),
     )
-    .get();
+    .limit(1);
 
   if (!existing) return null;
 
@@ -168,13 +168,12 @@ export function updateMerchantRule(
   if (input.isTransfer !== undefined) updates.isTransfer = input.isTransfer;
   updates.updatedAt = new Date().toISOString();
 
-  database
+  await database
     .update(schema.merchantRules)
     .set(updates)
-    .where(eq(schema.merchantRules.id, id))
-    .run();
+    .where(eq(schema.merchantRules.id, id));
 
-  return database
+  const [updatedRule] = await database
     .select({
       id: schema.merchantRules.id,
       merchantKey: schema.merchantRules.merchantKey,
@@ -185,13 +184,15 @@ export function updateMerchantRule(
     })
     .from(schema.merchantRules)
     .where(eq(schema.merchantRules.id, id))
-    .get()!;
+    .limit(1);
+
+  return updatedRule!;
 }
 
 /**
  * Delete a merchant rule by ID. Returns true if found and deleted.
  */
-export function deleteMerchantRule(database: DB, id: number): boolean {
+export function deleteMerchantRule(database: DB, id: number): Promise<boolean> {
   return deleteMerchantRuleForWorkspace(database, id, undefined);
 }
 
@@ -199,8 +200,9 @@ export function deleteMerchantRuleForWorkspace(
   database: DB,
   id: number,
   workspaceId?: number,
-): boolean {
-  const existing = database
+): Promise<boolean> {
+  return (async () => {
+    const [existing] = await database
     .select()
     .from(schema.merchantRules)
     .where(
@@ -208,18 +210,18 @@ export function deleteMerchantRuleForWorkspace(
         ? eq(schema.merchantRules.id, id)
         : and(eq(schema.merchantRules.id, id), eq(schema.merchantRules.workspaceId, workspaceId)),
     )
-    .get();
+    .limit(1);
 
-  if (!existing) return false;
+    if (!existing) return false;
 
-  database
+    await database
     .delete(schema.merchantRules)
     .where(
       workspaceId === undefined
         ? eq(schema.merchantRules.id, id)
         : and(eq(schema.merchantRules.id, id), eq(schema.merchantRules.workspaceId, workspaceId)),
-    )
-    .run();
+    );
 
-  return true;
+    return true;
+  })();
 }

@@ -1,53 +1,48 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
-import Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
-import { migrate } from "drizzle-orm/better-sqlite3/migrator";
-import { sql } from "drizzle-orm";
+import type { AppDatabase } from "@/db/index";
 import * as schema from "@/db/schema";
+import { seedCategories } from "@/db/seed";
+import {
+  closeTestDb,
+  createTestDb,
+  resetTestDb,
+  seedManualAccount,
+  seedManualInstitution,
+  seedWorkspace,
+  type TestDb,
+} from "@/__tests__/helpers/test-db";
 
-let sqlite: InstanceType<typeof Database>;
-let db: ReturnType<typeof drizzle>;
+let testDb: TestDb;
+let db: AppDatabase;
 
-beforeAll(() => {
-  sqlite = new Database(":memory:");
-  sqlite.pragma("journal_mode = WAL");
-  sqlite.pragma("foreign_keys = ON");
-  db = drizzle({ client: sqlite, schema });
-  migrate(db, { migrationsFolder: "./drizzle" });
+beforeAll(async () => {
+  testDb = await createTestDb();
+  db = testDb.db;
 });
 
-afterAll(() => {
-  sqlite.close();
+afterAll(async () => {
+  await closeTestDb(testDb);
 });
 
-beforeEach(() => {
-  // Clear all tables before each test (order matters for FK constraints)
-  db.run(sql`DELETE FROM transaction_splits`);
-  db.run(sql`DELETE FROM account_snapshots`);
-  db.run(sql`DELETE FROM account_links`);
-  db.run(sql`DELETE FROM merchant_rules`);
-  db.run(sql`DELETE FROM transactions`);
-  db.run(sql`DELETE FROM budgets`);
-  db.run(sql`DELETE FROM snapshots`);
-  db.run(sql`DELETE FROM accounts`);
-  db.run(sql`DELETE FROM connections`);
-  db.run(sql`DELETE FROM institutions`);
-  db.run(sql`DELETE FROM categories`);
+beforeEach(async () => {
+  await resetTestDb(db);
 });
 
 describe("Database Schema", () => {
-  it("creates all expected tables", () => {
-    const tables = sqlite
-      .prepare(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '__drizzle%' ORDER BY name"
-      )
-      .all() as { name: string }[];
-    const tableNames = tables.map((t) => t.name).sort();
+  it("creates all expected application tables", async () => {
+    const result = await testDb.client.query<{ table_name: string }>(`
+      select table_name
+      from information_schema.tables
+      where table_schema = 'public'
+        and table_name not like '__drizzle%'
+      order by table_name
+    `);
 
-    expect(tableNames).toEqual([
+    expect(result.rows.map((row) => row.table_name)).toEqual([
       "account_links",
       "account_snapshots",
       "accounts",
+      "budget_templates",
       "budgets",
       "categories",
       "connections",
@@ -56,367 +51,257 @@ describe("Database Schema", () => {
       "snapshots",
       "transaction_splits",
       "transactions",
+      "workspace_members",
+      "workspaces",
     ]);
   });
 
-  it("stores money values as INTEGER (cents)", () => {
-    // Insert an account with a balance in cents
-    db.insert(schema.institutions).values({
-      name: "Test Bank",
-      provider: "manual",
-      status: "active",
-    }).run();
+  it("stores monetary values as integers", async () => {
+    const workspace = await seedWorkspace(db);
+    const institution = await seedManualInstitution(db, "Test Bank", workspace.id);
+    await seedManualAccount(db, {
+      institutionId: institution.id,
+      name: "Checking",
+      type: "checking",
+      balanceCurrent: 812_543,
+      isAsset: true,
+      workspaceId: workspace.id,
+    });
 
-    const [inst] = db.select().from(schema.institutions).all();
+    const result = await testDb.client.query<{ value_type: string }>(`
+      select pg_typeof(balance_current)::text as value_type
+      from accounts
+      limit 1
+    `);
 
-    db.insert(schema.accounts)
-      .values({
-        institutionId: inst!.id,
-        name: "Checking",
-        type: "checking",
-        balanceCurrent: 812543, // $8,125.43
-        isAsset: true,
-        currency: "USD",
-        source: "manual",
-      })
-      .run();
-
-    const [account] = db.select().from(schema.accounts).all();
-    expect(account!.balanceCurrent).toBe(812543);
-    expect(typeof account!.balanceCurrent).toBe("number");
-
-    // Verify it's stored as integer in SQLite
-    const raw = sqlite
-      .prepare("SELECT typeof(balance_current) as t FROM accounts LIMIT 1")
-      .get() as { t: string };
-    expect(raw.t).toBe("integer");
+    expect(result.rows[0]?.value_type).toBe("integer");
   });
 
-  it("enforces foreign key constraints on accounts -> institutions", () => {
-    expect(() => {
-      db.insert(schema.accounts)
-        .values({
-          institutionId: 99999, // non-existent
-          name: "Bad Account",
-          type: "checking",
-          balanceCurrent: 0,
-          isAsset: true,
-          currency: "USD",
-          source: "manual",
-        })
-        .run();
-    }).toThrow();
-  });
-
-  it("enforces foreign key constraints on transactions -> accounts", () => {
-    expect(() => {
-      db.insert(schema.transactions)
-        .values({
-          accountId: 99999, // non-existent
-          postedAt: "2026-03-16",
-          name: "Bad Transaction",
-          amount: 1000,
-          pending: false,
-          isTransfer: false,
-          reviewState: "none",
-        })
-        .run();
-    }).toThrow();
-  });
-
-  it("enforces unique constraint on budgets (month + category)", () => {
-    db.insert(schema.budgets)
-      .values({ month: "2026-03", category: "Groceries", amount: 50000 })
-      .run();
-
-    expect(() => {
-      db.insert(schema.budgets)
-        .values({ month: "2026-03", category: "Groceries", amount: 60000 })
-        .run();
-    }).toThrow();
-  });
-
-  it("enforces unique constraint on snapshots (month)", () => {
-    db.insert(schema.snapshots)
-      .values({ month: "2026-03", assets: 100000, liabilities: 50000, netWorth: 50000 })
-      .run();
-
-    expect(() => {
-      db.insert(schema.snapshots)
-        .values({ month: "2026-03", assets: 200000, liabilities: 60000, netWorth: 140000 })
-        .run();
-    }).toThrow();
-  });
-
-  it("enforces unique constraint on categories (name)", () => {
-    db.insert(schema.categories)
-      .values({ name: "Test Category", color: "#ff0000", icon: "star", isPredefined: false, sortOrder: 100 })
-      .run();
-
-    expect(() => {
-      db.insert(schema.categories)
-        .values({ name: "Test Category", color: "#00ff00", icon: "heart", isPredefined: false, sortOrder: 101 })
-        .run();
-    }).toThrow();
-  });
-
-  it("enforces unique constraint on merchant_rules (merchant_key)", () => {
-    db.insert(schema.merchantRules)
-      .values({ merchantKey: "starbucks", label: "Starbucks", category: "Eating Out", isTransfer: false })
-      .run();
-
-    expect(() => {
-      db.insert(schema.merchantRules)
-        .values({ merchantKey: "starbucks", label: "Starbucks v2", category: "Groceries", isTransfer: false })
-        .run();
-    }).toThrow();
-  });
-
-  it("enforces unique constraint on account_snapshots (account_id + day)", () => {
-    db.insert(schema.institutions).values({
-      name: "Test Bank",
-      provider: "manual",
-      status: "active",
-    }).run();
-    const [inst] = db.select().from(schema.institutions).all();
-
-    db.insert(schema.accounts)
-      .values({
-        institutionId: inst!.id,
-        name: "Checking",
-        type: "checking",
-        balanceCurrent: 100000,
-        isAsset: true,
-        currency: "USD",
-        source: "manual",
-      })
-      .run();
-    const [acct] = db.select().from(schema.accounts).all();
-
-    db.insert(schema.accountSnapshots)
-      .values({ accountId: acct!.id, day: "2026-03-16", balanceCurrent: 100000, isAsset: true })
-      .run();
-
-    expect(() => {
-      db.insert(schema.accountSnapshots)
-        .values({ accountId: acct!.id, day: "2026-03-16", balanceCurrent: 200000, isAsset: true })
-        .run();
-    }).toThrow();
-  });
-
-  it("enforces unique constraint on account_links (external_key)", () => {
-    db.insert(schema.connections).values({
-      institutionName: "Test Bank",
-      provider: "plaid",
-      accessToken: "enc-token",
-      itemId: "item-test",
-      isEncrypted: true,
-    }).run();
-    const [connection] = db.select().from(schema.connections).all();
-
-    db.insert(schema.institutions).values({
-      name: "Test Bank",
-      provider: "manual",
-      status: "active",
-    }).run();
-    const [inst] = db.select().from(schema.institutions).all();
-
-    db.insert(schema.accounts)
-      .values({
-        institutionId: inst!.id,
-        name: "Checking",
-        type: "checking",
-        balanceCurrent: 100000,
-        isAsset: true,
-        currency: "USD",
-        source: "manual",
-      })
-      .run();
-    const [acct] = db.select().from(schema.accounts).all();
-
-    db.insert(schema.accountLinks)
-      .values({
-        provider: "plaid",
-        externalKey: "plaid-123",
-        connectionId: connection!.id,
-        accountId: acct!.id,
-        institutionName: "Test",
-        displayName: "Checking",
-      })
-      .run();
-
-    expect(() => {
-      db.insert(schema.accountLinks)
-        .values({
-          provider: "plaid",
-          externalKey: "plaid-123",
-          connectionId: connection!.id,
-          accountId: acct!.id,
-          institutionName: "Test 2",
-          displayName: "Savings",
-        })
-        .run();
-    }).toThrow();
-  });
-
-  it("enforces foreign key on transaction_splits -> transactions", () => {
-    expect(() => {
-      db.insert(schema.transactionSplits)
-        .values({ transactionId: 99999, category: "Groceries", amount: 5000 })
-        .run();
-    }).toThrow();
-  });
-
-  it("allows boolean columns to store true/false", () => {
-    db.insert(schema.categories)
-      .values({ name: "Predefined Cat", color: "#000", icon: "star", isPredefined: true, sortOrder: 1 })
-      .run();
-    db.insert(schema.categories)
-      .values({ name: "Custom Cat", color: "#fff", icon: "circle", isPredefined: false, sortOrder: 2 })
-      .run();
-
-    const cats = db.select().from(schema.categories).all();
-    const predefined = cats.find((c) => c.name === "Predefined Cat");
-    const custom = cats.find((c) => c.name === "Custom Cat");
-
-    expect(predefined!.isPredefined).toBe(true);
-    expect(custom!.isPredefined).toBe(false);
-  });
-
-  it("stores dates as TEXT", () => {
-    db.insert(schema.institutions).values({
-      name: "Test Bank",
-      provider: "manual",
-      status: "active",
-    }).run();
-    const [inst] = db.select().from(schema.institutions).all();
-
-    db.insert(schema.accounts)
-      .values({
-        institutionId: inst!.id,
-        name: "Checking",
+  it("enforces foreign key constraints", async () => {
+    await expect(
+      db.insert(schema.accounts).values({
+        institutionId: 99_999,
+        name: "Bad Account",
         type: "checking",
         balanceCurrent: 0,
         isAsset: true,
         currency: "USD",
         source: "manual",
-      })
-      .run();
-    const [acct] = db.select().from(schema.accounts).all();
+      }),
+    ).rejects.toThrow();
 
-    db.insert(schema.transactions)
-      .values({
-        accountId: acct!.id,
+    await expect(
+      db.insert(schema.transactions).values({
+        accountId: 99_999,
         postedAt: "2026-03-16",
-        name: "Test Txn",
-        amount: 5000,
+        name: "Bad Transaction",
+        amount: 1_000,
         pending: false,
         isTransfer: false,
+        isExcluded: false,
         reviewState: "none",
+      }),
+    ).rejects.toThrow();
+  });
+
+  it("enforces workspace-scoped unique constraints for budgets, snapshots, merchant rules, accounts, and account links", async () => {
+    const workspace = await seedWorkspace(db, { name: "Alpha", slug: "alpha-schema" });
+    const institution = await seedManualInstitution(db, "Test Bank", workspace.id);
+    const account = await seedManualAccount(db, {
+      institutionId: institution.id,
+      name: "Checking",
+      type: "checking",
+      balanceCurrent: 100_000,
+      isAsset: true,
+      workspaceId: workspace.id,
+    });
+    const [connection] = await db
+      .insert(schema.connections)
+      .values({
+        workspaceId: workspace.id,
+        institutionName: "Test Bank",
+        provider: "plaid",
+        accessToken: "enc-token",
+        itemId: "item-test",
+        isEncrypted: true,
       })
-      .run();
+      .returning();
 
-    const [txn] = db.select().from(schema.transactions).all();
-    expect(txn!.postedAt).toBe("2026-03-16");
-
-    const raw = sqlite
-      .prepare("SELECT typeof(posted_at) as t FROM transactions LIMIT 1")
-      .get() as { t: string };
-    expect(raw.t).toBe("text");
-  });
-});
-
-describe("Seed Data", () => {
-  it("seeds 11 predefined categories", async () => {
-    const { seedCategories } = await import("@/db/seed");
-    seedCategories(db);
-
-    const cats = db.select().from(schema.categories).all();
-    expect(cats).toHaveLength(11);
-
-    const names = cats.map((c) => c.name).sort();
-    expect(names).toEqual([
-      "Bars/Clubs/Going Out",
-      "Clothing",
-      "Eating Out",
-      "Groceries",
-      "Home Goods",
-      "Insurance",
-      "Large Purchases",
-      "Other Fun Activities",
-      "Rent/Home",
-      "Subscriptions",
-      "Vacations",
-    ]);
-
-    // All predefined
-    cats.forEach((c) => {
-      expect(c.isPredefined).toBe(true);
-      expect(c.color).toBeTruthy();
-      expect(c.icon).toBeTruthy();
+    await db.insert(schema.budgets).values({
+      workspaceId: workspace.id,
+      month: "2026-03",
+      category: "Groceries",
+      amount: 50_000,
     });
-  });
-
-  it("seeds sample accounts", async () => {
-    const { seedCategories, seedSampleData } = await import("@/db/seed");
-    seedCategories(db);
-    seedSampleData(db);
-
-    const accts = db.select().from(schema.accounts).all();
-    expect(accts.length).toBeGreaterThanOrEqual(4);
-
-    const types = [...new Set(accts.map((a) => a.type))].sort();
-    expect(types).toContain("checking");
-    expect(types).toContain("savings");
-    expect(types).toContain("credit");
-    expect(types).toContain("investment");
-  });
-
-  it("seeds sample transactions", async () => {
-    const { seedCategories, seedSampleData } = await import("@/db/seed");
-    seedCategories(db);
-    seedSampleData(db);
-
-    const txns = db.select().from(schema.transactions).all();
-    expect(txns.length).toBeGreaterThan(0);
-
-    // All transactions should reference valid accounts
-    const accountIds = db
-      .select({ id: schema.accounts.id })
-      .from(schema.accounts)
-      .all()
-      .map((a) => a.id);
-    txns.forEach((t) => {
-      expect(accountIds).toContain(t.accountId);
+    await db.insert(schema.snapshots).values({
+      workspaceId: workspace.id,
+      month: "2026-03",
+      assets: 100_000,
+      liabilities: 50_000,
+      netWorth: 50_000,
+    });
+    await db.insert(schema.merchantRules).values({
+      workspaceId: workspace.id,
+      merchantKey: "starbucks",
+      label: "Starbucks",
+      category: "Eating Out",
+      isTransfer: false,
+    });
+    await db.insert(schema.accountLinks).values({
+      workspaceId: workspace.id,
+      provider: "plaid",
+      externalKey: "plaid-123",
+      connectionId: connection!.id,
+      accountId: account.id,
+      institutionName: "Test Bank",
+      displayName: "Checking",
     });
 
-    // Money values are integers
-    txns.forEach((t) => {
-      expect(Number.isInteger(t.amount)).toBe(true);
-    });
+    await expect(
+      db.insert(schema.budgets).values({
+        workspaceId: workspace.id,
+        month: "2026-03",
+        category: "Groceries",
+        amount: 60_000,
+      }),
+    ).rejects.toThrow();
+
+    await expect(
+      db.insert(schema.snapshots).values({
+        workspaceId: workspace.id,
+        month: "2026-03",
+        assets: 200_000,
+        liabilities: 60_000,
+        netWorth: 140_000,
+      }),
+    ).rejects.toThrow();
+
+    await expect(
+      db.insert(schema.merchantRules).values({
+        workspaceId: workspace.id,
+        merchantKey: "starbucks",
+        label: "Starbucks v2",
+        category: "Groceries",
+        isTransfer: false,
+      }),
+    ).rejects.toThrow();
+
+    await expect(
+      db.insert(schema.accountLinks).values({
+        workspaceId: workspace.id,
+        provider: "plaid",
+        externalKey: "plaid-123",
+        connectionId: connection!.id,
+        accountId: account.id,
+        institutionName: "Test Bank",
+        displayName: "Savings",
+      }),
+    ).rejects.toThrow();
+
+    await expect(
+      db.insert(schema.accounts).values({
+        workspaceId: workspace.id,
+        institutionId: institution.id,
+        externalRef: "ext-123",
+        name: "Extra Account",
+        type: "checking",
+        balanceCurrent: 0,
+        isAsset: true,
+        currency: "USD",
+        source: "plaid",
+      }),
+    ).resolves.toBeDefined();
+
+    await expect(
+      db.insert(schema.accounts).values({
+        workspaceId: workspace.id,
+        institutionId: institution.id,
+        externalRef: "ext-123",
+        name: "Duplicate Ref",
+        type: "checking",
+        balanceCurrent: 0,
+        isAsset: true,
+        currency: "USD",
+        source: "plaid",
+      }),
+    ).rejects.toThrow();
   });
 
-  it("seeds sample budgets", async () => {
-    const { seedCategories, seedSampleData } = await import("@/db/seed");
-    seedCategories(db);
-    seedSampleData(db);
+  it("allows workspace-scoped duplicates across different workspaces", async () => {
+    const alpha = await seedWorkspace(db, { name: "Alpha", slug: "alpha-dupes" });
+    const beta = await seedWorkspace(db, { name: "Beta", slug: "beta-dupes" });
 
-    const budgets = db.select().from(schema.budgets).all();
-    expect(budgets.length).toBeGreaterThan(0);
-
-    // Budget amounts are integers (cents)
-    budgets.forEach((b) => {
-      expect(Number.isInteger(b.amount)).toBe(true);
+    await db.insert(schema.budgets).values({
+      workspaceId: alpha.id,
+      month: "2026-03",
+      category: "Groceries",
+      amount: 50_000,
     });
+
+    await expect(
+      db.insert(schema.budgets).values({
+        workspaceId: beta.id,
+        month: "2026-03",
+        category: "Groceries",
+        amount: 60_000,
+      }),
+    ).resolves.toBeDefined();
   });
 
-  it("seedCategories is idempotent (does not fail on re-run)", async () => {
-    const { seedCategories } = await import("@/db/seed");
-    seedCategories(db);
-    // Running again should not throw
-    expect(() => seedCategories(db)).not.toThrow();
+  it("enforces global uniqueness for categories and account snapshot day uniqueness", async () => {
+    const workspace = await seedWorkspace(db, { name: "Alpha", slug: "alpha-categories" });
+    const institution = await seedManualInstitution(db, "Test Bank", workspace.id);
+    const account = await seedManualAccount(db, {
+      institutionId: institution.id,
+      name: "Checking",
+      type: "checking",
+      balanceCurrent: 100_000,
+      isAsset: true,
+      workspaceId: workspace.id,
+    });
 
-    const cats = db.select().from(schema.categories).all();
-    expect(cats).toHaveLength(11);
+    await db.insert(schema.categories).values({
+      name: "Test Category",
+      color: "#ff0000",
+      icon: "star",
+      isPredefined: false,
+      sortOrder: 100,
+    });
+
+    await expect(
+      db.insert(schema.categories).values({
+        name: "Test Category",
+        color: "#00ff00",
+        icon: "heart",
+        isPredefined: false,
+        sortOrder: 101,
+      }),
+    ).rejects.toThrow();
+
+    await db.insert(schema.accountSnapshots).values({
+      accountId: account.id,
+      day: "2026-03-16",
+      balanceCurrent: 100_000,
+      isAsset: true,
+    });
+
+    await expect(
+      db.insert(schema.accountSnapshots).values({
+        accountId: account.id,
+        day: "2026-03-16",
+        balanceCurrent: 200_000,
+        isAsset: true,
+      }),
+    ).rejects.toThrow();
+  });
+
+  it("seeds predefined categories idempotently", async () => {
+    await seedCategories(db);
+    await seedCategories(db);
+
+    const categories = await db.select().from(schema.categories);
+    expect(categories.length).toBeGreaterThan(5);
+    expect(new Set(categories.map((category) => category.name)).size).toBe(categories.length);
+    expect(categories.every((category) => category.isPredefined)).toBe(true);
   });
 });

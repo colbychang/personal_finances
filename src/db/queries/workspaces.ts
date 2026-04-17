@@ -1,8 +1,8 @@
 import { eq, isNull } from "drizzle-orm";
-import type { drizzle } from "drizzle-orm/better-sqlite3";
+import type { AppDatabase } from "@/db/index";
 import * as schema from "../schema";
 
-type DB = ReturnType<typeof drizzle>;
+type DB = AppDatabase;
 
 export interface WorkspaceMembership {
   workspaceId: number;
@@ -36,17 +36,19 @@ function buildDefaultWorkspaceName(email: string) {
   return `${label}'s Glacier`;
 }
 
-function ensureUniqueWorkspaceSlug(database: DB, baseName: string) {
+async function ensureUniqueWorkspaceSlug(database: DB, baseName: string) {
   const baseSlug = slugifyWorkspaceName(baseName);
   let slug = baseSlug;
   let counter = 2;
 
   while (
-    database
+    (
+      await database
       .select({ id: schema.workspaces.id })
       .from(schema.workspaces)
       .where(eq(schema.workspaces.slug, slug))
-      .get()
+      .limit(1)
+    )[0]
   ) {
     slug = `${baseSlug}-${counter}`;
     counter += 1;
@@ -58,8 +60,8 @@ function ensureUniqueWorkspaceSlug(database: DB, baseName: string) {
 export function getWorkspaceMembershipByAuthUserId(
   database: DB,
   authUserId: string,
-): WorkspaceMembership | null {
-  const row = database
+): Promise<WorkspaceMembership | null> {
+  return database
     .select({
       workspaceId: schema.workspaceMembers.workspaceId,
       workspaceName: schema.workspaces.name,
@@ -74,34 +76,32 @@ export function getWorkspaceMembershipByAuthUserId(
       eq(schema.workspaceMembers.workspaceId, schema.workspaces.id),
     )
     .where(eq(schema.workspaceMembers.authUserId, authUserId))
-    .get();
-
-  return row ?? null;
+    .limit(1)
+    .then((rows) => rows[0] ?? null);
 }
 
-export function ensurePersonalWorkspaceForAuthUser(
+export async function ensurePersonalWorkspaceForAuthUser(
   database: DB,
   authUserId: string,
   email: string,
 ) {
-  const existing = getWorkspaceMembershipByAuthUserId(database, authUserId);
+  const existing = await getWorkspaceMembershipByAuthUserId(database, authUserId);
 
   if (existing) {
     if (existing.email !== email) {
-      database
+      await database
         .update(schema.workspaceMembers)
         .set({ email })
-        .where(eq(schema.workspaceMembers.authUserId, authUserId))
-        .run();
+        .where(eq(schema.workspaceMembers.authUserId, authUserId));
     }
 
-    return getWorkspaceMembershipByAuthUserId(database, authUserId)!;
+    return (await getWorkspaceMembershipByAuthUserId(database, authUserId))!;
   }
 
   const workspaceName = buildDefaultWorkspaceName(email);
-  const slug = ensureUniqueWorkspaceSlug(database, workspaceName);
+  const slug = await ensureUniqueWorkspaceSlug(database, workspaceName);
 
-  const insertedWorkspace = database
+  const [insertedWorkspace] = await database
     .insert(schema.workspaces)
     .values({
       name: workspaceName,
@@ -109,71 +109,61 @@ export function ensurePersonalWorkspaceForAuthUser(
     })
     .returning({
       id: schema.workspaces.id,
-    })
-    .get();
+    });
 
-  database.insert(schema.workspaceMembers).values({
+  await database.insert(schema.workspaceMembers).values({
     workspaceId: insertedWorkspace.id,
     authUserId,
     email,
     role: "owner",
-  }).run();
+  });
 
-  return getWorkspaceMembershipByAuthUserId(database, authUserId)!;
+  return (await getWorkspaceMembershipByAuthUserId(database, authUserId))!;
 }
 
-export function claimUnownedFinanceDataForWorkspace(database: DB, workspaceId: number) {
-  database
+export async function claimUnownedFinanceDataForWorkspace(database: DB, workspaceId: number) {
+  await database
     .update(schema.institutions)
     .set({ workspaceId })
-    .where(isNull(schema.institutions.workspaceId))
-    .run();
+    .where(isNull(schema.institutions.workspaceId));
 
-  database
+  await database
     .update(schema.accounts)
     .set({ workspaceId })
-    .where(isNull(schema.accounts.workspaceId))
-    .run();
+    .where(isNull(schema.accounts.workspaceId));
 
-  database
+  await database
     .update(schema.transactions)
     .set({ workspaceId })
-    .where(isNull(schema.transactions.workspaceId))
-    .run();
+    .where(isNull(schema.transactions.workspaceId));
 
-  database
+  await database
     .update(schema.budgets)
     .set({ workspaceId })
-    .where(isNull(schema.budgets.workspaceId))
-    .run();
+    .where(isNull(schema.budgets.workspaceId));
 
-  database
+  await database
     .update(schema.budgetTemplates)
     .set({ workspaceId })
-    .where(isNull(schema.budgetTemplates.workspaceId))
-    .run();
+    .where(isNull(schema.budgetTemplates.workspaceId));
 
-  database
+  await database
     .update(schema.snapshots)
     .set({ workspaceId })
-    .where(isNull(schema.snapshots.workspaceId))
-    .run();
+    .where(isNull(schema.snapshots.workspaceId));
 
-  database
+  await database
     .update(schema.connections)
     .set({ workspaceId })
-    .where(isNull(schema.connections.workspaceId))
-    .run();
+    .where(isNull(schema.connections.workspaceId));
 
-  database
+  await database
     .update(schema.merchantRules)
     .set({ workspaceId })
-    .where(isNull(schema.merchantRules.workspaceId))
-    .run();
+    .where(isNull(schema.merchantRules.workspaceId));
 
-  database
+  await database
     .update(schema.accountLinks)
     .set({ workspaceId })
-    .where(isNull(schema.accountLinks.workspaceId))
-    .run();
+    .where(isNull(schema.accountLinks.workspaceId));
 }

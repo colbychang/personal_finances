@@ -1,10 +1,8 @@
 import { and, asc, eq, inArray } from "drizzle-orm";
-import type { drizzle } from "drizzle-orm/better-sqlite3";
+import type { AppDatabase } from "@/db/index";
 import * as schema from "../schema";
 
-type DB = ReturnType<typeof drizzle>;
-
-// ─── Types ──────────────────────────────────────────────────────────────
+type DB = AppDatabase;
 
 export interface SnapshotRow {
   id: number;
@@ -43,25 +41,16 @@ export interface LiveNetWorth {
   netWorth: number;
 }
 
-// ─── getLiveNetWorth ────────────────────────────────────────────────────
-
-/**
- * Compute current net worth from live account balances.
- * Returns total assets, total liabilities, and net worth (assets - liabilities).
- */
-export function getLiveNetWorth(database: DB, workspaceId?: number): LiveNetWorth {
-  const accounts = database
+export async function getLiveNetWorth(database: DB, workspaceId?: number): Promise<LiveNetWorth> {
+  const accounts = await database
     .select({
       balanceCurrent: schema.accounts.balanceCurrent,
       isAsset: schema.accounts.isAsset,
     })
     .from(schema.accounts)
     .where(
-      workspaceId === undefined
-        ? undefined
-        : eq(schema.accounts.workspaceId, workspaceId),
-    )
-    .all();
+      workspaceId === undefined ? undefined : eq(schema.accounts.workspaceId, workspaceId),
+    );
 
   let totalAssets = 0;
   let totalLiabilities = 0;
@@ -81,20 +70,12 @@ export function getLiveNetWorth(database: DB, workspaceId?: number): LiveNetWort
   };
 }
 
-// ─── createSnapshot ─────────────────────────────────────────────────────
-
-/**
- * Create a snapshot for a given month (YYYY-MM).
- * Captures all current account balances, calculates total assets, liabilities, and net worth.
- * If a snapshot for the given month already exists, it is replaced.
- */
-export function createSnapshot(
+export async function createSnapshot(
   database: DB,
   month: string,
   workspaceId?: number,
-): SnapshotRow {
-  // Get all accounts
-  const accounts = database
+): Promise<SnapshotRow> {
+  const accounts = await database
     .select({
       id: schema.accounts.id,
       name: schema.accounts.name,
@@ -104,13 +85,9 @@ export function createSnapshot(
     })
     .from(schema.accounts)
     .where(
-      workspaceId === undefined
-        ? undefined
-        : eq(schema.accounts.workspaceId, workspaceId),
-    )
-    .all();
+      workspaceId === undefined ? undefined : eq(schema.accounts.workspaceId, workspaceId),
+    );
 
-  // Calculate totals
   let totalAssets = 0;
   let totalLiabilities = 0;
 
@@ -124,24 +101,20 @@ export function createSnapshot(
 
   const netWorth = totalAssets - totalLiabilities;
 
-  // Delete existing snapshot and account snapshots for this month
-  const existing = database
+  const [existing] = await database
     .select()
     .from(schema.snapshots)
     .where(
       and(
         eq(schema.snapshots.month, month),
-        workspaceId === undefined
-          ? undefined
-          : eq(schema.snapshots.workspaceId, workspaceId),
+        workspaceId === undefined ? undefined : eq(schema.snapshots.workspaceId, workspaceId),
       ),
     )
-    .get();
+    .limit(1);
 
   if (existing) {
-    // Delete account snapshots that match the day prefix
     if (accounts.length > 0) {
-      database
+      await database
         .delete(schema.accountSnapshots)
         .where(
           and(
@@ -151,18 +124,15 @@ export function createSnapshot(
               accounts.map((account) => account.id),
             ),
           ),
-        )
-        .run();
+        );
     }
 
-    database
+    await database
       .delete(schema.snapshots)
-      .where(eq(schema.snapshots.month, month))
-      .run();
+      .where(eq(schema.snapshots.id, existing.id));
   }
 
-  // Insert new snapshot
-  const snapshot = database
+  const [snapshot] = await database
     .insert(schema.snapshots)
     .values({
       workspaceId: workspaceId ?? null,
@@ -171,73 +141,53 @@ export function createSnapshot(
       liabilities: totalLiabilities,
       netWorth,
     })
-    .returning()
-    .get();
+    .returning();
 
-  // Insert per-account snapshots
   const day = `${month}-01`;
-  for (const account of accounts) {
-    database
-      .insert(schema.accountSnapshots)
-      .values({
+  if (accounts.length > 0) {
+    await database.insert(schema.accountSnapshots).values(
+      accounts.map((account) => ({
         accountId: account.id,
         day,
         balanceCurrent: account.balanceCurrent,
         isAsset: account.isAsset,
-      })
-      .run();
+      })),
+    );
   }
 
   return snapshot;
 }
 
-// ─── getAllSnapshots ────────────────────────────────────────────────────
-
-/**
- * Get all snapshots sorted by month ascending.
- */
-export function getAllSnapshots(database: DB, workspaceId?: number): SnapshotRow[] {
+export function getAllSnapshots(database: DB, workspaceId?: number): Promise<SnapshotRow[]> {
   return database
     .select()
     .from(schema.snapshots)
     .where(
-      workspaceId === undefined
-        ? undefined
-        : eq(schema.snapshots.workspaceId, workspaceId),
+      workspaceId === undefined ? undefined : eq(schema.snapshots.workspaceId, workspaceId),
     )
-    .orderBy(asc(schema.snapshots.month))
-    .all();
+    .orderBy(asc(schema.snapshots.month));
 }
 
-// ─── getSnapshotByMonth ────────────────────────────────────────────────
-
-/**
- * Get a specific snapshot by month with per-account balances.
- * Returns null if no snapshot exists for the given month.
- */
-export function getSnapshotByMonth(
+export async function getSnapshotByMonth(
   database: DB,
   month: string,
   workspaceId?: number,
-): SnapshotDetail | null {
-  const snapshot = database
+): Promise<SnapshotDetail | null> {
+  const [snapshot] = await database
     .select()
     .from(schema.snapshots)
     .where(
       and(
         eq(schema.snapshots.month, month),
-        workspaceId === undefined
-          ? undefined
-          : eq(schema.snapshots.workspaceId, workspaceId),
+        workspaceId === undefined ? undefined : eq(schema.snapshots.workspaceId, workspaceId),
       ),
     )
-    .get();
+    .limit(1);
 
   if (!snapshot) return null;
 
   const day = `${month}-01`;
-
-  const accountBalances = database
+  const accountBalances = await database
     .select({
       accountId: schema.accountSnapshots.accountId,
       accountName: schema.accounts.name,
@@ -249,24 +199,22 @@ export function getSnapshotByMonth(
     .from(schema.accountSnapshots)
     .innerJoin(
       schema.accounts,
-      eq(schema.accountSnapshots.accountId, schema.accounts.id)
+      eq(schema.accountSnapshots.accountId, schema.accounts.id),
     )
-    .where(eq(schema.accountSnapshots.day, day))
-    .all();
+    .where(
+      and(
+        eq(schema.accountSnapshots.day, day),
+        workspaceId === undefined ? undefined : eq(schema.accounts.workspaceId, workspaceId),
+      ),
+    );
 
   return { snapshot, accountBalances };
 }
 
-// ─── getAccountBalanceHistory ──────────────────────────────────────────
-
-/**
- * Get balance history for all accounts across all snapshots.
- * Returns rows sorted by day ascending.
- */
 export function getAccountBalanceHistory(
   database: DB,
   workspaceId?: number,
-): AccountBalanceHistoryRow[] {
+): Promise<AccountBalanceHistoryRow[]> {
   return database
     .select({
       accountId: schema.accountSnapshots.accountId,
@@ -279,13 +227,10 @@ export function getAccountBalanceHistory(
     .from(schema.accountSnapshots)
     .innerJoin(
       schema.accounts,
-      eq(schema.accountSnapshots.accountId, schema.accounts.id)
+      eq(schema.accountSnapshots.accountId, schema.accounts.id),
     )
     .where(
-      workspaceId === undefined
-        ? undefined
-        : eq(schema.accounts.workspaceId, workspaceId),
+      workspaceId === undefined ? undefined : eq(schema.accounts.workspaceId, workspaceId),
     )
-    .orderBy(asc(schema.accountSnapshots.day))
-    .all();
+    .orderBy(asc(schema.accountSnapshots.day));
 }

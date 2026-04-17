@@ -1,8 +1,8 @@
 import { eq, asc } from "drizzle-orm";
-import type { drizzle } from "drizzle-orm/better-sqlite3";
+import type { AppDatabase } from "@/db/index";
 import * as schema from "../schema";
 
-type DB = ReturnType<typeof drizzle>;
+type DB = AppDatabase;
 
 // Default colors for custom categories (cycled through)
 const CUSTOM_COLORS = [
@@ -32,8 +32,8 @@ export interface CategoryRow {
 /**
  * Get all categories ordered by sort_order, then name.
  */
-export function getAllCategories(database: DB): CategoryRow[] {
-  return database
+export async function getAllCategories(database: DB): Promise<CategoryRow[]> {
+  return await database
     .select({
       id: schema.categories.id,
       name: schema.categories.name,
@@ -43,8 +43,7 @@ export function getAllCategories(database: DB): CategoryRow[] {
       sortOrder: schema.categories.sortOrder,
     })
     .from(schema.categories)
-    .orderBy(asc(schema.categories.sortOrder), asc(schema.categories.name))
-    .all();
+    .orderBy(asc(schema.categories.sortOrder), asc(schema.categories.name));
 }
 
 export interface CreateCategoryInput {
@@ -56,20 +55,19 @@ export interface CreateCategoryInput {
 /**
  * Create a custom category. Throws if name is duplicate (UNIQUE constraint).
  */
-export function createCategory(database: DB, input: CreateCategoryInput): CategoryRow {
+export async function createCategory(database: DB, input: CreateCategoryInput): Promise<CategoryRow> {
   const trimmedName = input.name.trim();
 
   // Pick a default color based on existing custom category count
-  const existingCustom = database
+  const existingCustom = await database
     .select({ id: schema.categories.id })
     .from(schema.categories)
-    .where(eq(schema.categories.isPredefined, false))
-    .all();
+    .where(eq(schema.categories.isPredefined, false));
 
   const color = input.color ?? CUSTOM_COLORS[existingCustom.length % CUSTOM_COLORS.length];
   const icon = input.icon ?? DEFAULT_ICON;
 
-  const result = database
+  const [result] = await database
     .insert(schema.categories)
     .values({
       name: trimmedName,
@@ -78,8 +76,7 @@ export function createCategory(database: DB, input: CreateCategoryInput): Catego
       isPredefined: false,
       sortOrder: 100,
     })
-    .returning()
-    .get();
+    .returning();
 
   return result;
 }
@@ -87,8 +84,8 @@ export function createCategory(database: DB, input: CreateCategoryInput): Catego
 /**
  * Get a category by name. Returns null if not found.
  */
-export function getCategoryByName(database: DB, name: string): CategoryRow | null {
-  const row = database
+export async function getCategoryByName(database: DB, name: string): Promise<CategoryRow | null> {
+  const [row] = await database
     .select({
       id: schema.categories.id,
       name: schema.categories.name,
@@ -99,7 +96,7 @@ export function getCategoryByName(database: DB, name: string): CategoryRow | nul
     })
     .from(schema.categories)
     .where(eq(schema.categories.name, name))
-    .get();
+    .limit(1);
 
   return row ?? null;
 }
