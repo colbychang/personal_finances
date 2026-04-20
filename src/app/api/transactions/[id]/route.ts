@@ -27,13 +27,13 @@ export async function GET(request: Request, context: RouteContext) {
       return NextResponse.json({ error: "Invalid transaction ID" }, { status: 400 });
     }
 
-    const transaction = getTransactionById(db, txnId, workspace.workspaceId);
+    const transaction = await getTransactionById(db, txnId, workspace.workspaceId);
 
     if (!transaction) {
       return NextResponse.json({ error: "Transaction not found" }, { status: 404 });
     }
 
-    const splits = getTransactionSplits(db, txnId);
+    const splits = await getTransactionSplits(db, txnId);
 
     return NextResponse.json({ transaction, splits });
   } catch (error) {

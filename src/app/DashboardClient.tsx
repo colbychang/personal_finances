@@ -659,7 +659,8 @@ export function DashboardClient({
 }: DashboardClientProps) {
   const [data, setData] = useState<DashboardData>(initialData);
   const [month, setMonth] = useState(initialMonth);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(shouldHydrateOnMount);
+  const [hasLoadedData, setHasLoadedData] = useState(!shouldHydrateOnMount);
 
   const fetchData = useCallback(async (newMonth: string) => {
     setIsLoading(true);
@@ -668,6 +669,7 @@ export function DashboardClient({
       if (res.ok) {
         const newData = await res.json();
         setData(newData);
+        setHasLoadedData(true);
       }
     } catch {
       // Keep existing data on error
@@ -687,6 +689,30 @@ export function DashboardClient({
       setData(initialData);
     }
   }, [initialData, initialMonth, month]);
+
+  const showLoadingState = shouldHydrateOnMount && !hasLoadedData;
+
+  if (showLoadingState) {
+    return (
+      <div className="space-y-4">
+        <MonthNav
+          month={month}
+          onPrev={handlePrevMonth}
+          onNext={handleNextMonth}
+          isLoading
+        />
+        <div className="rounded-[var(--radius-card)] border border-neutral-200 bg-white p-6">
+          <p className="text-sm font-medium text-neutral-700">
+            Loading dashboard data...
+          </p>
+          <p className="mt-2 text-sm text-neutral-500">
+            We are opening the page first and then pulling the latest balances,
+            budget status, and recent transactions.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   useEffect(() => {
     if (!shouldHydrateOnMount || month !== initialMonth) {

@@ -9,7 +9,7 @@ import { requireCurrentWorkspace } from "@/lib/auth/current-workspace";
 export async function GET() {
   try {
     const { workspace } = await requireCurrentWorkspace();
-    const snapshots = getAllSnapshots(db, workspace.workspaceId);
+    const snapshots = await getAllSnapshots(db, workspace.workspaceId);
     return NextResponse.json({ snapshots });
   } catch (error) {
     console.error("Failed to fetch snapshots:", error);
@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const snapshot = createSnapshot(db, month, workspace.workspaceId);
+    const snapshot = await createSnapshot(db, month, workspace.workspaceId);
     return NextResponse.json({ snapshot }, { status: 201 });
   } catch (error) {
     console.error("Failed to create snapshot:", error);

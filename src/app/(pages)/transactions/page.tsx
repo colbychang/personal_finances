@@ -1,9 +1,5 @@
 import { ArrowLeftRight } from "lucide-react";
-import { db } from "@/db/index";
-import { getAccountsForFilter } from "@/db/queries/transactions";
-import { getAllCategories } from "@/db/queries/categories";
 import { PublicProfileNotice } from "@/components/public/PublicProfileNotice";
-import { requireCurrentWorkspace } from "@/lib/auth/current-workspace";
 import { isPublicProfileMode } from "@/lib/deployment";
 import { TransactionsClient } from "./TransactionsClient";
 
@@ -25,7 +21,6 @@ export default async function TransactionsPage({
     return <PublicProfileNotice />;
   }
 
-  const { workspace } = await requireCurrentWorkspace();
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const dateFromParam = resolvedSearchParams?.dateFrom;
   const dateToParam = resolvedSearchParams?.dateTo;
@@ -77,17 +72,6 @@ export default async function TransactionsPage({
     limit: 20,
     totalPages: 1,
   };
-  const [accounts, categories] = await Promise.all([
-    getAccountsForFilter(db, workspace.workspaceId),
-    getAllCategories(db),
-  ]);
-
-  // Build category color map for the client
-  const categoryColors = categories.map((c) => ({
-    name: c.name,
-    color: c.color,
-  }));
-
   return (
     <div className="p-4 md:p-8 max-w-6xl mx-auto">
       <div className="flex items-center gap-3 mb-6">
@@ -96,8 +80,8 @@ export default async function TransactionsPage({
       </div>
       <TransactionsClient
         initialData={initialData}
-        accounts={accounts}
-        categoryColors={categoryColors}
+        accounts={[]}
+        categoryColors={[]}
         initialDateFrom={initialDateFrom}
         initialDateTo={initialDateTo}
         initialSelectedCategories={initialSelectedCategories}

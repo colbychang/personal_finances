@@ -9,7 +9,7 @@ import { requireCurrentWorkspace } from "@/lib/auth/current-workspace";
 export async function GET() {
   try {
     const { workspace } = await requireCurrentWorkspace();
-    const grouped = getAllAccountsGrouped(db, workspace.workspaceId);
+    const grouped = await getAllAccountsGrouped(db, workspace.workspaceId);
     return NextResponse.json({ sections: grouped });
   } catch (error) {
     console.error("GET /api/accounts error:", error);
@@ -70,7 +70,7 @@ export async function POST(request: Request) {
     // Convert dollars to cents
     const balanceCents = Math.round(balance * 100);
 
-    const account = createAccount(db, {
+    const account = await createAccount(db, {
       name: name.trim(),
       institution: institution.trim(),
       type,

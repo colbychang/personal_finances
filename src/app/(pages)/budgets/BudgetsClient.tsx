@@ -209,6 +209,7 @@ export function BudgetsClient({
   const [month, setMonth] = useState(initialMonth);
   const [data, setData] = useState<BudgetSummary>(initialData);
   const [allCategories, setAllCategories] = useState(categories);
+  const [accountOptions, setAccountOptions] = useState(accounts);
   const [isLoading, setIsLoading] = useState(false);
   const [templateMessage, setTemplateMessage] = useState<string | null>(null);
   const [isSavingTemplate, setIsSavingTemplate] = useState(false);
@@ -271,6 +272,37 @@ export function BudgetsClient({
   const [isCreatingCategory, setIsCreatingCategory] = useState(false);
   const hasTemplate = defaultTemplates.length > 0;
 
+  const fetchSupportData = useCallback(async () => {
+    try {
+      const [categoriesRes, accountsRes, templatesRes] = await Promise.all([
+        fetch("/api/categories"),
+        fetch("/api/accounts"),
+        fetch("/api/budgets/template"),
+      ]);
+
+      if (categoriesRes.ok) {
+        const result = await categoriesRes.json();
+        setAllCategories((result.categories ?? []) as CategoryOption[]);
+      }
+
+      if (accountsRes.ok) {
+        const result = await accountsRes.json();
+        const sections = Array.isArray(result.sections) ? result.sections : [];
+        const flattenedAccounts = sections.flatMap((section: {
+          accounts?: AccountOption[];
+        }) => section.accounts ?? []);
+        setAccountOptions(flattenedAccounts);
+      }
+
+      if (templatesRes.ok) {
+        const result = await templatesRes.json();
+        setDefaultTemplates((result.templates ?? []) as BudgetTemplate[]);
+      }
+    } catch (error) {
+      console.error("Failed to fetch budget support data:", error);
+    }
+  }, []);
+
   const fetchBudgets = useCallback(async (targetMonth: string) => {
     setIsLoading(true);
     try {
@@ -316,8 +348,9 @@ export function BudgetsClient({
       return;
     }
 
+    void fetchSupportData();
     void fetchBudgets(month);
-  }, [fetchBudgets, initialMonth, month, shouldHydrateOnMount]);
+  }, [fetchBudgets, fetchSupportData, initialMonth, month, shouldHydrateOnMount]);
 
   useEffect(() => {
     const pendingRestore = pendingScrollRestoreRef.current;
@@ -1713,7 +1746,7 @@ export function BudgetsClient({
         <TransactionForm
           mode="edit"
           initialData={getTransactionFormData(editingTransaction)}
-          accounts={accounts}
+          accounts={accountOptions}
           onSubmit={handleEditTransaction}
           onCancel={() => setEditingTransaction(null)}
           isSubmitting={isSaving}

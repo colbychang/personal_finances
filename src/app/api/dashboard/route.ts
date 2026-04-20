@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const data = getDashboardData(db, month, workspace.workspaceId);
+    const data = await getDashboardData(db, month, workspace.workspaceId);
     return NextResponse.json(data);
   } catch (error) {
     console.error("GET /api/dashboard error:", error);

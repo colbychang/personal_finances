@@ -22,7 +22,7 @@ export async function GET(
       );
     }
 
-    const result = getSnapshotByMonth(db, month, workspace.workspaceId);
+    const result = await getSnapshotByMonth(db, month, workspace.workspaceId);
 
     if (!result) {
       return NextResponse.json(

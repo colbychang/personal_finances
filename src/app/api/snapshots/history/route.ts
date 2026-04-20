@@ -9,7 +9,7 @@ import { requireCurrentWorkspace } from "@/lib/auth/current-workspace";
 export async function GET() {
   try {
     const { workspace } = await requireCurrentWorkspace();
-    const history = getAccountBalanceHistory(db, workspace.workspaceId);
+    const history = await getAccountBalanceHistory(db, workspace.workspaceId);
     return NextResponse.json({ history });
   } catch (error) {
     console.error("Failed to fetch account balance history:", error);

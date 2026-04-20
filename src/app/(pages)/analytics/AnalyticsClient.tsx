@@ -353,7 +353,8 @@ export function AnalyticsClient({
 }: AnalyticsClientProps) {
   const [data, setData] = useState<AnalyticsData>(initialData);
   const [period, setPeriod] = useState<Period>("month");
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(shouldHydrateOnMount);
+  const [hasLoadedData, setHasLoadedData] = useState(!shouldHydrateOnMount);
   const [drillDownCategory, setDrillDownCategory] = useState<string | null>(null);
   const [drillDownTransactions, setDrillDownTransactions] = useState<DrillDownTransaction[]>([]);
   const [isDrillDownLoading, setIsDrillDownLoading] = useState(false);
@@ -365,6 +366,7 @@ export function AnalyticsClient({
       if (res.ok) {
         const newData = await res.json();
         setData(newData);
+        setHasLoadedData(true);
       }
     } catch {
       // Keep existing data on error
@@ -423,6 +425,20 @@ export function AnalyticsClient({
     },
     [period, drillDownCategory]
   );
+
+  if (shouldHydrateOnMount && !hasLoadedData) {
+    return (
+      <div className="rounded-[var(--radius-card)] border border-neutral-200 bg-white p-6">
+        <p className="text-sm font-medium text-neutral-700">
+          Loading analytics data...
+        </p>
+        <p className="mt-2 text-sm text-neutral-500">
+          The page is open. Category breakdowns and monthly trends will appear
+          as soon as the data request completes.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className={cn(isLoading && "opacity-60 pointer-events-none transition-opacity")}>

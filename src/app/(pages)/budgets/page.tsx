@@ -1,11 +1,6 @@
 import { PiggyBank } from "lucide-react";
-import { db } from "@/db/index";
 import type { BudgetSummary } from "@/db/queries/budgets";
-import { getBudgetTemplates } from "@/db/queries/budgets";
-import { getAllCategories } from "@/db/queries/categories";
-import { getAccountsForFilter } from "@/db/queries/transactions";
 import { PublicProfileNotice } from "@/components/public/PublicProfileNotice";
-import { requireCurrentWorkspace } from "@/lib/auth/current-workspace";
 import { isPublicProfileMode } from "@/lib/deployment";
 import { BudgetsClient } from "./BudgetsClient";
 
@@ -20,7 +15,6 @@ export default async function BudgetsPage({ searchParams }: BudgetsPageProps) {
     return <PublicProfileNotice />;
   }
 
-  const { workspace } = await requireCurrentWorkspace();
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const monthParam = resolvedSearchParams?.month;
   const monthValue = Array.isArray(monthParam) ? monthParam[0] : monthParam;
@@ -45,12 +39,6 @@ export default async function BudgetsPage({ searchParams }: BudgetsPageProps) {
 
   // Keep the first document render lightweight and let the client hydrate
   // budget data after navigation so the Budgets tab doesn't block route loads.
-  const [initialBudgetTemplates, categories, accounts] = await Promise.all([
-    getBudgetTemplates(db, workspace.workspaceId),
-    getAllCategories(db),
-    getAccountsForFilter(db, workspace.workspaceId),
-  ]);
-
   return (
     <div className="p-4 md:p-8 max-w-6xl mx-auto">
       <div className="flex items-center gap-3 mb-6">
@@ -60,9 +48,9 @@ export default async function BudgetsPage({ searchParams }: BudgetsPageProps) {
       <BudgetsClient
         initialMonth={activeMonth}
         initialData={initialData}
-        categories={categories}
-        accounts={accounts}
-        initialBudgetTemplates={initialBudgetTemplates}
+        categories={[]}
+        accounts={[]}
+        initialBudgetTemplates={[]}
         shouldHydrateOnMount
       />
     </div>

@@ -22,7 +22,7 @@ export async function GET(request: Request, context: RouteContext) {
       return NextResponse.json({ error: "Invalid account ID" }, { status: 400 });
     }
 
-    const account = getAccountById(db, accountId, workspace.workspaceId);
+    const account = await getAccountById(db, accountId, workspace.workspaceId);
 
     if (!account) {
       return NextResponse.json({ error: "Account not found" }, { status: 404 });
@@ -98,7 +98,7 @@ export async function PUT(request: Request, context: RouteContext) {
     if (type !== undefined) updates.type = type;
     if (balance !== undefined) updates.balance = Math.round(balance * 100);
 
-    const updated = updateAccount(db, accountId, updates, workspace.workspaceId);
+    const updated = await updateAccount(db, accountId, updates, workspace.workspaceId);
 
     if (!updated) {
       return NextResponse.json({ error: "Account not found" }, { status: 404 });
@@ -127,7 +127,7 @@ export async function DELETE(request: Request, context: RouteContext) {
       return NextResponse.json({ error: "Invalid account ID" }, { status: 400 });
     }
 
-    const deleted = deleteAccountWithTransactions(db, accountId, workspace.workspaceId);
+    const deleted = await deleteAccountWithTransactions(db, accountId, workspace.workspaceId);
 
     if (!deleted) {
       return NextResponse.json({ error: "Account not found" }, { status: 404 });

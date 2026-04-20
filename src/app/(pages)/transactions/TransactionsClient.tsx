@@ -101,6 +101,8 @@ export function TransactionsClient({
 }: TransactionsClientProps) {
   const { showToast } = useToast();
   const router = useRouter();
+  const [accountOptions, setAccountOptions] = useState(accounts);
+  const [categoryColorOptions, setCategoryColorOptions] = useState(categoryColors);
 
   // Filter state
   const [search, setSearch] = useState("");
@@ -187,6 +189,37 @@ export function TransactionsClient({
     [buildQueryString]
   );
 
+  const fetchSupportData = useCallback(async () => {
+    try {
+      const [accountsRes, categoriesRes] = await Promise.all([
+        fetch("/api/accounts"),
+        fetch("/api/categories"),
+      ]);
+
+      if (accountsRes.ok) {
+        const result = await accountsRes.json();
+        const sections = Array.isArray(result.sections) ? result.sections : [];
+        const flattenedAccounts = sections.flatMap((section: {
+          accounts?: AccountOption[];
+        }) => section.accounts ?? []);
+        setAccountOptions(flattenedAccounts);
+      }
+
+      if (categoriesRes.ok) {
+        const result = await categoriesRes.json();
+        const colors = Array.isArray(result.categories)
+          ? result.categories.map((category: { name: string; color: string | null }) => ({
+              name: category.name,
+              color: category.color,
+            }))
+          : [];
+        setCategoryColorOptions(colors);
+      }
+    } catch (error) {
+      console.error("Failed to fetch transaction support data:", error);
+    }
+  }, []);
+
   useEffect(() => {
     return subscribeToFinanceDataChanged(() => {
       void fetchTransactions({ pageOverride: page });
@@ -199,8 +232,9 @@ export function TransactionsClient({
       return;
     }
 
+    void fetchSupportData();
     void fetchTransactions({ pageOverride: page });
-  }, [fetchTransactions, page, shouldHydrateOnMount]);
+  }, [fetchSupportData, fetchTransactions, page, shouldHydrateOnMount]);
 
   // Re-fetch when filters change (not search - that uses debounce)
   useEffect(() => {
@@ -255,7 +289,7 @@ export function TransactionsClient({
   // Get category color by name
   function getCategoryColor(categoryName: string | null): string {
     if (!categoryName) return "#94a3b8";
-    const found = categoryColors.find((c) => c.name === categoryName);
+    const found = categoryColorOptions.find((c) => c.name === categoryName);
     return found?.color ?? "#94a3b8";
   }
 
@@ -596,7 +630,7 @@ export function TransactionsClient({
             className="w-full px-3 py-2 rounded-[var(--radius-button)] border border-neutral-300 text-sm min-h-[44px] bg-white focus:ring-primary"
           >
             <option value="">All accounts</option>
-            {accounts.map((acc) => (
+            {accountOptions.map((acc) => (
               <option key={acc.id} value={String(acc.id)}>
                 {acc.name}
               </option>
@@ -706,7 +740,7 @@ export function TransactionsClient({
                   className="w-full px-3 py-2.5 rounded-[var(--radius-button)] border border-neutral-300 text-sm min-h-[44px] bg-white"
                 >
                   <option value="">All accounts</option>
-                  {accounts.map((acc) => (
+                  {accountOptions.map((acc) => (
                     <option key={acc.id} value={String(acc.id)}>
                       {acc.name}
                     </option>
@@ -878,7 +912,7 @@ export function TransactionsClient({
             notes: "",
             isTransfer: false,
           }}
-          accounts={accounts}
+          accounts={accountOptions}
           onSubmit={handleAddTransaction}
           onCancel={() => setShowAddForm(false)}
           isSubmitting={isSubmitting}
@@ -890,7 +924,7 @@ export function TransactionsClient({
         <TransactionForm
           mode="edit"
           initialData={getEditFormData(editingTransaction)}
-          accounts={accounts}
+          accounts={accountOptions}
           onSubmit={handleEditTransaction}
           onCancel={() => setEditingTransaction(null)}
           isSubmitting={isSubmitting}
