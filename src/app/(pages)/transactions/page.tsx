@@ -1,6 +1,6 @@
 import { ArrowLeftRight } from "lucide-react";
 import { db } from "@/db/index";
-import { getTransactions, getAccountsForFilter } from "@/db/queries/transactions";
+import { getAccountsForFilter } from "@/db/queries/transactions";
 import { getAllCategories } from "@/db/queries/categories";
 import { PublicProfileNotice } from "@/components/public/PublicProfileNotice";
 import { requireCurrentWorkspace } from "@/lib/auth/current-workspace";
@@ -68,26 +68,16 @@ export default async function TransactionsPage({
     ? needsReviewParam.includes("1") || needsReviewParam.includes("true")
     : needsReviewParam === "1" || needsReviewParam === "true";
 
-  // Fetch initial data server-side
-  const [initialData, accounts, categories] = await Promise.all([
-    getTransactions(db, {
-      workspaceId: workspace.workspaceId,
-      dateFrom: initialDateFrom || undefined,
-      dateTo: initialDateTo || undefined,
-      effectiveMonth: initialEffectiveMonth || undefined,
-      category:
-        initialSelectedCategories.length === 0
-          ? undefined
-          : initialSelectedCategories.length === 1
-            ? initialSelectedCategories[0]
-            : initialSelectedCategories,
-      accountId: initialSelectedAccountId
-        ? Number(initialSelectedAccountId)
-        : undefined,
-      page: 1,
-      limit: 20,
-      needsReview: initialNeedsReview,
-    }),
+  // Keep the document navigation lightweight. The Transactions client already
+  // knows how to fetch its full result set after mount.
+  const initialData = {
+    transactions: [],
+    total: 0,
+    page: 1,
+    limit: 20,
+    totalPages: 1,
+  };
+  const [accounts, categories] = await Promise.all([
     getAccountsForFilter(db, workspace.workspaceId),
     getAllCategories(db),
   ]);
@@ -114,6 +104,7 @@ export default async function TransactionsPage({
         initialSelectedAccountId={initialSelectedAccountId}
         initialEffectiveMonth={initialEffectiveMonth}
         initialNeedsReview={initialNeedsReview}
+        shouldHydrateOnMount
       />
     </div>
   );

@@ -78,6 +78,7 @@ interface TransactionsClientProps {
   initialSelectedAccountId?: string;
   initialEffectiveMonth?: string;
   initialNeedsReview?: boolean;
+  shouldHydrateOnMount?: boolean;
 }
 
 // ─── Constants ──────────────────────────────────────────────────────────
@@ -96,6 +97,7 @@ export function TransactionsClient({
   initialSelectedAccountId = "",
   initialEffectiveMonth = "",
   initialNeedsReview = false,
+  shouldHydrateOnMount = false,
 }: TransactionsClientProps) {
   const { showToast } = useToast();
   const router = useRouter();
@@ -191,6 +193,14 @@ export function TransactionsClient({
       router.refresh();
     });
   }, [fetchTransactions, page, router]);
+
+  useEffect(() => {
+    if (!shouldHydrateOnMount) {
+      return;
+    }
+
+    void fetchTransactions({ pageOverride: page });
+  }, [fetchTransactions, page, shouldHydrateOnMount]);
 
   // Re-fetch when filters change (not search - that uses debounce)
   useEffect(() => {

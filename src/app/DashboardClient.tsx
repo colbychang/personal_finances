@@ -32,6 +32,7 @@ import type { DashboardData } from "@/db/queries/dashboard";
 interface DashboardClientProps {
   initialData: DashboardData;
   initialMonth: string;
+  shouldHydrateOnMount?: boolean;
 }
 
 // ─── Month Navigation ───────────────────────────────────────────────────
@@ -654,6 +655,7 @@ function navigateMonth(month: string, direction: -1 | 1): string {
 export function DashboardClient({
   initialData,
   initialMonth,
+  shouldHydrateOnMount = false,
 }: DashboardClientProps) {
   const [data, setData] = useState<DashboardData>(initialData);
   const [month, setMonth] = useState(initialMonth);
@@ -685,6 +687,14 @@ export function DashboardClient({
       setData(initialData);
     }
   }, [initialData, initialMonth, month]);
+
+  useEffect(() => {
+    if (!shouldHydrateOnMount || month !== initialMonth) {
+      return;
+    }
+
+    void fetchData(month);
+  }, [fetchData, initialMonth, month, shouldHydrateOnMount]);
 
   function handlePrevMonth() {
     const prev = navigateMonth(month, -1);

@@ -1,8 +1,6 @@
 import { LayoutDashboard } from "lucide-react";
-import { db } from "@/db/index";
-import { getDashboardData } from "@/db/queries/dashboard";
+import type { DashboardData } from "@/db/queries/dashboard";
 import { PublicProfileNotice } from "@/components/public/PublicProfileNotice";
-import { requireCurrentWorkspace } from "@/lib/auth/current-workspace";
 import { isPublicProfileMode } from "@/lib/deployment";
 import { DashboardClient } from "./DashboardClient";
 
@@ -11,9 +9,26 @@ export default async function DashboardPage() {
     return <PublicProfileNotice />;
   }
 
-  const { workspace } = await requireCurrentWorkspace();
   const currentMonth = new Date().toISOString().slice(0, 7);
-  const data = await getDashboardData(db, currentMonth, workspace.workspaceId);
+  const data: DashboardData = {
+    totalSpending: 0,
+    spendingByCategory: [],
+    budgetStatus: {
+      onTrack: 0,
+      approaching: 0,
+      overBudget: 0,
+      total: 0,
+      items: [],
+    },
+    recentTransactions: [],
+    netWorth: {
+      current: 0,
+      previous: null,
+      change: null,
+    },
+    netWorthHistory: [],
+    monthComparison: [],
+  };
 
   return (
     <div className="p-4 md:p-8 max-w-6xl mx-auto">
@@ -21,7 +36,11 @@ export default async function DashboardPage() {
         <LayoutDashboard className="h-7 w-7 text-primary" />
         <h1 className="text-2xl font-bold text-neutral-900">Dashboard</h1>
       </div>
-      <DashboardClient initialData={data} initialMonth={currentMonth} />
+      <DashboardClient
+        initialData={data}
+        initialMonth={currentMonth}
+        shouldHydrateOnMount
+      />
     </div>
   );
 }

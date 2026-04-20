@@ -344,9 +344,13 @@ function CategoryTable({
 
 interface AnalyticsClientProps {
   initialData: AnalyticsData;
+  shouldHydrateOnMount?: boolean;
 }
 
-export function AnalyticsClient({ initialData }: AnalyticsClientProps) {
+export function AnalyticsClient({
+  initialData,
+  shouldHydrateOnMount = false,
+}: AnalyticsClientProps) {
   const [data, setData] = useState<AnalyticsData>(initialData);
   const [period, setPeriod] = useState<Period>("month");
   const [isLoading, setIsLoading] = useState(false);
@@ -374,6 +378,14 @@ export function AnalyticsClient({ initialData }: AnalyticsClientProps) {
       void fetchData(period);
     });
   }, [fetchData, period]);
+
+  useEffect(() => {
+    if (!shouldHydrateOnMount || period !== "month") {
+      return;
+    }
+
+    void fetchData(period);
+  }, [fetchData, period, shouldHydrateOnMount]);
 
   const handlePeriodChange = useCallback(
     (newPeriod: Period) => {
