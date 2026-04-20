@@ -1,6 +1,7 @@
 import { PiggyBank } from "lucide-react";
 import { db } from "@/db/index";
-import { getBudgetsForMonth, getBudgetTemplates } from "@/db/queries/budgets";
+import type { BudgetSummary } from "@/db/queries/budgets";
+import { getBudgetTemplates } from "@/db/queries/budgets";
 import { getAllCategories } from "@/db/queries/categories";
 import { getAccountsForFilter } from "@/db/queries/transactions";
 import { PublicProfileNotice } from "@/components/public/PublicProfileNotice";
@@ -29,11 +30,22 @@ export default async function BudgetsPage({ searchParams }: BudgetsPageProps) {
   const activeMonth =
     monthValue && /^\d{4}-\d{2}$/.test(monthValue) ? monthValue : currentMonth;
 
-  // Fetch initial data server-side in parallel to reduce remote round trips.
-  const [initialData, initialBudgetTemplates, categories, accounts] = await Promise.all([
-    getBudgetsForMonth(db, activeMonth, workspace.workspaceId, {
-      includeTransactions: false,
-    }),
+  const initialData: BudgetSummary = {
+    budgets: [],
+    unbudgeted: [],
+    totalBudgeted: 0,
+    totalSpent: 0,
+    totalRemaining: 0,
+    reviewSummary: {
+      uncategorizedCount: 0,
+      uncategorizedAmount: 0,
+      transactions: [],
+    },
+  };
+
+  // Keep the first document render lightweight and let the client hydrate
+  // budget data after navigation so the Budgets tab doesn't block route loads.
+  const [initialBudgetTemplates, categories, accounts] = await Promise.all([
     getBudgetTemplates(db, workspace.workspaceId),
     getAllCategories(db),
     getAccountsForFilter(db, workspace.workspaceId),
@@ -51,6 +63,7 @@ export default async function BudgetsPage({ searchParams }: BudgetsPageProps) {
         categories={categories}
         accounts={accounts}
         initialBudgetTemplates={initialBudgetTemplates}
+        shouldHydrateOnMount
       />
     </div>
   );

@@ -139,6 +139,7 @@ interface BudgetsClientProps {
   categories: CategoryOption[];
   accounts: AccountOption[];
   initialBudgetTemplates: BudgetTemplate[];
+  shouldHydrateOnMount?: boolean;
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────
@@ -201,6 +202,7 @@ export function BudgetsClient({
   categories,
   accounts,
   initialBudgetTemplates,
+  shouldHydrateOnMount = false,
 }: BudgetsClientProps) {
   const { showToast } = useToast();
   const router = useRouter();
@@ -308,6 +310,14 @@ export function BudgetsClient({
       setCategoryTransactions({});
     }
   }, [initialData, initialMonth, month]);
+
+  useEffect(() => {
+    if (!shouldHydrateOnMount || month !== initialMonth) {
+      return;
+    }
+
+    void fetchBudgets(month);
+  }, [fetchBudgets, initialMonth, month, shouldHydrateOnMount]);
 
   useEffect(() => {
     const pendingRestore = pendingScrollRestoreRef.current;
