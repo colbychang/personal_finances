@@ -9,6 +9,25 @@ interface AppBrandProps {
   textClassName?: string;
 }
 
+function navigateToHref(
+  event: React.MouseEvent<HTMLAnchorElement>,
+  href: string,
+) {
+  if (
+    event.defaultPrevented ||
+    event.button !== 0 ||
+    event.metaKey ||
+    event.ctrlKey ||
+    event.shiftKey ||
+    event.altKey
+  ) {
+    return;
+  }
+
+  event.preventDefault();
+  window.location.assign(href);
+}
+
 export function AppBrand({
   className,
   iconClassName,
@@ -17,6 +36,7 @@ export function AppBrand({
   return (
     <a
       href="/"
+      onClick={(event) => navigateToHref(event, "/")}
       className={cn("flex items-center gap-3", className)}
       aria-label="Glacier Finance Tracker"
     >
