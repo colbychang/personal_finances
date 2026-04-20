@@ -31,6 +31,14 @@ function isApiPath(pathname: string) {
   return pathname.startsWith("/api/");
 }
 
+function getSafePostAuthPath(next: string | null) {
+  if (!next || !next.startsWith("/")) {
+    return "/accounts";
+  }
+
+  return next === "/" ? "/accounts" : next;
+}
+
 function withAuthHeaders(
   request: NextRequest,
   response: NextResponse,
@@ -66,7 +74,8 @@ export async function proxy(request: NextRequest) {
     const { user, response } = await updateSupabaseSession(request);
 
     if (user && (pathname === "/sign-in" || pathname === "/sign-up")) {
-      return NextResponse.redirect(new URL("/", request.url));
+      const next = getSafePostAuthPath(request.nextUrl.searchParams.get("next"));
+      return NextResponse.redirect(new URL(next, request.url));
     }
 
     return response;

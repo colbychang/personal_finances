@@ -4,7 +4,6 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { sidebarLinks } from "./nav-links";
 import { AppBrand } from "./AppBrand";
-import Link from "next/link";
 
 export function Sidebar() {
   const pathname = usePathname();
@@ -28,9 +27,8 @@ export function Sidebar() {
 
             return (
               <li key={link.href}>
-                <Link
+                <a
                   href={link.href}
-                  prefetch={false}
                   className={cn(
                     "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors min-h-[44px]",
                     isActive
@@ -41,7 +39,7 @@ export function Sidebar() {
                 >
                   <Icon className="h-5 w-5 flex-shrink-0" />
                   <span>{link.label}</span>
-                </Link>
+                </a>
               </li>
             );
           })}

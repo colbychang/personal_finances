@@ -1,7 +1,6 @@
 "use client";
 
 import Image from "next/image";
-import Link from "next/link";
 import { cn } from "@/lib/utils";
 
 interface AppBrandProps {
@@ -16,9 +15,8 @@ export function AppBrand({
   textClassName,
 }: AppBrandProps) {
   return (
-    <Link
+    <a
       href="/"
-      prefetch={false}
       className={cn("flex items-center gap-3", className)}
       aria-label="Glacier Finance Tracker"
     >
@@ -34,9 +32,9 @@ export function AppBrand({
           "text-lg font-bold text-primary leading-none truncate",
           textClassName
         )}
-      >
+        >
         Glacier Finance Tracker
       </span>
-    </Link>
+    </a>
   );
 }

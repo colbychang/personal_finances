@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { mobileTabLinks, moreMenuLinks, moreTab } from "./nav-links";
@@ -53,9 +52,8 @@ export function BottomTabBar() {
 
           return (
             <li key={link.href} className="flex-1">
-              <Link
+              <a
                 href={link.href}
-                prefetch={false}
                 onClick={closeMoreMenu}
                 className={cn(
                   "flex flex-col items-center justify-center gap-0.5 py-2 min-h-[56px] text-xs font-medium transition-colors",
@@ -67,7 +65,7 @@ export function BottomTabBar() {
               >
                 <Icon className="h-5 w-5" />
                 <span>{link.label}</span>
-              </Link>
+              </a>
             </li>
           );
         })}
@@ -101,26 +99,25 @@ export function BottomTabBar() {
                       : pathname.startsWith(link.href);
                   const Icon = link.icon;
 
-                  return (
-                    <li key={link.href}>
-                      <Link
-                        href={link.href}
-                        prefetch={false}
-                        onClick={closeMoreMenu}
-                        className={cn(
-                          "flex items-center gap-3 px-4 py-3 text-sm font-medium transition-colors",
-                          isLinkActive
-                            ? "bg-primary/10 text-primary"
-                            : "text-neutral-600 hover:bg-neutral-50"
-                        )}
-                        aria-current={isLinkActive ? "page" : undefined}
-                      >
-                        <Icon className="h-5 w-5 flex-shrink-0" />
-                        <span>{link.label}</span>
-                      </Link>
-                    </li>
-                  );
-                })}
+                    return (
+                      <li key={link.href}>
+                        <a
+                          href={link.href}
+                          onClick={closeMoreMenu}
+                          className={cn(
+                            "flex items-center gap-3 px-4 py-3 text-sm font-medium transition-colors",
+                            isLinkActive
+                              ? "bg-primary/10 text-primary"
+                              : "text-neutral-600 hover:bg-neutral-50"
+                          )}
+                          aria-current={isLinkActive ? "page" : undefined}
+                        >
+                          <Icon className="h-5 w-5 flex-shrink-0" />
+                          <span>{link.label}</span>
+                        </a>
+                      </li>
+                    );
+                  })}
               </ul>
             </div>
           )}

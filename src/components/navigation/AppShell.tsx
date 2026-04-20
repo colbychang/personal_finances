@@ -14,6 +14,7 @@ interface AppShellProps {
 export function AppShell({ children }: AppShellProps) {
   const publicProfileMode = isPublicProfileMode();
   const pathname = usePathname();
+  const enablePlaidAutoSync = process.env.NEXT_PUBLIC_ENABLE_PLAID_AUTO_SYNC === "1";
   const chromeHidden =
     pathname.startsWith("/sign-in") ||
     pathname.startsWith("/sign-up") ||
@@ -24,7 +25,7 @@ export function AppShell({ children }: AppShellProps) {
     <>
       {/* Desktop sidebar */}
       {showAppChrome && <Sidebar />}
-      {showAppChrome && <PlaidAutoSync />}
+      {showAppChrome && enablePlaidAutoSync && <PlaidAutoSync />}
 
       {/* Main content area */}
       <div className={showAppChrome ? "md:pl-60 flex flex-col min-h-screen" : "flex flex-col min-h-screen"}>

@@ -16,15 +16,32 @@ export async function POST() {
       redirectUri && redirectUri.startsWith("https://")
         ? redirectUri
         : undefined;
-
-    const response = await plaidClient.linkTokenCreate({
+    const baseRequest = {
       user: { client_user_id: `${user.id}:${workspace.workspaceId}` },
       client_name: "Glacier Finance Tracker",
       products: [Products.Transactions],
       country_codes: [CountryCode.Us],
       language: "en",
-      ...(oauthRedirectUri ? { redirect_uri: oauthRedirectUri } : {}),
-    });
+    };
+
+    let response;
+    try {
+      response = await plaidClient.linkTokenCreate({
+        ...baseRequest,
+        ...(oauthRedirectUri ? { redirect_uri: oauthRedirectUri } : {}),
+      });
+    } catch (error) {
+      if (!oauthRedirectUri) {
+        throw error;
+      }
+
+      console.warn(
+        "Plaid link token creation failed with redirect_uri; retrying without redirect_uri.",
+        error,
+      );
+
+      response = await plaidClient.linkTokenCreate(baseRequest);
+    }
 
     return NextResponse.json({
       link_token: response.data.link_token,

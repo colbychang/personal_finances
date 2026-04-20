@@ -4,12 +4,20 @@ import { redirect } from "next/navigation";
 import { AppBrand } from "@/components/navigation/AppBrand";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
+function getSafePostAuthPath(next: string) {
+  if (!next.startsWith("/")) {
+    return "/accounts";
+  }
+
+  return next === "/" ? "/accounts" : next;
+}
+
 async function signUp(formData: FormData) {
   "use server";
 
   const email = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "");
-  const next = String(formData.get("next") ?? "/");
+  const next = getSafePostAuthPath(String(formData.get("next") ?? "/"));
   const headerList = await headers();
   const origin =
     headerList.get("origin") ??
@@ -41,7 +49,7 @@ export default async function SignUpPage({
 }) {
   const params = await searchParams;
   const error = typeof params.error === "string" ? params.error : null;
-  const next = typeof params.next === "string" ? params.next : "/";
+  const next = getSafePostAuthPath(typeof params.next === "string" ? params.next : "/");
 
   return (
     <div className="min-h-[calc(100vh-120px)] flex items-center justify-center px-4 py-12">

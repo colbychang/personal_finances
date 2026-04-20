@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { ClientErrorReporter } from "@/components/debug/ClientErrorReporter";
 import { AppShell } from "@/components/navigation";
 import { ToastProvider } from "@/components/ui/Toast";
 import {
@@ -45,6 +46,7 @@ export default function RootLayout({
       </head>
       <body className="bg-neutral-50 text-neutral-900 antialiased">
         <ToastProvider>
+          <ClientErrorReporter />
           <OfflineIndicator />
           <AppShell>{children}</AppShell>
         </ToastProvider>

@@ -5,12 +5,21 @@ import { db } from "@/db/index";
 import { ensurePersonalWorkspaceForAuthUser } from "@/db/queries/workspaces";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
+function getSafePostAuthPath(next: string) {
+  if (!next.startsWith("/")) {
+    return "/accounts";
+  }
+
+  return next === "/" ? "/accounts" : next;
+}
+
 async function signIn(formData: FormData) {
   "use server";
 
   const email = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "");
   const next = String(formData.get("next") ?? "/");
+  const redirectPath = getSafePostAuthPath(next);
 
   const supabase = await createSupabaseServerClient();
   const { error } = await supabase.auth.signInWithPassword({ email, password });
@@ -27,7 +36,7 @@ async function signIn(formData: FormData) {
     await ensurePersonalWorkspaceForAuthUser(db, user.id, user.email);
   }
 
-  redirect(next || "/");
+  redirect(redirectPath);
 }
 
 export default async function SignInPage({
@@ -38,7 +47,7 @@ export default async function SignInPage({
   const params = await searchParams;
   const error = typeof params.error === "string" ? params.error : null;
   const message = typeof params.message === "string" ? params.message : null;
-  const next = typeof params.next === "string" ? params.next : "/";
+  const next = getSafePostAuthPath(typeof params.next === "string" ? params.next : "/");
 
   return (
     <div className="min-h-[calc(100vh-120px)] flex items-center justify-center px-4 py-12">
