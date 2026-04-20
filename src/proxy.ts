@@ -75,6 +75,12 @@ export async function proxy(request: NextRequest) {
 
     if (user && (pathname === "/sign-in" || pathname === "/sign-up")) {
       const next = getSafePostAuthPath(request.nextUrl.searchParams.get("next"));
+      console.info("[proxy] authenticated user on public auth page; redirecting", {
+        pathname,
+        next,
+        userId: user.id,
+        email: user.email ?? null,
+      });
       return NextResponse.redirect(new URL(next, request.url));
     }
 

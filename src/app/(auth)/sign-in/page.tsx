@@ -21,10 +21,20 @@ async function signIn(formData: FormData) {
   const next = String(formData.get("next") ?? "/");
   const redirectPath = getSafePostAuthPath(next);
 
+  console.info("[auth] sign-in attempt", {
+    email,
+    next,
+    redirectPath,
+  });
+
   const supabase = await createSupabaseServerClient();
   const { error } = await supabase.auth.signInWithPassword({ email, password });
 
   if (error) {
+    console.error("[auth] sign-in failed", {
+      email,
+      message: error.message,
+    });
     redirect(`/sign-in?error=${encodeURIComponent(error.message)}&next=${encodeURIComponent(next)}`);
   }
 
@@ -32,10 +42,19 @@ async function signIn(formData: FormData) {
     data: { user },
   } = await supabase.auth.getUser();
 
+  console.info("[auth] sign-in success", {
+    email,
+    authUserId: user?.id ?? null,
+  });
+
   if (user?.email) {
     await ensurePersonalWorkspaceForAuthUser(db, user.id, user.email);
   }
 
+  console.info("[auth] redirecting after sign-in", {
+    email,
+    redirectPath,
+  });
   redirect(redirectPath);
 }
 

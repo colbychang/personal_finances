@@ -16,9 +16,10 @@ export async function createSupabaseServerClient() {
           cookiesToSet.forEach(({ name, value, options }) => {
             cookieStore.set(name, value, options);
           });
-        } catch {
+        } catch (error) {
           // Server components can read cookies but cannot always persist them.
           // The proxy is responsible for keeping auth cookies fresh.
+          console.error("[supabase-server] failed to persist auth cookies", error);
         }
       },
     },
