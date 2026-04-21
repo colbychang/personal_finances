@@ -24,10 +24,19 @@ function createDatabaseUnavailableProxy(): AppDatabase {
 
 const connectionString = process.env.DATABASE_URL;
 const isSupabasePooler = connectionString?.includes(".pooler.supabase.com") ?? false;
-const defaultPoolMax = isSupabasePooler ? "1" : "1";
+const defaultPoolMax = isSupabasePooler ? "5" : "2";
 const maxConnections = Math.max(
   1,
   Number.parseInt(process.env.DATABASE_POOL_MAX ?? defaultPoolMax, 10) || 1,
+);
+const statementTimeoutMs = Math.max(
+  1_000,
+  Number.parseInt(process.env.DATABASE_STATEMENT_TIMEOUT_MS ?? (isSupabasePooler ? "15000" : "30000"), 10)
+    || (isSupabasePooler ? 15_000 : 30_000),
+);
+const lockTimeoutMs = Math.max(
+  1_000,
+  Number.parseInt(process.env.DATABASE_LOCK_TIMEOUT_MS ?? "5000", 10) || 5_000,
 );
 
 export const sqlClient = connectionString
@@ -36,6 +45,10 @@ export const sqlClient = connectionString
       max: maxConnections,
       idle_timeout: 20,
       connect_timeout: 10,
+      connection: {
+        statement_timeout: statementTimeoutMs,
+        lock_timeout: lockTimeoutMs,
+      },
     })
   : null;
 

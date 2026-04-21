@@ -55,7 +55,9 @@ PLAID_REDIRECT_URI=https://your-public-app-url/plaid/oauth
 OPENAI_API_KEY=your_openai_api_key
 PLAID_TOKEN_ENCRYPTION_KEY=a_random_32_byte_hex_string
 DATABASE_URL=your_supabase_transaction_pooler_connection_string
-DATABASE_POOL_MAX=1
+DATABASE_POOL_MAX=5
+DATABASE_STATEMENT_TIMEOUT_MS=15000
+DATABASE_LOCK_TIMEOUT_MS=5000
 NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 NEXT_PUBLIC_SITE_URL=http://localhost:3000
@@ -65,7 +67,7 @@ AUTHORIZED_EMAILS=colby.chang@gmail.com
 Plaid credentials are required for bank linking. The OpenAI key is required for AI categorization. The encryption key secures stored Plaid access tokens.
 If you are using Plaid production with OAuth-enabled institutions, set `PLAID_REDIRECT_URI` to the exact `https://` redirect URL configured in Plaid Dashboard. A plain `http://localhost` redirect will be rejected by Plaid production.
 Supabase powers the hosted Postgres database and password-protected sign-in flow. `AUTHORIZED_EMAILS` is optional in code, but recommended while the first hosted beta is still tightly staged.
-Use Supabase's transaction pooler connection string for `DATABASE_URL` rather than the direct `db....supabase.co:5432` connection. For the current Supabase setup, `DATABASE_POOL_MAX=1` is the safer default to avoid exhausting or stalling the backing database while we finish tuning the heavier pages.
+Use Supabase's transaction pooler connection string for `DATABASE_URL` rather than the direct `db....supabase.co:5432` connection. For the current Supabase setup, `DATABASE_POOL_MAX=5` is the better default for the heavier aggregate pages, and `DATABASE_STATEMENT_TIMEOUT_MS` / `DATABASE_LOCK_TIMEOUT_MS` keep hosted requests from hanging forever if the database gets into a bad state.
 For local debugging specifically, the direct Supabase database host can be more stable than the pooler. A practical split is:
 - local development: direct `db.<project-ref>.supabase.co:5432`
 - Vercel / hosted runtime: transaction pooler `aws-...pooler.supabase.com:6543`

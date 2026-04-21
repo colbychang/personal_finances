@@ -49,7 +49,9 @@ NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 NEXT_PUBLIC_SITE_URL=https://your-app.vercel.app
 AUTHORIZED_EMAILS=colby.chang@gmail.com
-DATABASE_POOL_MAX=1
+DATABASE_POOL_MAX=5
+DATABASE_STATEMENT_TIMEOUT_MS=15000
+DATABASE_LOCK_TIMEOUT_MS=5000
 ```
 
 For the database runtime, also set:
@@ -58,7 +60,7 @@ For the database runtime, also set:
 DATABASE_URL=postgresql://postgres.your-project-ref:password@aws-1-your-region.pooler.supabase.com:6543/postgres
 ```
 
-Use Supabase's transaction pooler connection string for `DATABASE_URL` on Vercel. For the current hosted beta, `DATABASE_POOL_MAX=1` is the safest default while we continue performance-tuning the heaviest pages.
+Use Supabase's transaction pooler connection string for `DATABASE_URL` on Vercel. For the current hosted beta, `DATABASE_POOL_MAX=5` is a better fit for the heavier aggregate pages, and `DATABASE_STATEMENT_TIMEOUT_MS` / `DATABASE_LOCK_TIMEOUT_MS` keep those requests from hanging forever if a query stalls.
 
 For local debugging, the direct Supabase database host can be more stable than the pooler. A practical split is:
 
