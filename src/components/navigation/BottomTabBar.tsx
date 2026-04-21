@@ -5,25 +5,6 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { mobileTabLinks, moreMenuLinks, moreTab } from "./nav-links";
 
-function navigateToHref(
-  event: React.MouseEvent<HTMLAnchorElement>,
-  href: string,
-) {
-  if (
-    event.defaultPrevented ||
-    event.button !== 0 ||
-    event.metaKey ||
-    event.ctrlKey ||
-    event.shiftKey ||
-    event.altKey
-  ) {
-    return;
-  }
-
-  event.preventDefault();
-  window.location.assign(href);
-}
-
 export function BottomTabBar() {
   const pathname = usePathname();
   const [moreOpen, setMoreOpen] = useState(false);
@@ -75,7 +56,9 @@ export function BottomTabBar() {
                 href={link.href}
                 onClick={(event) => {
                   closeMoreMenu();
-                  navigateToHref(event, link.href);
+                  if (event.defaultPrevented) {
+                    return;
+                  }
                 }}
                 className={cn(
                   "flex flex-col items-center justify-center gap-0.5 py-2 min-h-[56px] text-xs font-medium transition-colors",
@@ -127,7 +110,9 @@ export function BottomTabBar() {
                           href={link.href}
                           onClick={(event) => {
                             closeMoreMenu();
-                            navigateToHref(event, link.href);
+                            if (event.defaultPrevented) {
+                              return;
+                            }
                           }}
                           className={cn(
                             "flex items-center gap-3 px-4 py-3 text-sm font-medium transition-colors",

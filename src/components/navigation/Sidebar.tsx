@@ -5,25 +5,6 @@ import { cn } from "@/lib/utils";
 import { sidebarLinks } from "./nav-links";
 import { AppBrand } from "./AppBrand";
 
-function navigateToHref(
-  event: React.MouseEvent<HTMLAnchorElement>,
-  href: string,
-) {
-  if (
-    event.defaultPrevented ||
-    event.button !== 0 ||
-    event.metaKey ||
-    event.ctrlKey ||
-    event.shiftKey ||
-    event.altKey
-  ) {
-    return;
-  }
-
-  event.preventDefault();
-  window.location.assign(href);
-}
-
 export function Sidebar() {
   const pathname = usePathname();
 
@@ -48,7 +29,6 @@ export function Sidebar() {
               <li key={link.href}>
                 <a
                   href={link.href}
-                  onClick={(event) => navigateToHref(event, link.href)}
                   className={cn(
                     "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors min-h-[44px]",
                     isActive
