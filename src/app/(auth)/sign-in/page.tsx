@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AppBrand } from "@/components/navigation/AppBrand";
+import { ResendConfirmationForm } from "@/components/auth/ResendConfirmationForm";
 import { db } from "@/db/index";
 import { ensurePersonalWorkspaceForAuthUser } from "@/db/queries/workspaces";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -75,8 +76,8 @@ export default async function SignInPage({
         <div className="space-y-2">
           <h1 className="text-2xl font-semibold text-neutral-900">Sign in to Glacier</h1>
           <p className="text-sm text-neutral-600">
-            Password protection is now wired in through Supabase. We&apos;re still finishing
-            per-user data isolation, so keep beta access limited to trusted testers for now.
+            Sign in to your private Glacier workspace for accounts, budgets, transactions,
+            and bank connections.
           </p>
         </div>
 
@@ -136,6 +137,8 @@ export default async function SignInPage({
             Create one
           </Link>
         </p>
+
+        <ResendConfirmationForm />
       </div>
     </div>
   );

@@ -1,3 +1,5 @@
+import { sendErrorAlert } from "@/lib/observability/alerts";
+
 type LogLevel = "info" | "warn" | "error";
 
 type LogFields = Record<string, unknown>;
@@ -57,10 +59,13 @@ export function logWarn(event: string, fields?: LogFields) {
 }
 
 export function logError(event: string, error: unknown, fields?: LogFields) {
-  writeLog("error", event, {
+  const payload = {
     ...fields,
     error: normalizeError(error),
-  });
+  };
+
+  writeLog("error", event, payload);
+  sendErrorAlert(event, payload);
 }
 
 export function getDurationMs(startedAt: number) {

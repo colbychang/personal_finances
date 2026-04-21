@@ -28,7 +28,7 @@ export function ForgotPasswordForm() {
       }
 
       setMessage(
-        "If that email is registered, a reset link is on the way. Open it to choose a new password.",
+        "If that email is registered, a reset link is on the way. Open it in this browser to choose a new password.",
       );
     } catch (submitError) {
       setError(
@@ -77,6 +77,10 @@ export function ForgotPasswordForm() {
       </form>
 
       <p className="mt-6 text-sm text-neutral-600">
+        Reset links expire automatically. If the link no longer works, request a new one here.
+      </p>
+
+      <p className="mt-3 text-sm text-neutral-600">
         Remembered it?{" "}
         <Link href="/sign-in" className="font-medium text-primary hover:underline">
           Back to sign in

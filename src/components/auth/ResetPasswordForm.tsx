@@ -66,6 +66,11 @@ export function ResetPasswordForm() {
       return;
     }
 
+    if (password === confirmPassword && password.trim() !== password) {
+      setError("Remove leading or trailing spaces from the new password.");
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       const { error: updateError } = await supabase.auth.updateUser({
@@ -121,6 +126,10 @@ export function ResetPasswordForm() {
       ) : null}
 
       <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+        <p className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-950">
+          You&apos;re setting a new password for your Glacier account. Use at least 8
+          characters.
+        </p>
         <label className="block space-y-2">
           <span className="text-sm font-medium text-neutral-700">New password</span>
           <input

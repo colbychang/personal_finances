@@ -27,6 +27,11 @@ export function PasswordSettingsCard() {
       return;
     }
 
+    if (password.trim() !== password) {
+      setError("Remove leading or trailing spaces from the new password.");
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {

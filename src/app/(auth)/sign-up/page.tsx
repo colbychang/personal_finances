@@ -31,6 +31,12 @@ async function signUp(formData: FormData) {
     );
   }
 
+  if (password.length < 8) {
+    redirect(
+      `/sign-up?error=${encodeURIComponent("Use at least 8 characters for your password.")}&next=${encodeURIComponent(next)}`,
+    );
+  }
+
   const supabase = await createSupabaseServerClient();
   const { error } = await supabase.auth.signUp({
     email,
@@ -45,7 +51,7 @@ async function signUp(formData: FormData) {
   }
 
   redirect(
-    `/sign-in?message=${encodeURIComponent("Check your email to confirm your account, then sign in.")}&next=${encodeURIComponent(next)}`,
+    `/sign-in?message=${encodeURIComponent("Check your email to confirm your account, then sign in. If you do not see it, check spam or resend the confirmation below.")}&next=${encodeURIComponent(next)}`,
   );
 }
 
@@ -66,7 +72,7 @@ export default async function SignUpPage({
           <h1 className="text-2xl font-semibold text-neutral-900">Create your account</h1>
           <p className="text-sm text-neutral-600">
             This creates password-based access and a private Glacier workspace for your accounts,
-            budgets, transactions, and rules.
+            budgets, transactions, and rules. You&apos;ll verify your email before signing in.
           </p>
         </div>
 

@@ -11,6 +11,10 @@ import {
   buildWorkspaceExport,
   buildWorkspaceExportFilename,
 } from "@/lib/export/workspace-export";
+import {
+  previewWorkspaceRestore,
+  restoreWorkspaceBackup,
+} from "@/lib/export/workspace-restore";
 import { getOperationsStatus } from "@/lib/operations/status";
 import {
   closeTestDb,
@@ -134,6 +138,145 @@ describe("workspace export", () => {
     expect(
       buildWorkspaceExportFilename("Colby's Glacier!", "2026-04-21T12:00:00.000Z"),
     ).toBe("glacier-colby-s-glacier-backup-2026-04-21.json");
+  });
+
+  it("previews and restores a backup into a different workspace", async () => {
+    const sourceWorkspace = await seedWorkspace(db, {
+      name: "Source Glacier",
+      slug: "source-glacier",
+    });
+    const targetWorkspace = await seedWorkspace(db, {
+      name: "Target Glacier",
+      slug: "target-glacier",
+    });
+    const sourceInstitutionId = await findOrCreatePlaidInstitution(
+      db,
+      "Restore Bank",
+      "ins_restore",
+      sourceWorkspace.id,
+    );
+    const sourceConnection = await createConnection(
+      db,
+      {
+        institutionName: "Restore Bank",
+        provider: "plaid",
+        accessToken: "do-not-restore-me",
+        itemId: "item-restore",
+        isEncrypted: true,
+      },
+      sourceWorkspace.id,
+    );
+    const sourceAccount = await createPlaidAccount(
+      db,
+      {
+        institutionId: sourceInstitutionId,
+        externalRef: "restore-account",
+        name: "Restore Checking",
+        mask: "2222",
+        type: "checking",
+        subtype: "checking",
+        balanceCurrent: 90_000,
+        balanceAvailable: 80_000,
+        isAsset: true,
+      },
+      sourceConnection.id,
+      "Restore Bank",
+      sourceWorkspace.id,
+    );
+    const [sourceTransaction] = await db
+      .insert(schema.transactions)
+      .values({
+        workspaceId: sourceWorkspace.id,
+        accountId: sourceAccount.id,
+        postedAt: "2026-04-02",
+        name: "Restored Coffee",
+        amount: 700,
+        category: "Coffee",
+        pending: false,
+        isTransfer: false,
+        isExcluded: false,
+        reviewState: "none",
+      })
+      .returning();
+    await db.insert(schema.transactionSplits).values({
+      transactionId: sourceTransaction!.id,
+      category: "Coffee",
+      amount: 700,
+    });
+    await db.insert(schema.budgets).values({
+      workspaceId: sourceWorkspace.id,
+      month: "2026-04",
+      category: "Coffee",
+      amount: 10_000,
+    });
+
+    const targetInstitution = await findOrCreatePlaidInstitution(
+      db,
+      "Old Target Bank",
+      "ins_old",
+      targetWorkspace.id,
+    );
+    await createPlaidAccount(
+      db,
+      {
+        institutionId: targetInstitution,
+        externalRef: "old-target-account",
+        name: "Old Target Checking",
+        mask: "3333",
+        type: "checking",
+        subtype: "checking",
+        balanceCurrent: 10_000,
+        balanceAvailable: 10_000,
+        isAsset: true,
+      },
+      sourceConnection.id,
+      "Old Target Bank",
+      targetWorkspace.id,
+    );
+
+    const backup = await buildWorkspaceExport(db, {
+      workspaceId: sourceWorkspace.id,
+      workspaceName: sourceWorkspace.name,
+      workspaceSlug: sourceWorkspace.slug,
+    });
+    const preview = previewWorkspaceRestore(backup);
+    expect(preview.counts.transactions).toBe(1);
+
+    const result = await restoreWorkspaceBackup(
+      db,
+      {
+        workspaceId: targetWorkspace.id,
+        workspaceName: targetWorkspace.name,
+        workspaceSlug: targetWorkspace.slug,
+      },
+      backup,
+    );
+
+    expect(result.restoredCounts.accounts).toBe(1);
+    expect(result.restoredCounts.transactions).toBe(1);
+    expect(result.restoredCounts.transactionSplits).toBe(1);
+
+    const restoredTransactions = await db
+      .select()
+      .from(schema.transactions)
+      .where(eq(schema.transactions.workspaceId, targetWorkspace.id));
+    expect(restoredTransactions).toHaveLength(1);
+    expect(restoredTransactions[0]!.name).toBe("Restored Coffee");
+    expect(restoredTransactions[0]!.id).not.toBe(sourceTransaction!.id);
+
+    const restoredConnections = await db
+      .select()
+      .from(schema.connections)
+      .where(eq(schema.connections.workspaceId, targetWorkspace.id));
+    expect(restoredConnections).toHaveLength(1);
+    expect(restoredConnections[0]!.accessToken).toBeNull();
+    expect(restoredConnections[0]!.lastSyncStatus).toBe("restored");
+
+    const oldTargetAccounts = await db
+      .select()
+      .from(schema.accounts)
+      .where(eq(schema.accounts.externalRef, "old-target-account"));
+    expect(oldTargetAccounts).toHaveLength(0);
   });
 });
 

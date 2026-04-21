@@ -12,6 +12,8 @@ SMOKE_BASE_URL=https://personal-finances-mauve.vercel.app npm run smoke
 
 The smoke check verifies the health endpoint, sign-in page, public policies, and public app profile. It is safe to run unauthenticated and should complete in a few seconds.
 
+GitHub Actions also runs this smoke suite automatically when Vercel reports a successful Production deployment.
+
 ## Logs and Monitoring
 
 Use the structured log event names in Vercel Runtime Logs when debugging incidents:
@@ -23,13 +25,17 @@ Use the structured log event names in Vercel Runtime Logs when debugging inciden
 - `client_error.reported` for browser-side exceptions reported by the app.
 - `rate_limit.exceeded` for throttled API use.
 
-If errors become frequent, add a Vercel log drain or Sentry destination and alert on `*.failed`, `client_error.reported`, and repeated `rate_limit.exceeded` events.
+Set `ERROR_ALERT_WEBHOOK_URL` to forward `logError` events to a webhook destination such as Slack, Discord, Sentry's generic ingestion endpoint, or another incident tool. If the destination expects a bearer token, set `ERROR_ALERT_WEBHOOK_TOKEN`.
+
+For higher-volume usage, add a Vercel log drain or Sentry SDK destination and alert on `*.failed`, `client.error`, and repeated `rate_limit.exceeded` events.
 
 ## Recovery Exports
 
 Authenticated users can download a workspace-scoped JSON backup from Settings. The export includes accounts, transactions, transaction splits, budgets, budget templates, categories, merchant rules, account snapshots, net worth snapshots, institutions, account links, and sanitized Plaid connection metadata.
 
 Plaid access tokens are intentionally excluded from exports. Keep downloaded backups private because the file still contains financial transaction history.
+
+Settings also includes a restore flow. Restore always previews the file first, requires explicit confirmation, replaces only the signed-in workspace's finance data, and remaps internal IDs into the current workspace. Restored Plaid connections cannot sync until the bank is reconnected because access tokens are never exported.
 
 ## Plaid Sync Operations
 

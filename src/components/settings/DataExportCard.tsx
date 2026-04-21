@@ -1,4 +1,5 @@
 import { Download } from "lucide-react";
+import { BackupRestoreForm } from "@/components/settings/BackupRestoreForm";
 
 export function DataExportCard() {
   return (
@@ -23,6 +24,7 @@ export function DataExportCard() {
           Download Backup
         </a>
       </div>
+      <BackupRestoreForm />
     </section>
   );
 }
