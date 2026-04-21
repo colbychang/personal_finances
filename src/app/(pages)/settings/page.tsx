@@ -7,8 +7,11 @@ import { ConnectionsList } from "@/components/plaid/ConnectionsList";
 import { PlaidSetupNotice } from "@/components/plaid/PlaidSetupNotice";
 import { MerchantRulesManager } from "@/components/merchant-rules/MerchantRulesManager";
 import { PublicProfileNotice } from "@/components/public/PublicProfileNotice";
+import { DataExportCard } from "@/components/settings/DataExportCard";
+import { OperationsStatusCard } from "@/components/settings/OperationsStatusCard";
 import { requireCurrentWorkspace } from "@/lib/auth/current-workspace";
 import { isPublicProfileMode } from "@/lib/deployment";
+import { getOperationsStatus } from "@/lib/operations/status";
 
 export default async function SettingsPage() {
   if (isPublicProfileMode()) {
@@ -16,7 +19,10 @@ export default async function SettingsPage() {
   }
 
   const { workspace } = await requireCurrentWorkspace();
-  const categories = await getAllCategories(db, workspace.workspaceId);
+  const [categories, operationsStatus] = await Promise.all([
+    getAllCategories(db, workspace.workspaceId),
+    getOperationsStatus(db, workspace.workspaceId),
+  ]);
 
   return (
     <div className="p-4 md:p-8 max-w-4xl mx-auto">
@@ -24,6 +30,9 @@ export default async function SettingsPage() {
         <Settings className="h-7 w-7 text-primary" />
         <h1 className="text-2xl font-bold text-neutral-900">Settings</h1>
       </div>
+
+      <OperationsStatusCard status={operationsStatus} />
+      <DataExportCard />
 
       {/* Bank Connections Section */}
       <section className="mb-10">
