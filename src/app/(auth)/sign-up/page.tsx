@@ -17,12 +17,19 @@ async function signUp(formData: FormData) {
 
   const email = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "");
+  const confirmPassword = String(formData.get("confirmPassword") ?? "");
   const next = getSafePostAuthPath(String(formData.get("next") ?? "/"));
   const headerList = await headers();
   const origin =
     headerList.get("origin") ??
     process.env.NEXT_PUBLIC_SITE_URL ??
     "http://localhost:3000";
+
+  if (password !== confirmPassword) {
+    redirect(
+      `/sign-up?error=${encodeURIComponent("Passwords do not match.")}&next=${encodeURIComponent(next)}`,
+    );
+  }
 
   const supabase = await createSupabaseServerClient();
   const { error } = await supabase.auth.signUp({
@@ -87,6 +94,17 @@ export default async function SignUpPage({
               required
               type="password"
               name="password"
+              autoComplete="new-password"
+              minLength={8}
+              className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-neutral-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15"
+            />
+          </label>
+          <label className="block space-y-2">
+            <span className="text-sm font-medium text-neutral-700">Confirm password</span>
+            <input
+              required
+              type="password"
+              name="confirmPassword"
               autoComplete="new-password"
               minLength={8}
               className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-neutral-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15"
