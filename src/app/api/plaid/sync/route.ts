@@ -10,6 +10,12 @@ import {
   logError,
   logInfo,
 } from "@/lib/observability/logger";
+import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
+
+const PLAID_SYNC_RATE_LIMIT = {
+  limit: 6,
+  windowMs: 15 * 60 * 1000,
+};
 
 /**
  * POST /api/plaid/sync
@@ -30,6 +36,17 @@ export async function POST(request: NextRequest) {
         { error: "connectionId (number) is required" },
         { status: 400 }
       );
+    }
+
+    const rateLimit = checkRateLimit({
+      key: `workspace:${workspace.workspaceId}:plaid-sync:${connectionId}`,
+      ...PLAID_SYNC_RATE_LIMIT,
+    });
+    if (!rateLimit.allowed) {
+      return rateLimitResponse(rateLimit, {
+        route: "/api/plaid/sync",
+        message: "This bank connection has been synced several times recently. Please try again soon.",
+      });
     }
 
     const result = await syncPlaidConnection({

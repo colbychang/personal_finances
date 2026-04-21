@@ -10,8 +10,13 @@ import {
 } from "@/lib/categorize";
 import { requireCurrentWorkspace } from "@/lib/auth/current-workspace";
 import { classifyTransactionsWithAI } from "@/lib/openai";
+import { checkWorkspaceRateLimit, rateLimitResponse } from "@/lib/rate-limit";
 
 const AI_BATCH_SIZE = 40;
+const CATEGORIZE_RATE_LIMIT = {
+  limit: 20,
+  windowMs: 60 * 60 * 1000,
+};
 
 function chunkArray<T>(items: T[], size: number): T[][] {
   const chunks: T[][] = [];
@@ -33,6 +38,18 @@ function chunkArray<T>(items: T[], size: number): T[][] {
 export async function POST(request: NextRequest) {
   try {
     const { workspace } = await requireCurrentWorkspace();
+    const rateLimit = checkWorkspaceRateLimit({
+      workspaceId: workspace.workspaceId,
+      scope: "categorize",
+      ...CATEGORIZE_RATE_LIMIT,
+    });
+    if (!rateLimit.allowed) {
+      return rateLimitResponse(rateLimit, {
+        route: "/api/categorize",
+        message: "Too many categorization attempts. Please try again later.",
+      });
+    }
+
     const body = await request.json();
     const { transactionIds, all } = body;
 

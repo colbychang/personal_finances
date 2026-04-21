@@ -4,6 +4,12 @@ import { Products, CountryCode } from "plaid";
 import { requireCurrentWorkspace } from "@/lib/auth/current-workspace";
 import { buildPlaidWebhookUrl } from "@/lib/plaid/webhook";
 import { logError, logWarn } from "@/lib/observability/logger";
+import { checkWorkspaceRateLimit, rateLimitResponse } from "@/lib/rate-limit";
+
+const LINK_TOKEN_RATE_LIMIT = {
+  limit: 20,
+  windowMs: 10 * 60 * 1000,
+};
 
 /**
  * POST /api/plaid/link-token
@@ -12,6 +18,18 @@ import { logError, logWarn } from "@/lib/observability/logger";
 export async function POST() {
   try {
     const { user, workspace } = await requireCurrentWorkspace();
+    const rateLimit = checkWorkspaceRateLimit({
+      workspaceId: workspace.workspaceId,
+      scope: "plaid-link-token",
+      ...LINK_TOKEN_RATE_LIMIT,
+    });
+    if (!rateLimit.allowed) {
+      return rateLimitResponse(rateLimit, {
+        route: "/api/plaid/link-token",
+        message: "Too many bank connection attempts. Please try again soon.",
+      });
+    }
+
     const plaidClient = getPlaidClient();
     const redirectUri = process.env.PLAID_REDIRECT_URI;
     const oauthRedirectUri =
