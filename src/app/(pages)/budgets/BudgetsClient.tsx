@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { subscribeToFinanceDataChanged } from "@/lib/client-events";
+import { fetchJsonWithTimeout } from "@/lib/client-error-reporting";
 import { formatCurrency, formatMonth } from "@/lib/format";
 import { useToast } from "@/components/ui/Toast";
 import { TransactionForm } from "@/components/transactions";
@@ -211,6 +212,7 @@ export function BudgetsClient({
   const [allCategories, setAllCategories] = useState(categories);
   const [accountOptions, setAccountOptions] = useState(accounts);
   const [isLoading, setIsLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [templateMessage, setTemplateMessage] = useState<string | null>(null);
   const [isSavingTemplate, setIsSavingTemplate] = useState(false);
   const [isApplyingTemplate, setIsApplyingTemplate] = useState(false);
@@ -305,15 +307,23 @@ export function BudgetsClient({
 
   const fetchBudgets = useCallback(async (targetMonth: string) => {
     setIsLoading(true);
+    setLoadError(null);
     try {
-      const res = await fetch(`/api/budgets?month=${targetMonth}`);
-      if (res.ok) {
-        const result: BudgetSummary = await res.json();
-        setData(result);
-        setCategoryTransactions({});
-      }
+      const result = await fetchJsonWithTimeout<BudgetSummary>(
+        `/api/budgets?month=${targetMonth}`,
+        {
+          scope: "budgets",
+        },
+      );
+      setData(result);
+      setCategoryTransactions({});
     } catch (error) {
       console.error("Failed to fetch budgets:", error);
+      setLoadError(
+        error instanceof Error
+          ? error.message
+          : "Failed to load budget data",
+      );
     } finally {
       setIsLoading(false);
     }
@@ -1448,8 +1458,22 @@ export function BudgetsClient({
         </div>
       )}
 
+      {!isLoading && loadError && (
+        <div className="rounded-[var(--radius-card)] border border-expense/20 bg-expense/5 p-4 mb-6">
+          <p className="text-sm font-medium text-expense">{loadError}</p>
+          <button
+            onClick={() => {
+              void fetchBudgets(month);
+            }}
+            className="mt-3 inline-flex items-center gap-2 rounded-[var(--radius-button)] border border-neutral-300 px-3 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
       {/* ─── Empty State ──────────────────────────────────────────── */}
-      {!isLoading && !hasBudgets && !hasUnbudgeted && (
+      {!isLoading && !loadError && !hasBudgets && !hasUnbudgeted && (
         <div className="text-center py-16 px-6">
           <div className="mx-auto w-16 h-16 rounded-full bg-neutral-100 flex items-center justify-center mb-4">
             <PiggyBank className="h-8 w-8 text-neutral-400" />

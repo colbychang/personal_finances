@@ -18,6 +18,7 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { subscribeToFinanceDataChanged } from "@/lib/client-events";
+import { fetchJsonWithTimeout } from "@/lib/client-error-reporting";
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
@@ -355,21 +356,29 @@ export function AnalyticsClient({
   const [period, setPeriod] = useState<Period>("month");
   const [isLoading, setIsLoading] = useState(shouldHydrateOnMount);
   const [hasLoadedData, setHasLoadedData] = useState(!shouldHydrateOnMount);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [drillDownCategory, setDrillDownCategory] = useState<string | null>(null);
   const [drillDownTransactions, setDrillDownTransactions] = useState<DrillDownTransaction[]>([]);
   const [isDrillDownLoading, setIsDrillDownLoading] = useState(false);
 
   const fetchData = useCallback(async (newPeriod: Period) => {
     setIsLoading(true);
+    setLoadError(null);
     try {
-      const res = await fetch(`/api/analytics?period=${newPeriod}`);
-      if (res.ok) {
-        const newData = await res.json();
-        setData(newData);
-        setHasLoadedData(true);
-      }
-    } catch {
-      // Keep existing data on error
+      const newData = await fetchJsonWithTimeout<AnalyticsData>(
+        `/api/analytics?period=${newPeriod}`,
+        {
+          scope: "analytics",
+        },
+      );
+      setData(newData);
+      setHasLoadedData(true);
+    } catch (error) {
+      setLoadError(
+        error instanceof Error
+          ? error.message
+          : "Failed to load analytics data",
+      );
     } finally {
       setIsLoading(false);
     }
@@ -436,6 +445,21 @@ export function AnalyticsClient({
           The page is open. Category breakdowns and monthly trends will appear
           as soon as the data request completes.
         </p>
+        {loadError && (
+          <div className="mt-4 rounded-[var(--radius-button)] border border-expense/20 bg-expense/5 p-3">
+            <p className="text-sm font-medium text-expense">
+              {loadError}
+            </p>
+            <button
+              onClick={() => {
+                void fetchData(period);
+              }}
+              className="mt-3 inline-flex items-center gap-2 rounded-[var(--radius-button)] border border-neutral-300 px-3 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+            >
+              Retry
+            </button>
+          </div>
+        )}
       </div>
     );
   }

@@ -18,6 +18,7 @@ import {
 import { formatCurrency, formatDate, formatMonth } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { subscribeToFinanceDataChanged } from "@/lib/client-events";
+import { fetchJsonWithTimeout } from "@/lib/client-error-reporting";
 import {
   AreaChart,
   Area,
@@ -661,18 +662,26 @@ export function DashboardClient({
   const [month, setMonth] = useState(initialMonth);
   const [isLoading, setIsLoading] = useState(shouldHydrateOnMount);
   const [hasLoadedData, setHasLoadedData] = useState(!shouldHydrateOnMount);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const fetchData = useCallback(async (newMonth: string) => {
     setIsLoading(true);
+    setLoadError(null);
     try {
-      const res = await fetch(`/api/dashboard?month=${newMonth}`);
-      if (res.ok) {
-        const newData = await res.json();
-        setData(newData);
-        setHasLoadedData(true);
-      }
-    } catch {
-      // Keep existing data on error
+      const newData = await fetchJsonWithTimeout<DashboardData>(
+        `/api/dashboard?month=${newMonth}`,
+        {
+          scope: "dashboard",
+        },
+      );
+      setData(newData);
+      setHasLoadedData(true);
+    } catch (error) {
+      setLoadError(
+        error instanceof Error
+          ? error.message
+          : "Failed to load dashboard data",
+      );
     } finally {
       setIsLoading(false);
     }
@@ -709,6 +718,21 @@ export function DashboardClient({
             We are opening the page first and then pulling the latest balances,
             budget status, and recent transactions.
           </p>
+          {loadError && (
+            <div className="mt-4 rounded-[var(--radius-button)] border border-expense/20 bg-expense/5 p-3">
+              <p className="text-sm font-medium text-expense">
+                {loadError}
+              </p>
+              <button
+                onClick={() => {
+                  void fetchData(month);
+                }}
+                className="mt-3 inline-flex items-center gap-2 rounded-[var(--radius-button)] border border-neutral-300 px-3 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+              >
+                Retry
+              </button>
+            </div>
+          )}
         </div>
       </div>
     );

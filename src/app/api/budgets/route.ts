@@ -11,6 +11,7 @@ import { requireCurrentWorkspace } from "@/lib/auth/current-workspace";
  * Returns budgets for a month with actual spending calculated from transactions.
  */
 export async function GET(request: NextRequest) {
+  const startedAt = Date.now();
   try {
     const { workspace } = await requireCurrentWorkspace();
     const { searchParams } = request.nextUrl;
@@ -30,8 +31,17 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    console.info("[api/budgets] start", {
+      month,
+      workspaceId: workspace.workspaceId,
+    });
     const result = await getBudgetsForMonth(db, month, workspace.workspaceId, {
       includeTransactions: false,
+    });
+    console.info("[api/budgets] success", {
+      month,
+      workspaceId: workspace.workspaceId,
+      durationMs: Date.now() - startedAt,
     });
     return NextResponse.json(result);
   } catch (error) {

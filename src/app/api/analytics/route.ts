@@ -15,11 +15,17 @@ import { requireCurrentWorkspace } from "@/lib/auth/current-workspace";
  * Otherwise returns spending by category + monthly trends.
  */
 export async function GET(request: NextRequest) {
+  const startedAt = Date.now();
   try {
     const { workspace } = await requireCurrentWorkspace();
     const { searchParams } = request.nextUrl;
     const period = searchParams.get("period") ?? "month";
     const category = searchParams.get("category");
+    console.info("[api/analytics] start", {
+      period,
+      category,
+      workspaceId: workspace.workspaceId,
+    });
 
     // Calculate date range based on period
     const { startDate, endDate } = getDateRange(period);
@@ -33,6 +39,12 @@ export async function GET(request: NextRequest) {
         endDate,
         workspace.workspaceId,
       );
+      console.info("[api/analytics] category success", {
+        period,
+        category,
+        workspaceId: workspace.workspaceId,
+        durationMs: Date.now() - startedAt,
+      });
       return NextResponse.json({ transactions });
     }
 
@@ -51,6 +63,12 @@ export async function GET(request: NextRequest) {
     );
 
     const totalSpending = spendingByCategory.reduce((sum, c) => sum + c.amount, 0);
+
+    console.info("[api/analytics] success", {
+      period,
+      workspaceId: workspace.workspaceId,
+      durationMs: Date.now() - startedAt,
+    });
 
     return NextResponse.json({
       period,

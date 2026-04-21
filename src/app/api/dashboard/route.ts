@@ -9,6 +9,7 @@ import { requireCurrentWorkspace } from "@/lib/auth/current-workspace";
  * Defaults to current month if no month parameter provided.
  */
 export async function GET(request: NextRequest) {
+  const startedAt = Date.now();
   try {
     const { workspace } = await requireCurrentWorkspace();
     const { searchParams } = request.nextUrl;
@@ -25,7 +26,16 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    console.info("[api/dashboard] start", {
+      month,
+      workspaceId: workspace.workspaceId,
+    });
     const data = await getDashboardData(db, month, workspace.workspaceId);
+    console.info("[api/dashboard] success", {
+      month,
+      workspaceId: workspace.workspaceId,
+      durationMs: Date.now() - startedAt,
+    });
     return NextResponse.json(data);
   } catch (error) {
     console.error("GET /api/dashboard error:", error);
