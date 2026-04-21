@@ -57,6 +57,56 @@ describe("Database Schema", () => {
     ]);
   });
 
+  it("enables RLS on all public application tables", async () => {
+    const result = await testDb.client.query<{ tablename: string; rowsecurity: boolean }>(`
+      select tablename, rowsecurity
+      from pg_tables
+      where schemaname = 'public'
+        and tablename not like '__drizzle%'
+      order by tablename
+    `);
+
+    expect(result.rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ tablename: "accounts", rowsecurity: true }),
+        expect.objectContaining({ tablename: "transactions", rowsecurity: true }),
+        expect.objectContaining({ tablename: "workspace_members", rowsecurity: true }),
+        expect.objectContaining({ tablename: "workspaces", rowsecurity: true }),
+      ]),
+    );
+    expect(result.rows.every((row) => row.rowsecurity)).toBe(true);
+  });
+
+  it("creates workspace-member RLS policies for exposed data tables", async () => {
+    const result = await testDb.client.query<{ tablename: string; policyname: string }>(`
+      select tablename, policyname
+      from pg_policies
+      where schemaname = 'public'
+      order by tablename, policyname
+    `);
+
+    expect(result.rows).toEqual(
+      expect.arrayContaining([
+        {
+          tablename: "accounts",
+          policyname: "accounts_select_workspace_member",
+        },
+        {
+          tablename: "transactions",
+          policyname: "transactions_select_workspace_member",
+        },
+        {
+          tablename: "workspace_members",
+          policyname: "workspace_members_select_workspace_member",
+        },
+        {
+          tablename: "workspaces",
+          policyname: "workspaces_select_workspace_member",
+        },
+      ]),
+    );
+  });
+
   it("stores monetary values as integers", async () => {
     const workspace = await seedWorkspace(db);
     const institution = await seedManualInstitution(db, "Test Bank", workspace.id);
