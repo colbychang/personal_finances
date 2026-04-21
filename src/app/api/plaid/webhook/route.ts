@@ -1,10 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db/index";
 import { getConnectionByItemId } from "@/db/queries/connections";
-import {
-  PlaidConnectionSyncError,
-  syncPlaidConnection,
-} from "@/lib/plaid/sync";
+import { enqueuePlaidSyncJob } from "@/db/queries/plaid-sync-jobs";
 import {
   getDurationMs,
   getRequestLogContext,
@@ -98,59 +95,28 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, action: "connection_not_found" });
   }
 
-  try {
-    const result = await syncPlaidConnection({
-      connectionId: connection.id,
-      workspaceId: connection.workspaceId ?? undefined,
-      source: "webhook",
-      requestId: context.requestId,
-    });
+  const { job, created } = await enqueuePlaidSyncJob(db, {
+    connectionId: connection.id,
+    workspaceId: connection.workspaceId,
+    source: "webhook",
+  });
 
-    logInfo("plaid.webhook.synced", {
-      ...logContext,
-      connectionId: connection.id,
-      workspaceId: connection.workspaceId,
-      added: result.added,
-      modified: result.modified,
-      removed: result.removed,
-      durationMs: getDurationMs(startedAt),
-    });
+  logInfo("plaid.webhook.queued", {
+    ...logContext,
+    connectionId: connection.id,
+    workspaceId: connection.workspaceId,
+    jobId: job.id,
+    created,
+    durationMs: getDurationMs(startedAt),
+  });
 
-    return NextResponse.json({
+  return NextResponse.json(
+    {
       ok: true,
-      action: "synced",
+      action: created ? "queued" : "already_queued",
       connectionId: connection.id,
-      added: result.added,
-      modified: result.modified,
-      removed: result.removed,
-    });
-  } catch (error) {
-    logError("plaid.webhook.sync_failed", error, {
-      ...logContext,
-      connectionId: connection.id,
-      workspaceId: connection.workspaceId,
-      durationMs: getDurationMs(startedAt),
-    });
-
-    if (error instanceof PlaidConnectionSyncError && error.retryable) {
-      return NextResponse.json(
-        {
-          ok: false,
-          action: "retryable_sync_failed",
-          error: error.userMessage,
-          errorCode: error.errorCode,
-        },
-        { status: 503 },
-      );
-    }
-
-    return NextResponse.json({
-      ok: false,
-      action: "sync_failed",
-      error:
-        error instanceof PlaidConnectionSyncError
-          ? error.userMessage
-          : "Plaid webhook sync failed",
-    });
-  }
+      jobId: job.id,
+    },
+    { status: 202 },
+  );
 }

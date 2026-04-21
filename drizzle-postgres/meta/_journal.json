@@ -57,6 +57,13 @@
       "when": 1776810600000,
       "tag": "0007_workspace_categories",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1776880800000,
+      "tag": "0008_plaid_sync_jobs",
+      "breakpoints": true
     }
   ]
 }

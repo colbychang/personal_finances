@@ -48,6 +48,7 @@ describe("Database Schema", () => {
       "connections",
       "institutions",
       "merchant_rules",
+      "plaid_sync_jobs",
       "snapshots",
       "transaction_splits",
       "transactions",

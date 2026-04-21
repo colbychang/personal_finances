@@ -1,4 +1,12 @@
 import { NextResponse } from "next/server";
+import { db } from "@/db/index";
+import {
+  claimDuePlaidSyncJobs,
+  completePlaidSyncJob,
+  failPlaidSyncJob,
+  getOpenPlaidSyncJobConnectionIds,
+  type PlaidSyncJob,
+} from "@/db/queries/plaid-sync-jobs";
 import {
   getPlaidConnectionsDueForSync,
   syncPlaidConnection,
@@ -19,6 +27,34 @@ export const dynamic = "force-dynamic";
 function getPositiveInteger(value: string | undefined, fallback: number) {
   const parsed = Number.parseInt(value ?? "", 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function getSyncErrorSummary(error: unknown) {
+  if (error instanceof PlaidConnectionSyncError) {
+    return {
+      error: error.userMessage,
+      errorCode: error.errorCode,
+      retryable: error.retryable,
+    };
+  }
+
+  return {
+    error: error instanceof Error ? error.message : "Unknown Plaid sync failure",
+    errorCode: "UNKNOWN",
+    retryable: true,
+  };
+}
+
+function shouldRetrySyncJob(error: unknown, job: PlaidSyncJob, maxAttempts: number) {
+  if (job.attempts >= maxAttempts) {
+    return false;
+  }
+
+  if (error instanceof PlaidConnectionSyncError) {
+    return error.retryable;
+  }
+
+  return true;
 }
 
 function isAuthorized(request: Request) {
@@ -44,19 +80,76 @@ export async function GET(request: Request) {
     12,
   );
   const limit = getPositiveInteger(process.env.PLAID_BACKGROUND_SYNC_LIMIT, 10);
+  const jobLimit = getPositiveInteger(process.env.PLAID_SYNC_JOB_LIMIT, 10);
+  const maxJobAttempts = getPositiveInteger(process.env.PLAID_SYNC_JOB_MAX_ATTEMPTS, 3);
   const staleAfterMs = staleAfterHours * 60 * 60 * 1000;
 
   logInfo("plaid.background_sync.start", {
     ...context,
     staleAfterHours,
     limit,
+    jobLimit,
+    maxJobAttempts,
   });
 
   try {
+    const dueJobs = await claimDuePlaidSyncJobs(db, { limit: jobLimit });
+    const jobResults: Array<{
+      jobId: number;
+      connectionId: number;
+      workspaceId: number | null;
+      status: "succeeded" | "retrying" | "failed";
+      added?: number;
+      modified?: number;
+      removed?: number;
+      error?: string;
+      errorCode?: string;
+    }> = [];
+
+    for (const job of dueJobs) {
+      try {
+        const result = await syncPlaidConnection({
+          connectionId: job.connectionId,
+          workspaceId: job.workspaceId ?? undefined,
+          source: "webhook",
+          requestId: context.requestId,
+        });
+
+        await completePlaidSyncJob(db, job.id);
+        jobResults.push({
+          jobId: job.id,
+          connectionId: job.connectionId,
+          workspaceId: job.workspaceId,
+          status: "succeeded",
+          added: result.added,
+          modified: result.modified,
+          removed: result.removed,
+        });
+      } catch (error) {
+        const summary = getSyncErrorSummary(error);
+        const retry = shouldRetrySyncJob(error, job, maxJobAttempts);
+        await failPlaidSyncJob(db, job, {
+          error: summary.error,
+          retry,
+        });
+        jobResults.push({
+          jobId: job.id,
+          connectionId: job.connectionId,
+          workspaceId: job.workspaceId,
+          status: retry ? "retrying" : "failed",
+          error: summary.error,
+          errorCode: summary.errorCode,
+        });
+      }
+    }
+
+    const openJobConnectionIds = await getOpenPlaidSyncJobConnectionIds(db);
     const dueConnections = await getPlaidConnectionsDueForSync({
       staleAfterMs,
       limit,
-    });
+    }).then((connections) =>
+      connections.filter((connection) => !openJobConnectionIds.has(connection.id)),
+    );
 
     const synced: Array<{
       connectionId: number;
@@ -103,24 +196,20 @@ export async function GET(request: Request) {
           webhookUpdated,
         });
       } catch (error) {
+        const summary = getSyncErrorSummary(error);
         failed.push({
           connectionId: connection.id,
           workspaceId: connection.workspaceId,
           institutionName: connection.institutionName,
-          error:
-            error instanceof PlaidConnectionSyncError
-              ? error.userMessage
-              : "Unknown Plaid sync failure",
-          errorCode:
-            error instanceof PlaidConnectionSyncError ? error.errorCode : "UNKNOWN",
-          retryable:
-            error instanceof PlaidConnectionSyncError ? error.retryable : false,
+          ...summary,
         });
       }
     }
 
     const response = {
-      ok: failed.length === 0,
+      ok: failed.length === 0 && jobResults.every((job) => job.status !== "failed"),
+      queuedJobsChecked: dueJobs.length,
+      queuedJobs: jobResults,
       checked: dueConnections.length,
       synced,
       failed,

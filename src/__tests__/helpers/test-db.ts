@@ -6,6 +6,7 @@ import type { AppDatabase } from "@/db/index";
 import * as schema from "@/db/schema";
 
 const RESET_TABLES = [
+  "plaid_sync_jobs",
   "transaction_splits",
   "account_snapshots",
   "account_links",

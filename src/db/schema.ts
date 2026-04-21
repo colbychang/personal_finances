@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { boolean, integer, pgTable, serial, text, uniqueIndex } from "drizzle-orm/pg-core";
+import { boolean, index, integer, pgTable, serial, text, uniqueIndex } from "drizzle-orm/pg-core";
 
 // ─── Workspaces ────────────────────────────────────────────────────────
 export const workspaces = pgTable("workspaces", {
@@ -137,6 +137,27 @@ export const connections = pgTable("connections", {
   lastSyncStatus: text("last_sync_status"),
   lastSyncError: text("last_sync_error"),
 });
+
+// ─── Plaid Sync Jobs ──────────────────────────────────────────────────
+export const plaidSyncJobs = pgTable("plaid_sync_jobs", {
+  id: serial("id").primaryKey(),
+  workspaceId: integer("workspace_id").references(() => workspaces.id),
+  connectionId: integer("connection_id")
+    .notNull()
+    .references(() => connections.id),
+  source: text("source").notNull(),
+  status: text("status").notNull().default("pending"),
+  runAfter: text("run_after").notNull().default(sql`CURRENT_TIMESTAMP`),
+  attempts: integer("attempts").notNull().default(0),
+  lastError: text("last_error"),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  startedAt: text("started_at"),
+  finishedAt: text("finished_at"),
+}, (table) => [
+  index("plaid_sync_jobs_status_run_after_idx").on(table.status, table.runAfter),
+  index("plaid_sync_jobs_connection_status_idx").on(table.connectionId, table.status),
+]);
 
 // ─── Merchant Rules ────────────────────────────────────────────────────
 export const merchantRules = pgTable("merchant_rules", {
