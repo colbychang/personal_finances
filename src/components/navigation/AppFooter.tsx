@@ -13,6 +13,8 @@ export function AppFooter() {
     !publicProfileMode &&
     !pathname.startsWith("/sign-in") &&
     !pathname.startsWith("/sign-up") &&
+    !pathname.startsWith("/forgot-password") &&
+    !pathname.startsWith("/reset-password") &&
     !pathname.startsWith("/access-pending");
 
   return (
@@ -21,7 +23,9 @@ export function AppFooter() {
         <AppBrand
           className="w-fit"
           iconClassName="h-6 w-6 rounded-lg"
-          textClassName="text-sm font-semibold text-neutral-700"
+          textClassName="text-neutral-700"
+          titleClassName="text-sm"
+          subtitleClassName="text-[0.6rem] tracking-[0.16em]"
         />
         <div className="flex items-center gap-4">
           <Link href="/privacy" className="hover:text-neutral-700 transition-colors">

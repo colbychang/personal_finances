@@ -18,6 +18,8 @@ export function AppShell({ children }: AppShellProps) {
   const chromeHidden =
     pathname.startsWith("/sign-in") ||
     pathname.startsWith("/sign-up") ||
+    pathname.startsWith("/forgot-password") ||
+    pathname.startsWith("/reset-password") ||
     pathname.startsWith("/access-pending");
   const showAppChrome = !publicProfileMode && !chromeHidden;
 

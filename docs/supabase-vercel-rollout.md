@@ -79,6 +79,8 @@ For the first hosted rollout, configure these exact auth URLs in Supabase:
 - Redirect URLs:
   - `http://localhost:3000/auth/confirm`
   - `https://your-project.vercel.app/auth/confirm`
+  - `http://localhost:3000/reset-password`
+  - `https://your-project.vercel.app/reset-password`
   - your custom domain equivalent later, if you add one
 
 For Plaid in production, also configure:

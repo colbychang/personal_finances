@@ -1,4 +1,5 @@
 import { Settings, Tag, Landmark, BookOpen } from "lucide-react";
+import { PasswordSettingsCard } from "@/components/auth/PasswordSettingsCard";
 import { db } from "@/db/index";
 import { getAllCategories } from "@/db/queries/categories";
 import { CategoriesManager } from "@/components/categories/CategoriesManager";
@@ -35,6 +36,8 @@ export default async function SettingsPage() {
         <PlaidSetupNotice />
         <ConnectionsList />
       </section>
+
+      <PasswordSettingsCard />
 
       {/* Merchant Rules Section */}
       <section className="mb-10">

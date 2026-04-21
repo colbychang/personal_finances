@@ -512,7 +512,13 @@ function SpendingByCategoryWidget({
           Spending by Category
         </h2>
       </div>
-      <SpendingPieChart data={spendingByCategory} />
+      <p className="mb-3 text-xs text-neutral-400">
+        Click legend labels to hide or restore categories in the chart.
+      </p>
+      <SpendingPieChart
+        data={spendingByCategory}
+        heightClassName="h-72 md:h-80"
+      />
     </div>
   );
 }

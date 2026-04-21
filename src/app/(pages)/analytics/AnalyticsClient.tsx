@@ -2,12 +2,8 @@
 
 import { useState, useCallback, useEffect } from "react";
 import {
-  PieChart,
-  Pie,
-  Cell,
   ResponsiveContainer,
   Tooltip,
-  Legend,
   BarChart,
   Bar,
   XAxis,
@@ -19,6 +15,10 @@ import { formatCurrency, formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { subscribeToFinanceDataChanged } from "@/lib/client-events";
 import { fetchJsonWithTimeout } from "@/lib/client-error-reporting";
+import {
+  SpendingPieChart,
+  resolveSpendingChartColor,
+} from "@/components/charts/SpendingPieChart";
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
@@ -62,21 +62,6 @@ const PERIOD_OPTIONS: { value: Period; label: string }[] = [
   { value: "year", label: "Last 12 Months" },
 ];
 
-const DEFAULT_COLORS = [
-  "#3b82f6",
-  "#22c55e",
-  "#f97316",
-  "#ec4899",
-  "#8b5cf6",
-  "#06b6d4",
-  "#ef4444",
-  "#f59e0b",
-  "#14b8a6",
-  "#6366f1",
-  "#64748b",
-  "#a855f7",
-];
-
 // ─── Helper ─────────────────────────────────────────────────────────────
 
 function formatMonthLabel(monthStr: string): string {
@@ -90,74 +75,6 @@ function formatMonthLabel(monthStr: string): string {
 
 function formatTooltipValue(cents: number): string {
   return formatCurrency(cents);
-}
-
-// ─── Spending Pie/Donut Chart ───────────────────────────────────────────
-
-function SpendingDonutChart({
-  data,
-  onCategoryClick,
-}: {
-  data: CategorySpending[];
-  onCategoryClick: (category: string) => void;
-}) {
-  if (data.length === 0) {
-    return (
-      <p className="text-sm text-neutral-500 text-center py-12">
-        No spending data for this period.
-      </p>
-    );
-  }
-
-  const chartData = data.map((d, i) => ({
-    name: d.category,
-    value: d.amount,
-    color: d.color ?? DEFAULT_COLORS[i % DEFAULT_COLORS.length],
-  }));
-
-  return (
-    <div className="w-full h-80 md:h-96">
-      <ResponsiveContainer width="100%" height="100%">
-        <PieChart>
-          <Pie
-            data={chartData}
-            cx="50%"
-            cy="50%"
-            innerRadius="35%"
-            outerRadius="65%"
-            paddingAngle={2}
-            dataKey="value"
-            nameKey="name"
-            label={({ name, percent }) =>
-              `${name} ${(percent * 100).toFixed(0)}%`
-            }
-            labelLine={{ strokeWidth: 1 }}
-            onClick={(_data, index) => {
-              onCategoryClick(chartData[index].name);
-            }}
-            style={{ cursor: "pointer" }}
-          >
-            {chartData.map((entry, index) => (
-              <Cell key={`cell-${index}`} fill={entry.color} />
-            ))}
-          </Pie>
-          <Tooltip
-            formatter={(value: number) => [formatTooltipValue(value), "Spent"]}
-            contentStyle={{
-              borderRadius: "8px",
-              border: "1px solid #e2e8f0",
-              fontSize: "13px",
-            }}
-          />
-          <Legend
-            formatter={(value: string) => (
-              <span className="text-xs text-neutral-700">{value}</span>
-            )}
-          />
-        </PieChart>
-      </ResponsiveContainer>
-    </div>
-  );
 }
 
 // ─── Monthly Trends Bar Chart ───────────────────────────────────────────
@@ -263,7 +180,7 @@ function CategoryTable({
                   className="w-3 h-3 rounded-full flex-shrink-0 mr-3"
                   style={{
                     backgroundColor:
-                      cat.color ?? DEFAULT_COLORS[i % DEFAULT_COLORS.length],
+                      resolveSpendingChartColor(cat.color, i),
                   }}
                 />
                 <span className="flex-1 text-sm text-neutral-700 truncate mr-3">
@@ -501,11 +418,12 @@ export function AnalyticsClient({
           Spending by Category
         </h2>
         <p className="text-xs text-neutral-400 mb-2">
-          Click a segment to expand its transactions in the breakdown below
+          Click a segment to expand its transactions below. Click legend labels to hide or restore categories in the chart.
         </p>
-        <SpendingDonutChart
+        <SpendingPieChart
           data={data.spendingByCategory}
           onCategoryClick={handleCategoryClick}
+          heightClassName="h-80 md:h-96"
         />
       </div>
 

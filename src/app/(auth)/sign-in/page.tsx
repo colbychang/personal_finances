@@ -105,7 +105,15 @@ export default async function SignInPage({
             />
           </label>
           <label className="block space-y-2">
-            <span className="text-sm font-medium text-neutral-700">Password</span>
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-sm font-medium text-neutral-700">Password</span>
+              <Link
+                href="/forgot-password"
+                className="text-sm font-medium text-primary hover:underline"
+              >
+                Forgot password?
+              </Link>
+            </div>
             <input
               required
               type="password"

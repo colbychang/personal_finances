@@ -177,6 +177,8 @@ The hosted rollout is now centered around Supabase Postgres plus workspace-scope
    - Redirect URLs:
      - `http://localhost:3000/auth/confirm`
      - `https://your-project.vercel.app/auth/confirm`
+     - `http://localhost:3000/reset-password`
+     - `https://your-project.vercel.app/reset-password`
      - add your custom domain equivalent later if you attach one
 3. Add these env vars locally and in Vercel:
    - `DATABASE_URL`
@@ -195,7 +197,11 @@ For the first real hosted deployment, set these in Vercel:
 - `DATABASE_URL`
   Use the Supabase transaction pooler connection string.
 - `DATABASE_POOL_MAX`
-  Start with `1`.
+  Start with `5`.
+- `DATABASE_STATEMENT_TIMEOUT_MS`
+  Start with `15000`.
+- `DATABASE_LOCK_TIMEOUT_MS`
+  Start with `5000`.
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `NEXT_PUBLIC_SITE_URL`

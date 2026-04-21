@@ -14,6 +14,8 @@ const AUTH_EMAIL_HEADER = "x-glacier-auth-email";
 const PUBLIC_PATH_PREFIXES = [
   "/sign-in",
   "/sign-up",
+  "/forgot-password",
+  "/reset-password",
   "/auth",
   "/privacy",
   "/data-policy",
