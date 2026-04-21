@@ -699,6 +699,14 @@ export function DashboardClient({
     }
   }, [initialData, initialMonth, month]);
 
+  useEffect(() => {
+    if (!shouldHydrateOnMount || month !== initialMonth) {
+      return;
+    }
+
+    void fetchData(month);
+  }, [fetchData, initialMonth, month, shouldHydrateOnMount]);
+
   const showLoadingState = shouldHydrateOnMount && !hasLoadedData;
 
   if (showLoadingState) {
@@ -737,14 +745,6 @@ export function DashboardClient({
       </div>
     );
   }
-
-  useEffect(() => {
-    if (!shouldHydrateOnMount || month !== initialMonth) {
-      return;
-    }
-
-    void fetchData(month);
-  }, [fetchData, initialMonth, month, shouldHydrateOnMount]);
 
   function handlePrevMonth() {
     const prev = navigateMonth(month, -1);
