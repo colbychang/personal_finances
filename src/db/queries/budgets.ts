@@ -11,6 +11,7 @@ import type { AppDatabase } from "@/db/index";
 import * as schema from "../schema";
 import { INVESTMENT_LIKE_ACCOUNT_TYPES } from "@/lib/account-types";
 import { effectiveTransactionMonth } from "./effective-month";
+import { getAllCategories } from "./categories";
 
 type DB = AppDatabase;
 
@@ -279,12 +280,7 @@ export async function getBudgetsForMonth(
           ? undefined
           : eq(schema.budgetTemplates.workspaceId, workspaceId),
       ),
-    database
-      .select({
-        name: schema.categories.name,
-        color: schema.categories.color,
-      })
-      .from(schema.categories),
+    getAllCategories(database, workspaceId),
     getCategorySpendingDetails(database, month, workspaceId, {
       includeTransactions,
     }),

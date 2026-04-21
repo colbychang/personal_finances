@@ -91,20 +91,21 @@ describe("PWA Service Worker", () => {
     expect(content).toContain('addEventListener("activate"');
   });
 
-  it("service worker handles fetch event", () => {
+  it("service worker does not intercept fetches while stale PWA caching is disabled", () => {
     const content = fs.readFileSync(swPath, "utf-8");
-    expect(content).toContain('addEventListener("fetch"');
+    expect(content).not.toContain('addEventListener("fetch"');
   });
 
-  it("service worker caches static assets", () => {
+  it("service worker clears old caches instead of adding new cache names", () => {
     const content = fs.readFileSync(swPath, "utf-8");
     expect(content).toContain("caches");
-    expect(content).toContain("CACHE_NAME");
+    expect(content).toContain("caches.delete");
+    expect(content).not.toContain("CACHE_NAME");
   });
 
-  it("service worker skips API requests from caching", () => {
+  it("service worker unregisters itself after clearing stale caches", () => {
     const content = fs.readFileSync(swPath, "utf-8");
-    expect(content).toContain("/api/");
+    expect(content).toContain("registration.unregister");
   });
 });
 

@@ -82,7 +82,7 @@ export async function POST(request: NextRequest) {
 
       if (uncategorizedTxns.length > 0) {
         // Get full category list
-        const categories = await getAllCategories(db);
+        const categories = await getAllCategories(db, workspace.workspaceId);
         const categoryNames = categories.map((c) => c.name);
         const validCategorySet = new Set(categoryNames);
 

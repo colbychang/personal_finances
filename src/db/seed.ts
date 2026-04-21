@@ -12,17 +12,25 @@ type DB = AppDatabase;
  */
 export async function seedCategories(db: DB): Promise<void> {
   for (const [index, cat] of PREDEFINED_CATEGORIES.entries()) {
+    const [existing] = await db
+      .select({ id: schema.categories.id })
+      .from(schema.categories)
+      .where(eq(schema.categories.name, cat.name))
+      .limit(1);
+
+    if (existing) {
+      continue;
+    }
+
     await db
       .insert(schema.categories)
       .values({
+        workspaceId: null,
         name: cat.name,
         color: cat.color,
         icon: cat.icon,
         isPredefined: true,
         sortOrder: index + 1,
-      })
-      .onConflictDoNothing({
-        target: schema.categories.name,
       });
   }
 }

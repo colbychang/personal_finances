@@ -5,7 +5,7 @@ This repo now includes the first auth layer for a hosted beta:
 - Supabase email/password authentication
 - cookie-backed SSR sessions
 - route protection through `src/proxy.ts`
-- an optional `AUTHORIZED_EMAILS` allowlist for small staged access
+- per-user workspaces for finance data isolation
 
 ## What is ready now
 
@@ -13,13 +13,14 @@ This repo now includes the first auth layer for a hosted beta:
 - email confirmation callback handling
 - protected app routes and protected API routes
 - a simple sign-out control in the footer
-- an `access-pending` screen for non-allowlisted users
+- workspace-scoped finance data, including custom categories
 
-## What is not ready yet
+## Hosted rollout status
 
 The app runtime is now pointed at Postgres, finance queries are workspace-aware,
-and the automated test suite has been converted to `PGlite`. The hosted rollout
-still needs these final pieces before you should invite multiple friends:
+and the automated test suite has been converted to `PGlite`. Before inviting more
+testers, make sure the hosted database has the latest migrations and that Plaid
+redirect URLs are configured for the Vercel domain.
 
 1. create the real Supabase project and add the env vars locally + in Vercel
 2. run the one-time SQLite -> Postgres importer against your real hosted workspace
@@ -27,18 +28,11 @@ still needs these final pieces before you should invite multiple friends:
 
 ## Recommended near-term deployment shape
 
-### Safe right now
-
-- Keep using your current Vercel deployment for the public Glacier pages if the Supabase envs are not ready yet.
-- Configure Supabase auth locally and in a staging deployment.
-- Set `AUTHORIZED_EMAILS` to just your own email while the first hosted import/verification is in flight.
-
-### Safe after the hosted import
+### Safe hosted beta
 
 - Disable `PUBLIC_PROFILE_ONLY` if you set it manually.
 - Point the app at Supabase Postgres instead of local SQLite.
-- Expand `AUTHORIZED_EMAILS` to your first one or two testers.
-- After query scoping is proven, remove the allowlist if you want open sign-up.
+- Invite one or two testers after migrations and redirect URLs are verified.
 
 ## Environment variables
 
@@ -48,7 +42,6 @@ Set these locally and in Vercel:
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 NEXT_PUBLIC_SITE_URL=https://your-app.vercel.app
-AUTHORIZED_EMAILS=colby.chang@gmail.com
 DATABASE_POOL_MAX=5
 DATABASE_STATEMENT_TIMEOUT_MS=15000
 DATABASE_LOCK_TIMEOUT_MS=5000
@@ -94,6 +87,6 @@ For Plaid in production, also configure:
 2. sign in once so your hosted personal workspace exists
 3. run `npm run db:import-legacy -- --sqlite=./finance.db --workspace-id=<your workspace id>`
 4. verify accounts, transactions, budgets, and Plaid reconnects in the hosted app
-5. then expand `AUTHORIZED_EMAILS` to your first one or two testers
+5. invite your first one or two testers
 
 That gives you a safer first hosted beta without exposing your data to other testers.

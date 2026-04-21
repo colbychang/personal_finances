@@ -1,5 +1,4 @@
 import { createServerClient } from "@supabase/ssr";
-import type { User } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 import { getSupabaseEnv } from "./shared";
 
@@ -48,13 +47,4 @@ export function redirectToSignIn(request: NextRequest) {
 
 export function unauthorizedJson(message: string, status = 401) {
   return NextResponse.json({ error: message }, { status });
-}
-
-export function redirectToAccessPending(request: NextRequest, user: User | null) {
-  const accessUrl = request.nextUrl.clone();
-  accessUrl.pathname = "/access-pending";
-  if (user?.email) {
-    accessUrl.searchParams.set("email", user.email);
-  }
-  return NextResponse.redirect(accessUrl);
 }

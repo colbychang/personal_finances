@@ -248,8 +248,9 @@ describe("Database Schema", () => {
     ).resolves.toBeDefined();
   });
 
-  it("enforces global uniqueness for categories and account snapshot day uniqueness", async () => {
+  it("enforces workspace-scoped uniqueness for categories and account snapshot day uniqueness", async () => {
     const workspace = await seedWorkspace(db, { name: "Alpha", slug: "alpha-categories" });
+    const otherWorkspace = await seedWorkspace(db, { name: "Beta", slug: "beta-categories" });
     const institution = await seedManualInstitution(db, "Test Bank", workspace.id);
     const account = await seedManualAccount(db, {
       institutionId: institution.id,
@@ -261,6 +262,7 @@ describe("Database Schema", () => {
     });
 
     await db.insert(schema.categories).values({
+      workspaceId: workspace.id,
       name: "Test Category",
       color: "#ff0000",
       icon: "star",
@@ -270,6 +272,7 @@ describe("Database Schema", () => {
 
     await expect(
       db.insert(schema.categories).values({
+        workspaceId: workspace.id,
         name: "Test Category",
         color: "#00ff00",
         icon: "heart",
@@ -277,6 +280,17 @@ describe("Database Schema", () => {
         sortOrder: 101,
       }),
     ).rejects.toThrow();
+
+    await expect(
+      db.insert(schema.categories).values({
+        workspaceId: otherWorkspace.id,
+        name: "Test Category",
+        color: "#00ff00",
+        icon: "heart",
+        isPredefined: false,
+        sortOrder: 101,
+      }),
+    ).resolves.toBeDefined();
 
     await db.insert(schema.accountSnapshots).values({
       accountId: account.id,

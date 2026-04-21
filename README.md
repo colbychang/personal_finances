@@ -61,12 +61,11 @@ DATABASE_LOCK_TIMEOUT_MS=5000
 NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 NEXT_PUBLIC_SITE_URL=http://localhost:3000
-AUTHORIZED_EMAILS=colby.chang@gmail.com
 ```
 
 Plaid credentials are required for bank linking. The OpenAI key is required for AI categorization. The encryption key secures stored Plaid access tokens.
 If you are using Plaid production with OAuth-enabled institutions, set `PLAID_REDIRECT_URI` to the exact `https://` redirect URL configured in Plaid Dashboard. A plain `http://localhost` redirect will be rejected by Plaid production.
-Supabase powers the hosted Postgres database and password-protected sign-in flow. `AUTHORIZED_EMAILS` is optional in code, but recommended while the first hosted beta is still tightly staged.
+Supabase powers the hosted Postgres database, password-protected sign-in flow, and per-user workspaces for finance data isolation.
 Use Supabase's transaction pooler connection string for `DATABASE_URL` rather than the direct `db....supabase.co:5432` connection. For the current Supabase setup, `DATABASE_POOL_MAX=5` is the better default for the heavier aggregate pages, and `DATABASE_STATEMENT_TIMEOUT_MS` / `DATABASE_LOCK_TIMEOUT_MS` keep hosted requests from hanging forever if the database gets into a bad state.
 For local debugging specifically, the direct Supabase database host can be more stable than the pooler. A practical split is:
 - local development: direct `db.<project-ref>.supabase.co:5432`
@@ -185,7 +184,6 @@ The hosted rollout is now centered around Supabase Postgres plus workspace-scope
    - `NEXT_PUBLIC_SUPABASE_URL`
    - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
    - `NEXT_PUBLIC_SITE_URL`
-   - `AUTHORIZED_EMAILS`
 4. Run `npm run db:migrate` against Supabase Postgres.
 5. Sign in once so your personal workspace record exists.
 6. Import your existing SQLite data with `npm run db:import-legacy`.
@@ -206,8 +204,6 @@ For the first real hosted deployment, set these in Vercel:
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `NEXT_PUBLIC_SITE_URL`
   Example: `https://your-project.vercel.app`
-- `AUTHORIZED_EMAILS`
-  Keep this limited to you until the hosted app is verified.
 - `PLAID_CLIENT_ID`
 - `PLAID_SECRET`
 - `PLAID_ENV`

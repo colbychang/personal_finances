@@ -1,13 +1,15 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db/index";
 import { getAllCategories, createCategory, getCategoryByName } from "@/db/queries/categories";
+import { requireCurrentWorkspace } from "@/lib/auth/current-workspace";
 
 /**
  * GET /api/categories — returns all categories (predefined + custom)
  */
 export async function GET() {
   try {
-    const categories = await getAllCategories(db);
+    const { workspace } = await requireCurrentWorkspace();
+    const categories = await getAllCategories(db, workspace.workspaceId);
     return NextResponse.json({ categories });
   } catch (error) {
     console.error("GET /api/categories error:", error);
@@ -24,6 +26,7 @@ export async function GET() {
  */
 export async function POST(request: Request) {
   try {
+    const { workspace } = await requireCurrentWorkspace();
     const body = await request.json();
     const { name, color, icon } = body;
 
@@ -38,7 +41,7 @@ export async function POST(request: Request) {
     const trimmedName = name.trim();
 
     // Check for duplicate name
-    const existing = await getCategoryByName(db, trimmedName);
+    const existing = await getCategoryByName(db, trimmedName, workspace.workspaceId);
     if (existing) {
       return NextResponse.json(
         { error: `A category named "${trimmedName}" already exists` },
@@ -50,7 +53,7 @@ export async function POST(request: Request) {
       name: trimmedName,
       color: color || undefined,
       icon: icon || undefined,
-    });
+    }, workspace.workspaceId);
 
     return NextResponse.json({ category }, { status: 201 });
   } catch (error) {

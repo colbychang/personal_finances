@@ -203,9 +203,12 @@ export const transactionSplits = pgTable("transaction_splits", {
 // ─── Categories ────────────────────────────────────────────────────────
 export const categories = pgTable("categories", {
   id: serial("id").primaryKey(),
-  name: text("name").notNull().unique(),
+  workspaceId: integer("workspace_id").references(() => workspaces.id),
+  name: text("name").notNull(),
   color: text("color"),
   icon: text("icon"),
   isPredefined: boolean("is_predefined").notNull().default(false),
   sortOrder: integer("sort_order").notNull().default(0),
-});
+}, (table) => [
+  uniqueIndex("categories_workspace_name_unique").on(table.workspaceId, table.name),
+]);

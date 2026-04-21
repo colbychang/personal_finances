@@ -10,6 +10,7 @@ import {
   closeTestDb,
   createTestDb,
   resetTestDb,
+  seedWorkspace,
   type TestDb,
 } from "@/__tests__/helpers/test-db";
 
@@ -76,6 +77,32 @@ describe("getAllCategories", () => {
     expect(petCare.name).toBe("Pet Care");
   });
 
+  it("returns workspace custom categories without leaking categories from another workspace", async () => {
+    await seedCategories(db);
+    const firstWorkspace = await seedWorkspace(db, {
+      name: "First",
+      slug: "first",
+    });
+    const secondWorkspace = await seedWorkspace(db, {
+      name: "Second",
+      slug: "second",
+    });
+
+    await createCategory(db, { name: "Pet Care" }, firstWorkspace.id);
+    await createCategory(db, { name: "Kids" }, secondWorkspace.id);
+
+    const firstCategories = await getAllCategories(db, firstWorkspace.id);
+    const secondCategories = await getAllCategories(db, secondWorkspace.id);
+
+    expect(firstCategories.map((category) => category.name)).toContain("Groceries");
+    expect(firstCategories.map((category) => category.name)).toContain("Pet Care");
+    expect(firstCategories.map((category) => category.name)).not.toContain("Kids");
+
+    expect(secondCategories.map((category) => category.name)).toContain("Groceries");
+    expect(secondCategories.map((category) => category.name)).toContain("Kids");
+    expect(secondCategories.map((category) => category.name)).not.toContain("Pet Care");
+  });
+
   it("returns categories sorted by sort_order then name", async () => {
     await seedCategories(db);
 
@@ -123,6 +150,26 @@ describe("createCategory", () => {
     await createCategory(db, { name: "Pet Care" });
 
     await expect(createCategory(db, { name: "Pet Care" })).rejects.toThrow();
+  });
+
+  it("allows the same custom category name in separate workspaces", async () => {
+    const firstWorkspace = await seedWorkspace(db, {
+      name: "First",
+      slug: "first",
+    });
+    const secondWorkspace = await seedWorkspace(db, {
+      name: "Second",
+      slug: "second",
+    });
+
+    await createCategory(db, { name: "Pet Care" }, firstWorkspace.id);
+    await createCategory(db, { name: "Pet Care" }, secondWorkspace.id);
+
+    const firstCategory = await getCategoryByName(db, "Pet Care", firstWorkspace.id);
+    const secondCategory = await getCategoryByName(db, "Pet Care", secondWorkspace.id);
+
+    expect(firstCategory?.workspaceId).toBe(firstWorkspace.id);
+    expect(secondCategory?.workspaceId).toBe(secondWorkspace.id);
   });
 
   it("trims whitespace from category name", async () => {

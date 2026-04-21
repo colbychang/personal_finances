@@ -78,8 +78,6 @@ For the real hosted app, set these in Vercel:
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `NEXT_PUBLIC_SITE_URL`
   Example: `https://your-project.vercel.app`
-- `AUTHORIZED_EMAILS`
-  Keep this limited to you until you finish hosted verification.
 - `PLAID_CLIENT_ID`
 - `PLAID_SECRET`
 - `PLAID_ENV`
@@ -149,12 +147,13 @@ Once Supabase is configured, the recommended production/staging path is:
 5. run `npm run db:migrate` against the hosted Postgres database if needed
 6. run `npm run db:import-legacy -- --sqlite=./finance.db --auth-user-id=<your supabase user id> --email=<your email>`
 7. verify accounts, budgets, transactions, and Plaid flows
-8. only then expand `AUTHORIZED_EMAILS` to your first testers
+8. invite your first testers
 
 ## What Not To Rely On Yet
 
 Do not invite external testers until you have completed the real hosted rollout
-above and validated the imported data against your own account first.
+above, applied the latest migrations, and validated the imported data against
+your own account first.
 
 Before that verification, do not rely on the deployment for persistent finance
 data storage for:
@@ -174,4 +173,4 @@ Short term:
 - deploy once with the full hosted stack enabled
 - sign in on the hosted app
 - import your existing finance data
-- keep `AUTHORIZED_EMAILS` limited to just you until you validate the hosted flow end to end
+- verify the hosted flow end to end before sending the app to testers

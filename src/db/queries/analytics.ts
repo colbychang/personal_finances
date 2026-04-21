@@ -3,6 +3,7 @@ import type { AppDatabase } from "@/db/index";
 import * as schema from "../schema";
 import { INVESTMENT_LIKE_ACCOUNT_TYPES } from "@/lib/account-types";
 import { effectiveTransactionMonth } from "./effective-month";
+import { getAllCategories } from "./categories";
 
 type DB = AppDatabase;
 
@@ -37,9 +38,7 @@ export async function getSpendingByCategory(
   const startMonth = startDate.slice(0, 7);
   const endMonthExclusive = endDate.slice(0, 7);
 
-  const allCategories = await database
-    .select({ name: schema.categories.name, color: schema.categories.color })
-    .from(schema.categories);
+  const allCategories = await getAllCategories(database, workspaceId);
   const categoryColorMap = new Map<string, string | null>(
     allCategories.map((c) => [c.name, c.color]),
   );

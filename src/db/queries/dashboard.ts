@@ -3,6 +3,7 @@ import type { AppDatabase } from "@/db/index";
 import * as schema from "../schema";
 import { INVESTMENT_LIKE_ACCOUNT_TYPES } from "@/lib/account-types";
 import { effectiveTransactionMonth } from "./effective-month";
+import { getAllCategories } from "./categories";
 
 type DB = AppDatabase;
 
@@ -153,9 +154,7 @@ export async function getDashboardData(
 ): Promise<DashboardData> {
   const prevMonth = getPreviousMonth(month);
 
-  const allCategoriesPromise = database
-    .select({ name: schema.categories.name, color: schema.categories.color })
-    .from(schema.categories);
+  const allCategoriesPromise = getAllCategories(database, workspaceId);
   const currentSpendingPromise = getSpendingByCategory(database, month, workspaceId);
   const budgetRowsPromise = database
     .select()

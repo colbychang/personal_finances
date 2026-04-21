@@ -1,8 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { isAuthorizedEmail } from "@/lib/auth/access";
 import { isPublicProfileMode } from "@/lib/deployment";
 import {
-  redirectToAccessPending,
   redirectToSignIn,
   unauthorizedJson,
   updateSupabaseSession,
@@ -97,17 +95,6 @@ export async function proxy(request: NextRequest) {
     }
 
     return redirectToSignIn(request);
-  }
-
-  if (!isAuthorizedEmail(user.email)) {
-    if (isApiPath(pathname)) {
-      return unauthorizedJson(
-        "This beta is currently restricted to allowlisted testers while multi-user data isolation is still being completed.",
-        403,
-      );
-    }
-
-    return redirectToAccessPending(request, user);
   }
 
   return withAuthHeaders(request, response, user);

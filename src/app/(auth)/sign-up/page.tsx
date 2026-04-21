@@ -58,8 +58,8 @@ export default async function SignUpPage({
         <div className="space-y-2">
           <h1 className="text-2xl font-semibold text-neutral-900">Create your account</h1>
           <p className="text-sm text-neutral-600">
-            This gets password-based access into the app. Until the database is fully migrated to
-            per-user workspaces, keep live access limited to allowlisted testers.
+            This creates password-based access and a private Glacier workspace for your accounts,
+            budgets, transactions, and rules.
           </p>
         </div>
 
