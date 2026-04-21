@@ -124,6 +124,19 @@ export async function getConnectionById(
   return connection ?? null;
 }
 
+export async function getConnectionByItemId(
+  database: DB,
+  itemId: string,
+): Promise<typeof schema.connections.$inferSelect | null> {
+  const [connection] = await database
+    .select()
+    .from(schema.connections)
+    .where(eq(schema.connections.itemId, itemId))
+    .limit(1);
+
+  return connection ?? null;
+}
+
 export interface CreateConnectionInput {
   institutionName: string;
   provider: string;

@@ -35,6 +35,10 @@ function isCronApiPath(pathname: string) {
   return pathname === "/api/cron" || pathname.startsWith("/api/cron/");
 }
 
+function isPublicApiPath(pathname: string) {
+  return pathname === "/api/health" || pathname === "/api/plaid/webhook";
+}
+
 function getSafePostAuthPath(next: string | null) {
   if (!next || !next.startsWith("/")) {
     return "/accounts";
@@ -74,7 +78,7 @@ export async function proxy(request: NextRequest) {
 
   const { pathname } = request.nextUrl;
 
-  if (isCronApiPath(pathname)) {
+  if (isCronApiPath(pathname) || isPublicApiPath(pathname)) {
     return NextResponse.next();
   }
 

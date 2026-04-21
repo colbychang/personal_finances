@@ -9,6 +9,7 @@ import {
   findOrCreatePlaidInstitution,
   getAllConnections,
   getConnectionById,
+  getConnectionByItemId,
 } from "@/db/queries/connections";
 import {
   closeTestDb,
@@ -54,6 +55,25 @@ describe("connection lifecycle", () => {
   it("returns null/false when a connection does not exist", async () => {
     await expect(getConnectionById(db, 99_999)).resolves.toBeNull();
     await expect(deleteConnection(db, 99_999)).resolves.toBe(false);
+  });
+
+  it("fetches a connection by Plaid item id", async () => {
+    const created = await createConnection(db, {
+      institutionName: "Webhook Bank",
+      provider: "plaid",
+      accessToken: "webhook-token",
+      itemId: "item-webhook-123",
+      isEncrypted: false,
+    });
+
+    const found = await getConnectionByItemId(db, "item-webhook-123");
+
+    expect(found?.id).toBe(created.id);
+    expect(found?.institutionName).toBe("Webhook Bank");
+  });
+
+  it("returns null when no connection matches a Plaid item id", async () => {
+    await expect(getConnectionByItemId(db, "missing-item")).resolves.toBeNull();
   });
 });
 

@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { getPlaidClient } from "@/lib/plaid";
 import { Products, CountryCode } from "plaid";
 import { requireCurrentWorkspace } from "@/lib/auth/current-workspace";
+import { buildPlaidWebhookUrl } from "@/lib/plaid/webhook";
+import { logError, logWarn } from "@/lib/observability/logger";
 
 /**
  * POST /api/plaid/link-token
@@ -23,24 +25,28 @@ export async function POST() {
       country_codes: [CountryCode.Us],
       language: "en",
     };
+    const webhook = buildPlaidWebhookUrl();
 
     let response;
     try {
       response = await plaidClient.linkTokenCreate({
         ...baseRequest,
         ...(oauthRedirectUri ? { redirect_uri: oauthRedirectUri } : {}),
+        ...(webhook ? { webhook } : {}),
       });
     } catch (error) {
       if (!oauthRedirectUri) {
         throw error;
       }
 
-      console.warn(
-        "Plaid link token creation failed with redirect_uri; retrying without redirect_uri.",
-        error,
-      );
+      logWarn("plaid.link_token.retry_without_redirect_uri", {
+        hasWebhook: Boolean(webhook),
+      });
 
-      response = await plaidClient.linkTokenCreate(baseRequest);
+      response = await plaidClient.linkTokenCreate({
+        ...baseRequest,
+        ...(webhook ? { webhook } : {}),
+      });
     }
 
     return NextResponse.json({
@@ -48,7 +54,7 @@ export async function POST() {
       expiration: response.data.expiration,
     });
   } catch (error) {
-    console.error("Error creating link token:", error);
+    logError("plaid.link_token.failed", error);
     const message =
       error instanceof Error ? error.message : "Failed to create link token";
     return NextResponse.json({ error: message }, { status: 500 });

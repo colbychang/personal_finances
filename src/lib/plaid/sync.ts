@@ -133,7 +133,7 @@ export async function syncPlaidConnection({
   database?: AppDatabase;
   connectionId: number;
   workspaceId?: number;
-  source: "manual" | "cron" | "initial-link";
+  source: "manual" | "cron" | "initial-link" | "webhook";
   requestId?: string;
 }): Promise<PlaidSyncResult> {
   const startedAt = Date.now();

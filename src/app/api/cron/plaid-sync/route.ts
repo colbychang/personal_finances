@@ -4,6 +4,7 @@ import {
   syncPlaidConnection,
   PlaidConnectionSyncError,
 } from "@/lib/plaid/sync";
+import { updatePlaidItemWebhookForConnection } from "@/lib/plaid/webhook";
 import {
   getDurationMs,
   getRequestLogContext,
@@ -64,6 +65,7 @@ export async function GET(request: Request) {
       added: number;
       modified: number;
       removed: number;
+      webhookUpdated: boolean;
     }> = [];
     const failed: Array<{
       connectionId: number;
@@ -75,7 +77,16 @@ export async function GET(request: Request) {
     }> = [];
 
     for (const connection of dueConnections) {
+      let webhookUpdated = false;
       try {
+        const webhookResult = await updatePlaidItemWebhookForConnection({
+          connectionId: connection.id,
+          workspaceId: connection.workspaceId ?? undefined,
+          source: "cron",
+          requestId: context.requestId,
+        });
+        webhookUpdated = webhookResult.updated;
+
         const result = await syncPlaidConnection({
           connectionId: connection.id,
           workspaceId: connection.workspaceId ?? undefined,
@@ -89,6 +100,7 @@ export async function GET(request: Request) {
           added: result.added,
           modified: result.modified,
           removed: result.removed,
+          webhookUpdated,
         });
       } catch (error) {
         failed.push({
