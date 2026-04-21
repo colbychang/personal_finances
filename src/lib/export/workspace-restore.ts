@@ -151,7 +151,7 @@ export function previewWorkspaceRestore(payload: unknown): RestorePreview {
   };
 }
 
-async function clearWorkspaceFinanceData(database: AppDatabase, workspaceId: number) {
+export async function clearWorkspaceFinanceData(database: AppDatabase, workspaceId: number) {
   const accountRows = await database
     .select({ id: schema.accounts.id })
     .from(schema.accounts)

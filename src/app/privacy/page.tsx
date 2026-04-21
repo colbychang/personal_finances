@@ -99,6 +99,10 @@ export default function PrivacyPolicyPage() {
           and deletes the associated linked accounts and imported transactions
           from this application database.
         </p>
+        <p>
+          You can also delete your Glacier workspace data from Settings. This
+          removes the application&apos;s stored financial data for your workspace.
+        </p>
       </Section>
 
       <Section title="Data Retention">

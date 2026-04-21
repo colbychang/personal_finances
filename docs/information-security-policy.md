@@ -87,3 +87,15 @@ services used to operate the application.
 - This policy should be reviewed whenever the application's risk profile
   changes materially and at least annually if the app remains in active
   production use.
+
+Owner: Colby Chang  
+Last reviewed: 2026-04-21  
+Related procedures:
+
+- `docs/access-control-policy.md`
+- `docs/access-review-checklist.md`
+- `docs/data-retention-deletion-procedure.md`
+- `docs/internal-mfa-checklist.md`
+- `docs/software-eol-inventory.md`
+- `docs/vulnerability-management-policy.md`
+- `docs/zero-trust-and-iam-plan.md`

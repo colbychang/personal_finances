@@ -9,7 +9,7 @@ import {
   type PlaidLinkOnExit,
   type PlaidLinkOptions,
 } from "react-plaid-link";
-import { AlertTriangle, Landmark, Loader2 } from "lucide-react";
+import { AlertTriangle, Landmark, Loader2, ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { dispatchFinanceDataChanged } from "@/lib/client-events";
 import { useToast } from "@/components/ui/Toast";
@@ -21,11 +21,17 @@ import {
   storePlaidConsentAccepted,
   storePlaidReturnTo,
 } from "@/components/plaid/client";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 interface PlaidLinkButtonProps {
   onSuccess: () => void;
   className?: string;
 }
+
+type MfaFactor = {
+  id: string;
+  status?: string;
+};
 
 export function PlaidLinkButton({ onSuccess, className }: PlaidLinkButtonProps) {
   const [linkToken, setLinkToken] = useState<string | null>(null);
@@ -33,10 +39,15 @@ export function PlaidLinkButton({ onSuccess, className }: PlaidLinkButtonProps) 
   const [fetchingToken, setFetchingToken] = useState(false);
   const [showConsentDialog, setShowConsentDialog] = useState(false);
   const [consentChecked, setConsentChecked] = useState(false);
+  const [mfaPrompt, setMfaPrompt] = useState<"setup" | "challenge" | null>(null);
+  const [mfaFactorId, setMfaFactorId] = useState<string | null>(null);
+  const [mfaCode, setMfaCode] = useState("");
+  const [mfaError, setMfaError] = useState<string | null>(null);
+  const [pendingLaunch, setPendingLaunch] = useState(false);
   const { showToast } = useToast();
   const pathname = usePathname();
+  const supabase = createSupabaseBrowserClient();
 
-  // Fetch link token from our API
   const fetchLinkToken = useCallback(async () => {
     setFetchingToken(true);
     try {
@@ -44,22 +55,28 @@ export function PlaidLinkButton({ onSuccess, className }: PlaidLinkButtonProps) 
         method: "POST",
       });
       if (!response.ok) {
-        throw new Error("Failed to create link token");
+        const payload = await response.json().catch(() => null);
+        if (response.status === 403 && payload?.code === "mfa_required") {
+          throw new Error("Complete MFA before connecting a bank.");
+        }
+        throw new Error(payload?.error ?? "Failed to create link token");
       }
       const data = await response.json();
       setLinkToken(data.link_token);
       storePlaidLinkToken(data.link_token);
+      setPendingLaunch(true);
     } catch (error) {
       console.error("Error fetching link token:", error);
-      showToast("Failed to initialize bank connection. Please try again.", "error");
+      showToast(
+        error instanceof Error
+          ? error.message
+          : "Failed to initialize bank connection. Please try again.",
+        "error",
+      );
     } finally {
       setFetchingToken(false);
     }
   }, [showToast]);
-
-  useEffect(() => {
-    fetchLinkToken();
-  }, [fetchLinkToken]);
 
   // Handle success — exchange public_token for access_token
   const handleSuccess = useCallback<PlaidLinkOnSuccess>(
@@ -124,11 +141,10 @@ export function PlaidLinkButton({ onSuccess, className }: PlaidLinkButtonProps) 
         );
       } finally {
         setLoading(false);
-        // Fetch a new link token for next use (link_token is single-use)
-        fetchLinkToken();
+        setLinkToken(null);
       }
     },
-    [onSuccess, showToast, fetchLinkToken]
+    [onSuccess, showToast]
   );
 
   // Handle exit (user closes Link or error occurs)
@@ -144,10 +160,9 @@ export function PlaidLinkButton({ onSuccess, className }: PlaidLinkButtonProps) 
           );
         }
       }
-      // Fetch fresh link token since the old one may be consumed
-      fetchLinkToken();
+      setLinkToken(null);
     },
-    [showToast, fetchLinkToken]
+    [showToast]
   );
 
   const config: PlaidLinkOptions = {
@@ -158,21 +173,114 @@ export function PlaidLinkButton({ onSuccess, className }: PlaidLinkButtonProps) 
 
   const { open, ready } = usePlaidLink(config);
 
-  const isDisabled = !ready || loading || fetchingToken;
-  const launchLink = useCallback(() => {
-    storePlaidReturnTo(pathname);
-    open();
-  }, [open, pathname]);
+  useEffect(() => {
+    if (pendingLaunch && ready && linkToken) {
+      storePlaidReturnTo(pathname);
+      open();
+      setPendingLaunch(false);
+    }
+  }, [linkToken, open, pathname, pendingLaunch, ready]);
+
+  const isDisabled = loading || fetchingToken;
+  const launchLink = useCallback(async () => {
+    await fetchLinkToken();
+  }, [fetchLinkToken]);
+
+  const startMfaCheckedFlow = useCallback(async () => {
+    setMfaError(null);
+    setLoading(true);
+
+    try {
+      const { data: aal, error: aalError } =
+        await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+      if (aalError) {
+        throw aalError;
+      }
+
+      if (aal.currentLevel !== "aal2") {
+        const { data: factors, error: factorsError } =
+          await supabase.auth.mfa.listFactors();
+        if (factorsError) {
+          throw factorsError;
+        }
+
+        const verifiedTotp = (factors?.totp ?? []).find(
+          (factor: MfaFactor) => factor.status === "verified",
+        );
+        if (!verifiedTotp) {
+          setMfaPrompt("setup");
+          return;
+        }
+
+        setMfaFactorId(verifiedTotp.id);
+        setMfaPrompt("challenge");
+        return;
+      }
+
+      if (hasStoredPlaidConsent()) {
+        await launchLink();
+        return;
+      }
+
+      setConsentChecked(false);
+      setShowConsentDialog(true);
+    } catch (error) {
+      console.error("MFA check failed:", error);
+      showToast(
+        error instanceof Error
+          ? error.message
+          : "Failed to verify MFA status. Please try again.",
+        "error",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [launchLink, showToast, supabase.auth.mfa]);
 
   const handleConnectClick = useCallback(() => {
-    if (hasStoredPlaidConsent()) {
-      launchLink();
-      return;
-    }
+    void startMfaCheckedFlow();
+  }, [startMfaCheckedFlow]);
 
-    setConsentChecked(false);
-    setShowConsentDialog(true);
-  }, [launchLink]);
+  const verifyMfaAndContinue = useCallback(async () => {
+    if (!mfaFactorId) return;
+
+    setMfaError(null);
+    setLoading(true);
+
+    try {
+      const { data: challenge, error: challengeError } =
+        await supabase.auth.mfa.challenge({ factorId: mfaFactorId });
+      if (challengeError) {
+        throw challengeError;
+      }
+
+      const { error: verifyError } = await supabase.auth.mfa.verify({
+        factorId: mfaFactorId,
+        challengeId: challenge.id,
+        code: mfaCode,
+      });
+      if (verifyError) {
+        throw verifyError;
+      }
+
+      setMfaCode("");
+      setMfaPrompt(null);
+      setMfaFactorId(null);
+
+      if (hasStoredPlaidConsent()) {
+        await launchLink();
+      } else {
+        setConsentChecked(false);
+        setShowConsentDialog(true);
+      }
+    } catch (error) {
+      setMfaError(
+        error instanceof Error ? error.message : "Failed to verify MFA code.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [launchLink, mfaCode, mfaFactorId, supabase.auth.mfa]);
 
   return (
     <>
@@ -194,6 +302,98 @@ export function PlaidLinkButton({ onSuccess, className }: PlaidLinkButtonProps) 
         )}
         {loading ? "Connecting..." : "Connect Bank"}
       </button>
+
+      {mfaPrompt && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Multi-factor authentication required"
+        >
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={() => setMfaPrompt(null)}
+          />
+          <div className="relative w-full max-w-md rounded-[var(--radius-card)] bg-white p-6 shadow-xl">
+            <div className="mb-4 flex items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-100">
+                <ShieldCheck className="h-5 w-5 text-primary" />
+              </div>
+              <h2 className="text-lg font-semibold text-neutral-900">
+                MFA Required for Plaid
+              </h2>
+            </div>
+
+            {mfaPrompt === "setup" ? (
+              <>
+                <p className="text-sm text-neutral-700">
+                  Before connecting a bank, set up an authenticator app in
+                  Settings. This protects Plaid access behind a second factor.
+                </p>
+                <div className="mt-5 flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setMfaPrompt(null)}
+                    className="flex-1 rounded-[var(--radius-button)] border border-neutral-300 px-4 py-2.5 text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-50"
+                  >
+                    Cancel
+                  </button>
+                  <Link
+                    href="/settings"
+                    className="flex-1 rounded-[var(--radius-button)] bg-primary px-4 py-2.5 text-center text-sm font-medium text-white transition-colors hover:bg-primary/90"
+                  >
+                    Open Settings
+                  </Link>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-neutral-700">
+                  Enter the 6-digit code from your authenticator app to continue
+                  to Plaid Link.
+                </p>
+                {mfaError ? (
+                  <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                    {mfaError}
+                  </div>
+                ) : null}
+                <label className="mt-4 block space-y-2">
+                  <span className="text-sm font-medium text-neutral-700">
+                    6-digit code
+                  </span>
+                  <input
+                    required
+                    inputMode="numeric"
+                    pattern="[0-9]{6}"
+                    value={mfaCode}
+                    onChange={(event) =>
+                      setMfaCode(event.target.value.replace(/\D/g, "").slice(0, 6))
+                    }
+                    className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-neutral-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15"
+                  />
+                </label>
+                <div className="mt-5 flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setMfaPrompt(null)}
+                    className="flex-1 rounded-[var(--radius-button)] border border-neutral-300 px-4 py-2.5 text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void verifyMfaAndContinue()}
+                    disabled={loading || mfaCode.length !== 6}
+                    className="flex-1 rounded-[var(--radius-button)] bg-primary px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-primary/90 disabled:opacity-50"
+                  >
+                    {loading ? "Verifying..." : "Verify"}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {showConsentDialog && (
         <div
@@ -260,7 +460,7 @@ export function PlaidLinkButton({ onSuccess, className }: PlaidLinkButtonProps) 
                 onClick={() => {
                   storePlaidConsentAccepted();
                   setShowConsentDialog(false);
-                  launchLink();
+                  void launchLink();
                 }}
                 disabled={!consentChecked}
                 className="flex-1 px-4 py-2.5 rounded-[var(--radius-button)] bg-primary text-white font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 min-h-[44px]"

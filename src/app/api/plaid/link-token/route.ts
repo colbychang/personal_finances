@@ -3,6 +3,7 @@ import { getPlaidClient } from "@/lib/plaid";
 import { Products, CountryCode } from "plaid";
 import { requireCurrentWorkspace } from "@/lib/auth/current-workspace";
 import { buildPlaidWebhookUrl } from "@/lib/plaid/webhook";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { logError, logWarn } from "@/lib/observability/logger";
 import { checkWorkspaceRateLimit, rateLimitResponse } from "@/lib/rate-limit";
 
@@ -28,6 +29,25 @@ export async function POST() {
         route: "/api/plaid/link-token",
         message: "Too many bank connection attempts. Please try again soon.",
       });
+    }
+
+    const supabase = await createSupabaseServerClient();
+    const { data: aal, error: aalError } =
+      await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+    if (aalError) {
+      throw aalError;
+    }
+
+    if (aal.currentLevel !== "aal2") {
+      return NextResponse.json(
+        {
+          error: "Multi-factor authentication is required before connecting a bank.",
+          code: "mfa_required",
+          currentLevel: aal.currentLevel,
+          nextLevel: aal.nextLevel,
+        },
+        { status: 403 },
+      );
     }
 
     const plaidClient = getPlaidClient();

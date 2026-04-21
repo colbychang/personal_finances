@@ -1,5 +1,6 @@
 import { Settings, Tag, Landmark, BookOpen } from "lucide-react";
 import { PasswordSettingsCard } from "@/components/auth/PasswordSettingsCard";
+import { MfaSettingsCard } from "@/components/auth/MfaSettingsCard";
 import { db } from "@/db/index";
 import { getAllCategories } from "@/db/queries/categories";
 import { CategoriesManager } from "@/components/categories/CategoriesManager";
@@ -8,6 +9,7 @@ import { PlaidSetupNotice } from "@/components/plaid/PlaidSetupNotice";
 import { MerchantRulesManager } from "@/components/merchant-rules/MerchantRulesManager";
 import { PublicProfileNotice } from "@/components/public/PublicProfileNotice";
 import { DataExportCard } from "@/components/settings/DataExportCard";
+import { DeleteAccountCard } from "@/components/settings/DeleteAccountCard";
 import { OperationsStatusCard } from "@/components/settings/OperationsStatusCard";
 import { requireCurrentWorkspace } from "@/lib/auth/current-workspace";
 import { isPublicProfileMode } from "@/lib/deployment";
@@ -47,6 +49,7 @@ export default async function SettingsPage() {
       </section>
 
       <PasswordSettingsCard />
+      <MfaSettingsCard />
 
       {/* Merchant Rules Section */}
       <section className="mb-10">
@@ -76,6 +79,8 @@ export default async function SettingsPage() {
         </p>
         <CategoriesManager initialCategories={categories} />
       </section>
+
+      <DeleteAccountCard email={workspace.email} />
     </div>
   );
 }

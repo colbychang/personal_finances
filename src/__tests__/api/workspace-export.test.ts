@@ -16,6 +16,7 @@ import {
   restoreWorkspaceBackup,
 } from "@/lib/export/workspace-restore";
 import { getOperationsStatus } from "@/lib/operations/status";
+import { deleteWorkspaceAndMaybeAuthUser } from "@/lib/workspace/delete-workspace";
 import {
   closeTestDb,
   createTestDb,
@@ -317,5 +318,93 @@ describe("operations status", () => {
     expect(status.plaid.totalConnections).toBe(1);
     expect(status.plaid.erroredConnections).toBe(1);
     expect(status.queuedSyncJobs.pending).toBe(1);
+  });
+});
+
+describe("workspace deletion", () => {
+  it("deletes workspace-scoped finance data and membership without deleting the auth user when disabled", async () => {
+    const workspace = await seedWorkspace(db, {
+      name: "Delete Me",
+      slug: "delete-me",
+    });
+    await db.insert(schema.workspaceMembers).values({
+      workspaceId: workspace.id,
+      authUserId: "user-delete",
+      email: "delete@example.com",
+      role: "owner",
+    });
+    const institutionId = await findOrCreatePlaidInstitution(
+      db,
+      "Delete Bank",
+      "ins_delete",
+      workspace.id,
+    );
+    const connection = await createConnection(
+      db,
+      {
+        institutionName: "Delete Bank",
+        provider: "plaid",
+        accessToken: "not-encrypted",
+        itemId: "item-delete",
+        isEncrypted: false,
+      },
+      workspace.id,
+    );
+    const account = await createPlaidAccount(
+      db,
+      {
+        institutionId,
+        externalRef: "delete-account",
+        name: "Delete Checking",
+        mask: "9999",
+        type: "checking",
+        subtype: "checking",
+        balanceCurrent: 1_000,
+        balanceAvailable: 1_000,
+        isAsset: true,
+      },
+      connection.id,
+      "Delete Bank",
+      workspace.id,
+    );
+    await db.insert(schema.transactions).values({
+      workspaceId: workspace.id,
+      accountId: account.id,
+      postedAt: "2026-04-03",
+      name: "Delete Transaction",
+      amount: 1200,
+      pending: false,
+      isTransfer: false,
+      isExcluded: false,
+      reviewState: "none",
+    });
+
+    const result = await deleteWorkspaceAndMaybeAuthUser({
+      database: db,
+      membership: {
+        workspaceId: workspace.id,
+        workspaceName: workspace.name,
+        workspaceSlug: workspace.slug,
+        authUserId: "user-delete",
+        email: "delete@example.com",
+        role: "owner",
+      },
+      deleteAuthUser: false,
+    });
+
+    expect(result.workspaceDeleted).toBe(true);
+    expect(result.authUserDeleted).toBe(false);
+    await expect(
+      db.select().from(schema.workspaces).where(eq(schema.workspaces.id, workspace.id)),
+    ).resolves.toHaveLength(0);
+    await expect(
+      db.select().from(schema.workspaceMembers).where(eq(schema.workspaceMembers.authUserId, "user-delete")),
+    ).resolves.toHaveLength(0);
+    await expect(
+      db.select().from(schema.transactions).where(eq(schema.transactions.workspaceId, workspace.id)),
+    ).resolves.toHaveLength(0);
+    await expect(
+      db.select().from(schema.accounts).where(eq(schema.accounts.workspaceId, workspace.id)),
+    ).resolves.toHaveLength(0);
   });
 });

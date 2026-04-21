@@ -43,6 +43,15 @@ function setCachedWorkspaceMembership(membership: WorkspaceMembership) {
   });
 }
 
+export function clearWorkspaceMembershipCache(authUserId?: string) {
+  if (authUserId) {
+    workspaceMembershipCache.delete(authUserId);
+    return;
+  }
+
+  workspaceMembershipCache.clear();
+}
+
 function slugifyWorkspaceName(name: string) {
   return name
     .toLowerCase()

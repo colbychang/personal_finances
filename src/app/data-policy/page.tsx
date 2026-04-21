@@ -30,7 +30,7 @@ export default function DataPolicyPage() {
           Data Deletion &amp; Retention Policy
         </h1>
         <p className="text-sm text-neutral-500">
-          Last updated: April 14, 2026
+          Last updated: April 21, 2026
         </p>
       </div>
 
@@ -58,6 +58,13 @@ export default function DataPolicyPage() {
         <p>
           Users can also delete manual accounts and their associated
           transactions directly within the application.
+        </p>
+        <p>
+          Users can delete their Glacier workspace data from Settings. That
+          deletion removes workspace-scoped financial data, Plaid connection
+          metadata, budgets, categories, rules, snapshots, and workspace
+          membership records. If service-role account deletion is configured,
+          the associated authentication user is also deleted.
         </p>
       </Section>
 
