@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { AppDatabase } from "@/db/index";
 import * as schema from "../schema";
 import { excludesTransactionsForAccountType } from "@/lib/account-types";

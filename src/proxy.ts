@@ -31,6 +31,10 @@ function isApiPath(pathname: string) {
   return pathname.startsWith("/api/");
 }
 
+function isCronApiPath(pathname: string) {
+  return pathname === "/api/cron" || pathname.startsWith("/api/cron/");
+}
+
 function getSafePostAuthPath(next: string | null) {
   if (!next || !next.startsWith("/")) {
     return "/accounts";
@@ -69,6 +73,10 @@ export async function proxy(request: NextRequest) {
   }
 
   const { pathname } = request.nextUrl;
+
+  if (isCronApiPath(pathname)) {
+    return NextResponse.next();
+  }
 
   if (isPublicPath(pathname)) {
     const { user, response } = await updateSupabaseSession(request);

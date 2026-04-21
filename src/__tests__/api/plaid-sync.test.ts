@@ -13,6 +13,7 @@ import {
   updateAccountBalances,
   updateConnectionSyncStatus,
 } from "@/db/queries/sync";
+import { getPlaidConnectionsDueForSync } from "@/lib/plaid/sync";
 import {
   closeTestDb,
   createTestDb,
@@ -532,6 +533,83 @@ describe("updateConnectionSyncStatus", () => {
     expect(updated?.lastSyncStatus).toBe("success");
     expect(updated?.lastSyncError).toBeNull();
     expect(updated?.lastSyncAt).toBeTruthy();
+  });
+});
+
+describe("getPlaidConnectionsDueForSync", () => {
+  it("returns stale Plaid connections without including recently synced or active syncs", async () => {
+    const neverSynced = await setupConnectionWithAccount({
+      externalRef: "never-synced-acct",
+      plaidInstitutionId: "ins_never_synced",
+    });
+    const oldSync = await setupConnectionWithAccount({
+      externalRef: "old-sync-acct",
+      plaidInstitutionId: "ins_old_sync",
+    });
+    const recentSync = await setupConnectionWithAccount({
+      externalRef: "recent-sync-acct",
+      plaidInstitutionId: "ins_recent_sync",
+    });
+    const activeSync = await setupConnectionWithAccount({
+      externalRef: "active-sync-acct",
+      plaidInstitutionId: "ins_active_sync",
+    });
+
+    await db
+      .update(schema.connections)
+      .set({
+        lastSyncAt: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(),
+        lastSyncStatus: "success",
+      })
+      .where(eq(schema.connections.id, oldSync.connection.id));
+
+    await db
+      .update(schema.connections)
+      .set({
+        lastSyncAt: new Date().toISOString(),
+        lastSyncStatus: "success",
+      })
+      .where(eq(schema.connections.id, recentSync.connection.id));
+
+    await db
+      .update(schema.connections)
+      .set({
+        lastSyncAt: new Date().toISOString(),
+        lastSyncStatus: "syncing",
+      })
+      .where(eq(schema.connections.id, activeSync.connection.id));
+
+    const dueConnections = await getPlaidConnectionsDueForSync({
+      database: db,
+      staleAfterMs: 12 * 60 * 60 * 1000,
+      limit: 10,
+    });
+
+    expect(dueConnections.map((connection) => connection.id)).toEqual([
+      neverSynced.connection.id,
+      oldSync.connection.id,
+    ]);
+  });
+
+  it("limits stale background sync candidates", async () => {
+    const first = await setupConnectionWithAccount({
+      externalRef: "limited-first-acct",
+      plaidInstitutionId: "ins_limited_first",
+    });
+    const second = await setupConnectionWithAccount({
+      externalRef: "limited-second-acct",
+      plaidInstitutionId: "ins_limited_second",
+    });
+
+    const dueConnections = await getPlaidConnectionsDueForSync({
+      database: db,
+      staleAfterMs: 12 * 60 * 60 * 1000,
+      limit: 1,
+    });
+
+    expect(dueConnections).toHaveLength(1);
+    expect(dueConnections[0]?.id).toBe(first.connection.id);
+    expect(second.connection.id).toBeGreaterThan(first.connection.id);
   });
 });
 

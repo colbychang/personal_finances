@@ -67,7 +67,6 @@ export function PlaidAutoSync() {
     startedRef.current = true;
 
     let cancelled = false;
-    let timeoutId: number | undefined;
 
     async function runAutoSync() {
       try {
@@ -150,16 +149,14 @@ export function PlaidAutoSync() {
       }
     }
 
-    timeoutId = window.setTimeout(() => {
+    const timeoutId = window.setTimeout(() => {
       if (cancelled) return;
       void runAutoSync();
     }, AUTO_SYNC_START_DELAY_MS);
 
     return () => {
       cancelled = true;
-      if (timeoutId) {
-        window.clearTimeout(timeoutId);
-      }
+      window.clearTimeout(timeoutId);
     };
   }, [pathname, router, showToast]);
 

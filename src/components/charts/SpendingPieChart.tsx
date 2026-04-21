@@ -67,15 +67,6 @@ export function SpendingPieChart({
   labelThresholdPercent = 0.05,
 }: SpendingPieChartProps) {
   const [hiddenCategories, setHiddenCategories] = useState<Set<string>>(() => new Set());
-
-  if (data.length === 0) {
-    return (
-      <p className="text-sm text-neutral-500 text-center py-8">
-        No spending data for this month.
-      </p>
-    );
-  }
-
   const chartData = useMemo(
     () =>
       data.map((d, i) => ({
@@ -87,6 +78,14 @@ export function SpendingPieChart({
   );
 
   const visibleData = chartData.filter((entry) => !hiddenCategories.has(entry.name));
+
+  if (data.length === 0) {
+    return (
+      <p className="text-sm text-neutral-500 text-center py-8">
+        No spending data for this month.
+      </p>
+    );
+  }
 
   function toggleCategory(category: string) {
     setHiddenCategories((current) => {

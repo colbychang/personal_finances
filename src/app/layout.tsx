@@ -1,4 +1,6 @@
 import type { Metadata, Viewport } from "next";
+import { Analytics } from "@vercel/analytics/next";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import { ClientErrorReporter } from "@/components/debug/ClientErrorReporter";
 import { AppShell } from "@/components/navigation";
 import { ToastProvider } from "@/components/ui/Toast";
@@ -51,6 +53,8 @@ export default function RootLayout({
           <AppShell>{children}</AppShell>
         </ToastProvider>
         <ServiceWorkerRegistration />
+        <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   );

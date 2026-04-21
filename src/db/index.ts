@@ -7,6 +7,8 @@ import * as schema from "./schema";
 dotenv.config({ path: ".env.local" });
 dotenv.config();
 
+// Drizzle exposes the query-result HKT as an internal generic; `any` is required here.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type AppDatabase = PgDatabase<any, typeof schema>;
 
 function createDatabaseUnavailableProxy(): AppDatabase {
