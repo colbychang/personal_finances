@@ -12,6 +12,10 @@ type MfaFactor = {
 
 const MFA_FRIENDLY_NAME = "Glacier authenticator";
 
+function buildFriendlyName() {
+  return `${MFA_FRIENDLY_NAME} ${Date.now().toString(36)}`;
+}
+
 export function MfaSettingsCard() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const [verifiedFactors, setVerifiedFactors] = useState<MfaFactor[]>([]);
@@ -92,7 +96,7 @@ export function MfaSettingsCard() {
 
       const { data, error: enrollError } = await supabase.auth.mfa.enroll({
         factorType: "totp",
-        friendlyName: MFA_FRIENDLY_NAME,
+        friendlyName: buildFriendlyName(),
         issuer: "Glacier Finance Tracker",
       });
 
