@@ -20,7 +20,7 @@
   "dependencies": {
     "@electric-sql/pglite": "^0.4.4",
     "@supabase/ssr": "^0.10.2",
-    "@supabase/supabase-js": "^2.103.3",
+    "@supabase/supabase-js": "^2.105.3",
     "@vercel/analytics": "^2.0.1",
     "@vercel/speed-insights": "^2.0.0",
     "better-sqlite3": "^11.8.2",
