@@ -32,8 +32,8 @@
     "openai": "^4.86.0",
     "plaid": "^41.4.0",
     "postgres": "^3.4.9",
-    "react": "^19.1.0",
-    "react-dom": "^19.1.0",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
     "react-plaid-link": "^4.1.0",
     "recharts": "^2.15.0",
     "tailwind-merge": "^3.0.2"
